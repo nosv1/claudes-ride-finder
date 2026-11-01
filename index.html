@@ -255,7 +255,7 @@
         <button id="share">Copy share link</button>
         <button id="clearTrip">Clear trip</button>
       </div>
-      <div class="note">GPX works with riding apps (Calimoto, REVER, Garmin, OsmAnd) and keeps the exact route. Google Maps re-plans between stops, so it may differ slightly.</div>
+      <div class="note">Google Maps gets extra stops just past key turns so it sticks to this route; it may announce them as you pass. GPX keeps the exact route for riding apps (OsmAnd is free).</div>
     </div>
 
     <div id="status"></div>
@@ -917,7 +917,7 @@ function decodePolyline(str, precision = 6) {
 // Valhalla's motorcycle profile, with a dial for how much to avoid highways between roads.
 // The public server takes 10 points per request, so longer trips go in overlapping chunks.
 async function valhallaRoute(pts) {
-  const result = { path: [], meters: 0, seconds: 0 };
+  const result = { path: [], meters: 0, seconds: 0, maneuvers: [] };
   for (let i = 0; i < pts.length - 1; i += VALHALLA_MAX - 1) {
     const chunk = pts.slice(i, i + VALHALLA_MAX);
     const req = {
@@ -929,7 +929,14 @@ async function valhallaRoute(pts) {
       units: 'miles',
     };
     const data = await fetchJson(`${VALHALLA}?json=${encodeURIComponent(JSON.stringify(req))}`, 30000);
-    result.path.push(...data.trip.legs.flatMap(l => decodePolyline(l.shape)));
+    data.trip.legs.forEach(leg => {
+      // Turns, with positions in the joined path; used to keep Google Maps on this route.
+      const offset = result.path.length;
+      leg.maneuvers.forEach(m => result.maneuvers.push({
+        type: m.type, at: offset + m.begin_shape_index, end: offset + m.end_shape_index, km: m.length * 1.609,
+      }));
+      result.path.push(...decodePolyline(leg.shape));
+    });
     result.meters += data.trip.summary.length * 1609.34;
     result.seconds += data.trip.summary.time;
   }
@@ -1112,17 +1119,9 @@ function addFuelStop(s) {
   const stop = { type: 'point', label: `Gas: ${s.name}`, pts: [[s.lat, s.lon]] };
   let at = trip.items.length;
   if (route) {
-    const nearestFrom = (p, from) => {
-      let best = from, bd = Infinity;
-      for (let i = from; i < route.path.length; i++) {
-        const d = d2(p, route.path[i]);
-        if (d < bd) { bd = d; best = i; }
-      }
-      return best;
-    };
-    const target = nearestFrom(stop.pts[0], 0);
+    const target = nearestIndex(route.path, stop.pts[0]);
     let from = 0;
-    at = trip.items.findIndex(it => (from = nearestFrom(it.pts[0], from)) > target);
+    at = trip.items.findIndex(it => (from = nearestIndex(route.path, it.pts[0], from)) > target);
     if (at < 0) at = trip.items.length;
   }
   trip.items.splice(at, 0, stop);
@@ -1297,9 +1296,70 @@ anotherEl.onclick = () => {
 };
 
 // ---------- export & sharing ----------
+// Google re-plans between stops, so give it extra stops just past the turns where it might
+// choose a different road, plus one in any long stretch with nothing holding it to ours.
+const DECISION_TURNS = new Set([9, 10, 11, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26]);  // Valhalla maneuver types
+const GOOGLE_PER_PART = 9;     // stops Google Maps allows between start and end
+const GOOGLE_PARTS = 2;        // aim to fit the ride in this many links
+const PAST_TURN = 200;         // metres after a turn to drop the stop, so Google has to make it
+const MIN_SPACING = 800;       // metres between stops
+const MAX_GAP = 25000;         // longest stretch to leave without a stop
+
+function nearestIndex(path, p, from = 0) {
+  let best = from, bd = Infinity;
+  for (let i = from; i < path.length; i++) {
+    const d = d2(p, path[i]);
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+
+function googlePoints() {
+  if (!route || !route.maneuvers) return tripPoints().map(x => x.p);
+  const path = route.path, cum = [0];
+  for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + map.distance(path[i - 1], path[i]));
+
+  // The trip's own stops, placed along the route in order (a loop ends back at the start).
+  const stops = tripPoints(false).map(x => x.p);
+  const picked = [];
+  let from = 0;
+  stops.forEach((p, n) => {
+    const i = n === stops.length - 1 ? path.length - 1 : nearestIndex(path, p, from);
+    picked.push({ i, p });
+    from = i;
+  });
+
+  // Long empty stretches first (Google could swap in a whole different road there), then turns.
+  const cap = GOOGLE_PARTS * (GOOGLE_PER_PART + 1) + 1;
+  while (picked.length < cap) {
+    picked.sort((a, b) => a.i - b.i);
+    let gap = 0, at = 0;
+    for (let k = 1; k < picked.length; k++) {
+      const g = cum[picked[k].i] - cum[picked[k - 1].i];
+      if (g > gap) { gap = g; at = k; }
+    }
+    if (gap < MAX_GAP) break;
+    const target = (cum[picked[at - 1].i] + cum[picked[at].i]) / 2;
+    const i = cum.findIndex(c => c >= target);
+    picked.push({ i, p: path[i] });
+  }
+
+  const crowded = i => picked.some(q => Math.abs(cum[q.i] - cum[i]) < MIN_SPACING);
+  route.maneuvers
+    .filter(m => DECISION_TURNS.has(m.type) && m.km > 0.5)
+    .sort((a, b) => b.km - a.km)  // turns onto long stretches matter most
+    .forEach(m => {
+      if (picked.length >= cap) return;
+      let i = m.at;
+      while (i < m.end && cum[i] - cum[m.at] < PAST_TURN) i++;
+      if (!crowded(i)) picked.push({ i, p: path[i] });
+    });
+  return picked.sort((a, b) => a.i - b.i).map(q => q.p);
+}
+
 // Google Maps links take up to 9 stops between start and end, so long trips become several parts.
 function googleLinks() {
-  const pts = tripPoints().map(x => x.p);
+  const pts = googlePoints();
   const f = p => `${p[0].toFixed(5)},${p[1].toFixed(5)}`;
   const parts = [];
   for (let i = 0; i < pts.length - 1; i += 10) {
