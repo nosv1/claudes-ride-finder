@@ -30,3 +30,9 @@ Ideas that came up, roughly in order of how much they'd help.
 - **More states**: Arkansas (Eureka Springs, the Pig Trail), Oklahoma, Iowa, Nebraska.
   Download the `.osm.pbf` into `raw/` and rebuild.
 - **Favorites**: star roads you've ridden and liked.
+
+Human notes:
+not a fan of double backing,  
+doesn't appear i can drag stops up or down  
+tool tips for what classifies flyovers or sweepers, etc  
+when a route is created and i want to add a road, i want ability to decide which part i enter on, like i can click add stop, but i want to say add road, and then be able to switch start side if needed (if that makes sense, ask if it doesn't)
