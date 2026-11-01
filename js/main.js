@@ -76,7 +76,7 @@ async function start() {
     if (route) refreshInfo(false);
     if (view === 'home') renderSoon();
   });
-  loadTiles(pad(mapView.view(), 0.1));
+  loadView();
   await mapView.ready;
   mapView.updateInsets();
   addEventListener('resize', () => mapView.updateInsets());
@@ -85,7 +85,7 @@ async function start() {
   loadSavedTrip();
   let lastZoom = mapView.zoom();
   mapView.on('move', () => {
-    loadTiles(pad(mapView.view(), 0.1));
+    loadView();
     if (settings.mode === 'speed' && (lastZoom < 11) !== (mapView.zoom() < 11)) mapView.setFilters(filters());
     lastZoom = mapView.zoom();
     if (view === 'home') renderSoon();
@@ -97,6 +97,15 @@ async function start() {
   mapView.on('menu', spotMenu);
   mapView.map.on('movestart', closeMenu);
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+}
+
+// Roads for what's on screen. None when zoomed out past where the list says "Zoom in": that
+// loaded whole states and crashed phones. Speed-only roads just in Speed limits mode, from zoom 9.
+const LOAD_ZOOM = 7, SPEED_ZOOM = 9;
+function loadView() {
+  const z = mapView.zoom();
+  if (z < LOAD_ZOOM) return;
+  loadTiles(pad(mapView.view(), 0.1), { speed: settings.mode === 'speed' && z >= SPEED_ZOOM });
 }
 
 function applySettings() {
@@ -111,6 +120,7 @@ function setSetting(patch) {
   Object.assign(settings, patch);
   saveSettings();
   applySettings();
+  loadView();
   renderSoon();
 }
 
@@ -526,17 +536,17 @@ const hillWord = hill => hill == null ? null : HILLS[Math.max(0, HILLS.reduce((l
 
 function homeView() {
   const speedMode = settings.mode === 'speed';
-  const groups = speedMode || !store.roads.length ? [] : bestInView(store.roads, mapView.view(), filters());
+  const groups = speedMode || !store.roads.length || mapView.zoom() < LOAD_ZOOM ? [] : bestInView(store.roads, mapView.view(), filters());
   return [
     route ? rideBar() : null,
     h('div.section-head', {}, h('h2', {}, speedMode ? 'Posted speed limits' : settings.mode === 'ramps' ? 'Fast ramps in view' : 'Best roads in view'),
       loadingCount() ? h('span.muted', {}, 'Loading…') : ''),
     legend(),
     speedMode
-      ? h('p.muted', {}, 'From OpenStreetMap. County roads and side streets appear as you zoom in.')
+      ? h('p.muted', {}, mapView.zoom() < SPEED_ZOOM ? 'Zoom in to see speed limits.' : 'From OpenStreetMap. County roads and side streets appear as you zoom in.')
       : groups.length
         ? h('div.cards', {}, groups.map(roadCard))
-        : h('p.empty', {}, !store.roads.length || mapView.zoom() < 7 ? 'Zoom in to see roads.'
+        : h('p.empty', {}, !store.roads.length || mapView.zoom() < LOAD_ZOOM ? 'Zoom in to see roads.'
           : settings.mode === 'ramps' ? 'No fast ramps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
     h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),

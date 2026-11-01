@@ -5,7 +5,7 @@ import { decodeRow } from './roads.js';
 
 export const store = {
   roads: [], byId: new Map(), version: 0,
-  index: null, available: new Set(), fuel: [], search: { places: [], roads: [] },
+  index: null, available: new Set(), speedAvailable: new Set(), fuel: [], search: { places: [], roads: [] },
 };
 
 const tileState = new Map();   // "x_y" -> 'loading' | 'done' | 'failed'
@@ -39,21 +39,25 @@ export async function initData() {
   await Promise.all(['index.js', 'fuel.js', 'search.js'].map(f => loadScript(DATA_URL + f)));
   store.index = window.TILE_INDEX;
   store.available = new Set(store.index.tiles);
+  store.speedAvailable = new Set(store.index.speed || []);
   store.fuel = (window.FUEL || []).map(([lat, lon, name, city, status, hours]) => ({ lat, lon, name, city, status, hours }));
   store.search = window.SEARCH || store.search;
 }
 
 export const onRoadsChanged = fn => listeners.add(fn);
 
-// Load every tile overlapping bounds [s, w, n, e].
-export function loadTiles([s, w, n, e]) {
+// Load every tile overlapping bounds [s, w, n, e]: its curvy roads and ramps, and with speed,
+// its roads kept only for their speed limit too (the bulk of the data, as "x_y.s").
+export function loadTiles([s, w, n, e], { speed = false } = {}) {
   const size = store.index.size;
   for (let x = Math.floor(w / size); x <= Math.floor(e / size); x++) {
     for (let y = Math.floor(s / size); y <= Math.floor(n / size); y++) {
-      const key = `${x}_${y}`;
-      if (tileState.has(key) || !store.available.has(key)) continue;
-      tileState.set(key, 'loading');
-      loadScript(`${DATA_URL}${key}.js`).catch(() => tileState.set(key, 'failed'));
+      const xy = `${x}_${y}`;
+      for (const [key, has] of [[xy, store.available.has(xy)], [`${xy}.s`, speed && store.speedAvailable.has(xy)]]) {
+        if (!has || tileState.has(key)) continue;
+        tileState.set(key, 'loading');
+        loadScript(`${DATA_URL}${key}.js`).catch(() => tileState.set(key, 'failed'));
+      }
     }
   }
 }

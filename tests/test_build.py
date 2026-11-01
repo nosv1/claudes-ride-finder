@@ -246,8 +246,17 @@ class TestBuiltData(unittest.TestCase):
 
     def test_index_matches_tile_files(self):
         index = self.load(os.path.join(TILES, "index.js"), "{", "}")
-        files = {os.path.basename(p)[:-3] for p in glob.glob(os.path.join(TILES, "*_*.js"))}
-        self.assertEqual(set(index["tiles"]), files)
+        names = {os.path.basename(p)[:-3] for p in glob.glob(os.path.join(TILES, "*_*.js"))}
+        self.assertEqual(set(index["tiles"]), {n for n in names if not n.endswith(".s")})
+        self.assertEqual(set(index["speed"]), {n[:-2] for n in names if n.endswith(".s")})
+
+    def test_curvy_and_speed_only_roads_are_in_separate_files(self):
+        # The ride modes load only the curvy files; the speed-only ones are most of the data.
+        main = [r for k in ("-189_77", "-194_65") for r in self.load_tile(k)]
+        speed = [r for k in ("-189_77.s", "-194_65.s") for r in self.load_tile(k)]
+        self.assertTrue(all(r[7] or r[9] for r in main))
+        self.assertFalse(any(r[7] or r[9] for r in speed))
+        self.assertGreater(len(speed), len(main))
 
     def test_rows_have_the_expected_shape(self):
         rows = self.load_tile("-189_77")

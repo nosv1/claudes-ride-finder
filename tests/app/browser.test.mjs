@@ -102,6 +102,23 @@ test('Interchanges mode shows the fast ramps at the Grandview Triangle', async (
   await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Best rides/.test(b.textContent)).click()");
 });
 
+test('zoomed far out it loads no more roads, and speed-only roads only in Speed limits mode', async () => {
+  const files = () => page.eval("[...document.querySelectorAll('script[src*=\"tiles/\"]')].map(s => s.src.split('/').pop())");
+  const before = await files();
+  assert.ok(before.every(f => !f.endsWith('.s.js')), 'Best rides loads no speed-only files');
+  await page.eval("RF.go('home')");
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-97, 33], zoom: 4.5 })");  // all of Texas and more
+  await sleep(1500);
+  assert.equal((await files()).length, before.length, 'nothing loaded zoomed out');
+  assert.match(await sheetText(), /Zoom in to see roads/);
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.33, 38.835], zoom: 10 })");
+  await page.eval("document.querySelector('#chips .chip').click()");
+  await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Speed limits/.test(b.textContent)).click()");
+  await page.waitFor("[...document.querySelectorAll('script[src*=\"tiles/\"]')].some(s => s.src.endsWith('.s.js'))", 10000);
+  await page.eval("document.querySelector('#chips .chip').click()");
+  await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Best rides/.test(b.textContent)).click()");
+});
+
 test('search finds a route number and opens the road', async () => {
   await page.eval("(() => { const q = document.getElementById('q'); q.value = 'hwy 7'; q.dispatchEvent(new Event('input')); })()");
   await page.waitFor("document.querySelectorAll('#results .result').length > 0", 5000);

@@ -548,6 +548,31 @@ def road_index(tiles, places):
     return out
 
 
+def write_tiles(tiles, regions):
+    """Each tile in two files: {x}_{y}.js with the curvy roads, sweepers and fast ramps (what the
+    ride modes use) and {x}_{y}.s.js with the roads kept only for their speed limit, about 70% of
+    the data, loaded only in Speed limits mode. Zoomed out over Texas, loading everything took
+    ~67 MB and crashed phones."""
+    shutil.rmtree(OUT_DIR, ignore_errors=True)
+    os.makedirs(OUT_DIR)
+    main_keys, speed_keys = [], []
+    for key, rows in tiles.items():
+        curvy = [r for r in rows if r[7] or r[9]]
+        speed = [r for r in rows if not (r[7] or r[9])]
+        for name, part, keys in ((key, curvy, main_keys), (f"{key}.s", speed, speed_keys)):
+            if not part:
+                continue
+            keys.append(key)
+            with open(os.path.join(OUT_DIR, f"{name}.js"), "w", encoding="utf-8") as f:
+                f.write(f'addTile("{name}",')
+                json.dump(part, f, separators=(",", ":"), ensure_ascii=False)
+                f.write(");\n")
+    index = {"size": TILE_SIZE, "built": date.today().isoformat(), "regions": regions,
+             "tiles": sorted(main_keys), "speed": sorted(speed_keys)}
+    with open(os.path.join(OUT_DIR, "index.js"), "w", encoding="utf-8") as f:
+        f.write("window.TILE_INDEX = " + json.dumps(index) + ";\n")
+
+
 def main(args):
     # cmd.exe doesn't expand wildcards, so do it here
     paths = sorted({p for a in (args or ["raw/*.osm.pbf"]) for p in glob.glob(a)})
@@ -585,18 +610,8 @@ def main(args):
             row += hills_and_blind(decode(row[11]), elev) if curvy_road else (None, [])
             row.append(lanes.get(row[0]))
 
-    shutil.rmtree(OUT_DIR, ignore_errors=True)
-    os.makedirs(OUT_DIR)
-    for key, rows in tiles.items():
-        with open(os.path.join(OUT_DIR, f"{key}.js"), "w", encoding="utf-8") as f:
-            f.write(f'addTile("{key}",')
-            json.dump(rows, f, separators=(",", ":"), ensure_ascii=False)
-            f.write(");\n")
-
     regions = sorted(os.path.basename(p).replace("-latest.osm.pbf", "") for p in paths)
-    index = {"size": TILE_SIZE, "built": date.today().isoformat(), "regions": regions, "tiles": sorted(tiles)}
-    with open(os.path.join(OUT_DIR, "index.js"), "w", encoding="utf-8") as f:
-        f.write("window.TILE_INDEX = " + json.dumps(index) + ";\n")
+    write_tiles(tiles, regions)
     places = list(places.values())
     search = {"places": places, "roads": road_index(tiles, places)}
     with open(os.path.join(OUT_DIR, "search.js"), "w", encoding="utf-8") as f:

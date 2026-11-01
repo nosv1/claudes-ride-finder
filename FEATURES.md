@@ -27,8 +27,9 @@ committed as `tiles/`. The app needs no OSM server at runtime.
 **Outputs** (all plain `<script>` files, so the page also works opened as a local file)
 | File | Contents |
 |---|---|
-| `tiles/index.js` | `window.TILE_INDEX = {size: 0.5, built, regions, tiles: ["x_y", …]}` |
+| `tiles/index.js` | `window.TILE_INDEX = {size: 0.5, built, regions, tiles: ["x_y", …], speed: ["x_y", …]}` (tiles with curvy / speed-only files) |
 | `tiles/{x}_{y}.js` | `addTile("x_y", rows)`, one 0.5° tile, each road assigned by its midpoint |
+| `tiles/{x}_{y}.s.js` | `addTile("x_y.s", rows)`: the same tile's roads kept only for their speed limit (~70% of the data) |
 | `tiles/fuel.js` | `window.FUEL = [[lat, lon, label, city, status90, hours], …]` |
 | `tiles/search.js` | `window.SEARCH = {places: [[name, lat, lon, kind]], roads: [[key, name, s, w, n, e, curveMetres, nearestTown]]}` |
 
@@ -141,6 +142,14 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 - **Desktop (≥ 900 px):** the same content in a left panel.
 - The map's padding follows the sheet or panel, so centring and fitting use the uncovered part of the map.
 - Map buttons: my location, 3D, layers (Dark / Satellite / terrain shading).
+
+**Loading roads**
+- Curvy roads, sweepers and fast ramps (the `x_y` files, 19 MB for all three states) load for the view from zoom 7.
+  Below that nothing new loads and the list says "Zoom in to see roads": zoomed out over Texas the app used to load
+  every tile, both kinds (~67 MB), and phones crashed.
+- Speed-only roads (`x_y.s`, 47 MB) load only in Speed limits mode, from zoom 9 ("Zoom in to see speed limits").
+- Measured on a phone-size page: KC, Austin, Dallas and the Hill Country at zoom 9, then zoom 4 over Texas: ~110 MB
+  of JS heap, nothing loaded at zoom 4.
 
 **Modes**
 | Mode | Shows | Colored by |
