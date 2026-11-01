@@ -711,9 +711,7 @@ function planView() {
       } }, iconEl(icon.locate), 'My location'),
       h('button.btn', { onclick: () => startPicking('start') }, iconEl(icon.pin), 'Pick on map')),
     mustInclude(),
-    h('div.field', {}, h('label', {}, 'Ride time'),
-      h('div.seg', {}, [1, 1.5, 2, 3, 4, 5, 6, 8].map(t => h(`button${settings.genHours === t ? '.on' : ''}`,
-        { onclick: () => setSetting({ genHours: t }) }, t === 1.5 ? '1½ h' : `${t} h`)))),
+    rideTime(),
     h('button.cta', { onclick: generate, disabled: gen.running }, iconEl(icon.route), gen.running ? 'Working…' : 'Generate loops'),
     gen.status ? h('p.muted', {}, gen.status) : '',
     gen.options.length ? h('div.cards', {}, gen.options.map(optionCard)) : '',
@@ -721,6 +719,10 @@ function planView() {
     h('p.fineprint', {}, 'Uses the filters at the top (speed, hills, paved). Riding time doesn’t include stops. Or build your own: tap roads on the map and Add to ride.'),
   ];
 }
+
+const rideTime = (label = 'Ride time') => h('div.field', {}, h('label', {}, label),
+  h('div.seg', {}, [1, 1.5, 2, 3, 4, 5, 6, 8].map(t => h(`button${settings.genHours === t ? '.on' : ''}`,
+    { onclick: () => setSetting({ genHours: t }) }, t === 1.5 ? '1½ h' : `${t} h`))));
 
 // The rider's own stops: every generated loop goes through them.
 const ownStops = () => trip.items.filter((it, i) => !(i === 0 && T.startOf(trip)) && !it.gen);
@@ -776,6 +778,11 @@ function tripView() {
         try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'Start from me')),
     h('div.section', {}, routeSummary()),
+    h('div.section', {},
+      rideTime('Generate a loop'),
+      h('button.btn.primary.wide', { onclick: () => { go('plan'); generate(); }, disabled: gen.running },
+        iconEl(icon.route), gen.running ? 'Working…' : ownStops().length ? 'Generate loops through these stops' : 'Generate loops from this start'),
+      h('p.muted.small', {}, 'Keeps your own stops and fills the time with the best roads nearby.')),
     h('div.field', {}, h('label.switch', {},
       h('input', { type: 'checkbox', checked: trip.loop, onchange: e => { trip.loop = e.target.checked; tripChanged(); } }),
       h('span', {}, 'Return to start'))),

@@ -221,6 +221,17 @@ test('Add road on the ride page: tap a road, it goes in where it fits, and its e
   assert.match(await sheetText(), /MO 150\s+\w+ end → \w+ end/);
 });
 
+test('the ride page can generate loops through its stops', async () => {
+  await page.eval(pointTrip);
+  await page.waitFor("[...document.querySelectorAll('#sheetBody button')].some(b => /Generate loops through these stops/.test(b.textContent))");
+  assert.match(await sheetText(), /Generate a loop[\s\S]*1½ h/);
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Generate loops through these stops/.test(b.textContent)).click()");
+  await sleep(100);
+  assert.match(await sheetText(), /Plan a ride[\s\S]*Must include[\s\S]*Working…/);
+  // Let it finish (or fail offline) so it can't change the ride under later tests.
+  await page.waitFor('!RF.gen.running', 180000);
+});
+
 test('the map key explains what each class means', async () => {
   await page.eval("RF.go('home')");
   await page.eval("document.querySelector('.key-btn').click()");

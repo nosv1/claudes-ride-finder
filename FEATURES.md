@@ -227,7 +227,8 @@ under the tag, and the Hills chip lists ft/mi.
 - **Your ride** lists the stops first, right under the title, so nothing above them changes height while the
   route is worked out again: after removing one, the next ✕ is under the same finger. The ride's name stays on one
   line for the same reason. **Clear all** sits by the "Stops (n)" heading, with Undo in the toast instead of a
-  confirm. Then Add road / Add stop / Start from me, then the route summary, options, fuel and export.
+  confirm. Then Add road / Add stop / Start from me, then the route summary, **Generate a loop** (ride time + a button
+  that opens Plan a ride and generates through these stops right away), options, fuel and export.
 - Rows can be reordered by dragging their grip (touch too), flipped (⇄) and removed (✕).
   - The drag is followed on the whole window: moving the row in the list drops the grip's pointer capture.
     Re-renders wait until the row is dropped.
@@ -260,7 +261,7 @@ under the tag, and the Hills chip lists ft/mi.
 - Warns about any stretch longer than the range, and shows the longest stretch without a station.
 - ＋ inserts a station at the right place in the ride.
 
-**Generate loops** (Plan a ride)
+**Generate loops** (Plan a ride, or Generate a loop on Your ride)
 - Ride time 1–8 h. The start is the first stop, or the rider's location.
 - **Must include:** the rider's own stops (roads, gas stops, pinned points).
   - Every loop goes through them.
