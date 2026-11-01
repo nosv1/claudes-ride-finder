@@ -146,6 +146,7 @@
     padding: 1px 4px; border: 1px solid #222; border-radius: 3px; background: #f1f3f5;
     color: #111; font: 700 10px/1.3 system-ui, sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,.5);
   }
+  .route-shield { border-color: var(--blue); box-shadow: 0 0 0 2px #4dabf7, 0 1px 3px rgba(0,0,0,.5); }
   .trip-marker {
     width: 22px; height: 22px; border-radius: 50%; background: var(--blue); border: 2px solid #fff;
     color: #fff; font: 600 11px/22px system-ui, sans-serif; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.6);
@@ -675,6 +676,32 @@ function updateLabels() {
   }));
 }
 
+// Route numbers the router reports along a planned route ("I 49 North", "US 50", "K-10", "MO Y").
+const ROUTE_REF = /^(I|US|MO|K|KS)[ -]?(\d+[A-Z]?|[A-Z]{1,2})\b/;
+const routeLabelLayer = L.layerGroup().addTo(map);
+
+function updateRouteLabels() {
+  routeLabelLayer.clearLayers();
+  if (!route || !route.maneuvers || map.getZoom() < 8) return;
+  const view = map.getBounds(), placed = [];
+  [...route.maneuvers].sort((a, b) => b.km - a.km).forEach(m => {
+    const refs = [...new Set(m.names.map(n => (n.match(ROUTE_REF) || [])[0]).filter(Boolean).map(s => s.replace('-', ' ')))];
+    if (!refs.length || m.km < 1) return;
+    // Somewhere along this stretch that's on screen and clear of other shields.
+    for (const f of [0.5, 0.3, 0.7, 0.15, 0.85]) {
+      const at = route.path[Math.round(m.at + (m.end - m.at) * f)];
+      const px = map.latLngToContainerPoint(at);
+      if (!view.contains(at) || placed.some(p => p.distanceTo(px) < SHIELD_SPACING)) continue;
+      placed.push(px);
+      L.marker(at, {
+        interactive: false, keyboard: false,
+        icon: L.divIcon({ className: '', iconSize: [0, 0], html: `<span class="shield route-shield">${escapeHtml(refs.slice(0, 2).join(' / '))}</span>` }),
+      }).addTo(routeLabelLayer);
+      break;
+    }
+  });
+}
+
 // ---------- blind crest corners ----------
 const BLIND_ZOOM = 11;
 const BLIND_ICON = L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="blind-marker"></div>' });
@@ -934,6 +961,7 @@ async function valhallaRoute(pts) {
       const offset = result.path.length;
       leg.maneuvers.forEach(m => result.maneuvers.push({
         type: m.type, at: offset + m.begin_shape_index, end: offset + m.end_shape_index, km: m.length * 1.609,
+        names: m.street_names || [],
       }));
       result.path.push(...decodePolyline(leg.shape));
     });
@@ -956,6 +984,7 @@ async function computeRoute() {
   routeLayer.clearLayers();
   route = null;
   renderFuelPlan();
+  updateRouteLabels();
   let pts = tripPoints();
   if (pts.length > MAX_LOCATIONS) pts = tripPoints(false);
   if (pts.length < 2) { summaryEl.innerHTML = ''; return; }
@@ -983,6 +1012,7 @@ async function computeRoute() {
   L.polyline(route.path, { renderer: routeRenderer, color: '#4dabf7', weight: 8, opacity: 0.55, interactive: false }).addTo(routeLayer);
   loadTiles(L.latLngBounds(route.path));  // so curvy miles count roads outside the current view
   updateTripStats();
+  updateRouteLabels();
 }
 
 // Miles of the route that run along curvy roads, by matching against road geometry on a ~200 m grid.
@@ -1171,7 +1201,7 @@ function candidateGroups(start, maxKm) {
   const groups = [];
   byName.forEach((list, key) => clusterRoads(list).forEach(c => {
     const g = summarize(c, key);
-    if (g.curvy < 1500) return;  // a corner or two isn't worth routing for
+    if (g.curvy < 2000) return;  // a corner or two isn't worth routing for
     g.stop = roadStop(g);
     const a = g.stop.pts[0], b = g.stop.pts[g.stop.pts.length - 1];
     g.center = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -1193,32 +1223,47 @@ function orderLoop(start, gs, dir) {
     });
 }
 
-function estHours(start, stops) {
-  let h = 0, prev = start;
+// Rough riding time for a loop, and how much of it is on the chosen roads.
+function estimate(start, stops) {
+  let link = 0, road = 0, prev = start;
   stops.forEach(s => {
-    h += km(prev, s.pts[0]) * ROAD_FACTOR / GEN_LINK_KMH;
-    for (let i = 1; i < s.pts.length; i++) h += km(s.pts[i - 1], s.pts[i]) * ROAD_FACTOR / GEN_ROAD_KMH;
+    link += km(prev, s.pts[0]) * ROAD_FACTOR / GEN_LINK_KMH;
+    for (let i = 1; i < s.pts.length; i++) road += km(s.pts[i - 1], s.pts[i]) * ROAD_FACTOR / GEN_ROAD_KMH;
     prev = s.pts[s.pts.length - 1];
   });
-  return h + km(prev, start) * ROAD_FACTOR / GEN_LINK_KMH;
+  link += km(prev, start) * ROAD_FACTOR / GEN_LINK_KMH;
+  return { hours: link + road, roadHours: road };
 }
 
 function buildOptions(start, hours, maxKm) {
   const groups = candidateGroups(start, maxKm);
   const options = [], seen = new Set();
   for (let dir = 0; dir < 360; dir += 30) {
-    const pool = groups.filter(g => Math.abs(relAngle(bearing(start, g.center), dir)) <= GEN_SPREAD)
-      .sort((a, b) => b.score - a.score);
-    let chosen = [], stops = [];
-    for (const g of pool) {
-      if (chosen.length >= MAX_GEN_ROADS) break;
-      const trial = orderLoop(start, [...chosen, g], dir);
-      if (estHours(start, trial) <= hours) { chosen = [...chosen, g]; stops = trial; }
+    const pool = groups.filter(g => Math.abs(relAngle(bearing(start, g.center), dir)) <= GEN_SPREAD);
+    // Add roads one at a time, each time taking the most fun per extra minute of riding,
+    // so a great road an hour of highway away loses to a good one just down the road.
+    let chosen = [], stops = [], est = { hours: 0, roadHours: 0 };
+    while (chosen.length < MAX_GEN_ROADS) {
+      let best = null;
+      for (const g of pool) {
+        if (chosen.includes(g)) continue;
+        const trial = orderLoop(start, [...chosen, g], dir);
+        const e = estimate(start, trial);
+        if (e.hours > hours) continue;
+        const gain = g.score / Math.max(e.hours - est.hours, 0.05);
+        if (!best || gain > best.gain) best = { g, trial, e, gain };
+      }
+      if (!best) break;
+      chosen.push(best.g);
+      stops = best.trial;
+      est = best.e;
     }
     const sig = chosen.map(g => g.key + g.center).sort().join('|');
     if (!chosen.length || seen.has(sig)) continue;
     seen.add(sig);
-    options.push({ dir, stops, value: chosen.reduce((s, g) => s + g.score, 0) });
+    // Rank by fun, scaled by the share of the ride spent on the good roads.
+    const fun = chosen.reduce((s, g) => s + g.score, 0);
+    options.push({ dir, stops, value: fun * est.roadHours / est.hours });
   }
   return options.sort((a, b) => b.value - a.value);
 }
@@ -1548,6 +1593,7 @@ map.on('moveend', () => {
   const crossed = (lastZoom < MINOR_ZOOM) !== (map.getZoom() < MINOR_ZOOM);
   lastZoom = map.getZoom();
   crossed && mode === 'speed' ? render() : (updateRoadList(), updateLabels(), updateBlind());
+  updateRouteLabels();
   syncFuel();
 });
 
