@@ -4,7 +4,8 @@ Usage:  python build_tiles.py
 
 Uses every *.osm.pbf in raw/. Get more states from
 https://download.geofabrik.de/north-america/us.html (e.g. arkansas-latest.osm.pbf),
-put them in raw/, and re-run.
+put them in raw/, and re-run. Elevation tiles for curvy roads are downloaded once
+into raw/terrain/ (a few hundred MB per state).
 """
 import glob
 import json
@@ -13,10 +14,15 @@ import os
 import re
 import shutil
 import sys
-from collections import defaultdict
+import time
+import urllib.request
+from collections import OrderedDict, defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
+import numpy as np
 import osmium
+from PIL import Image
 
 TILE_SIZE = 0.5  # degrees
 OUT_DIR = "tiles"
@@ -123,6 +129,141 @@ def surface_of(tags):
         return 1
     # State routes are paved; county roads with no surface tag may well be gravel.
     return 2 if tags.get("highway") == "unclassified" else 0
+
+
+# ---------- elevation ----------
+# AWS Terrain Tiles: Terrarium-encoded PNGs from USGS elevation data, ~30 m per pixel at zoom 12.
+TERRAIN_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+TERRAIN_Z = 12
+TERRAIN_DIR = os.path.join("raw", "terrain")
+USER_AGENT = "ride-finder/1.0 (personal project)"
+CLIMB_STEP = 2.0     # ignore wiggles in the elevation profile smaller than this (metres)
+CREST_M = 3.0        # how far a point must rise above the road 75 m either side to be a crest
+BLIND_RADIUS = 120   # a turn this tight (metres) at or just past a crest hides what's beyond it
+
+
+def world_px(lat, lon):
+    n = 256 * 2 ** TERRAIN_Z
+    return (lon + 180) / 360 * n, (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n
+
+
+def terrain_path(x, y):
+    return os.path.join(TERRAIN_DIR, str(TERRAIN_Z), str(x), f"{y}.png")
+
+
+def download_terrain(tiles):
+    todo = [t for t in tiles if not os.path.exists(terrain_path(*t))]
+    if not todo:
+        return
+    print(f"Downloading {len(todo):,} elevation tiles (one time; cached in {TERRAIN_DIR}/)...", flush=True)
+
+    def get(t):
+        path = terrain_path(*t)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        req = urllib.request.Request(TERRAIN_URL.format(z=TERRAIN_Z, x=t[0], y=t[1]), headers={"User-Agent": USER_AGENT})
+        for attempt in range(4):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as res:
+                    data = res.read()
+                with open(path + ".part", "wb") as f:
+                    f.write(data)
+                os.replace(path + ".part", path)
+                return
+            except Exception as e:
+                if getattr(e, "code", None) == 404:
+                    return
+                time.sleep(2 * (attempt + 1))
+
+    with ThreadPoolExecutor(12) as pool:
+        for i, _ in enumerate(pool.map(get, todo), 1):
+            if i % 500 == 0:
+                print(f"  {i:,}/{len(todo):,}", flush=True)
+
+
+class Elevation:
+    """Bilinear elevation lookups over cached terrain tiles, keeping recent tiles in memory."""
+
+    def __init__(self):
+        self.cache = OrderedDict()
+
+    def tile(self, x, y):
+        if (x, y) in self.cache:
+            self.cache.move_to_end((x, y))
+            return self.cache[(x, y)]
+        try:
+            rgb = np.asarray(Image.open(terrain_path(x, y)).convert("RGB"), dtype=np.float64)
+            arr = rgb[..., 0] * 256 + rgb[..., 1] + rgb[..., 2] / 256 - 32768
+        except (OSError, ValueError):
+            arr = None
+        self.cache[(x, y)] = arr
+        if len(self.cache) > 400:
+            self.cache.popitem(last=False)
+        return arr
+
+    def pixel(self, gx, gy):
+        t = self.tile(gx // 256, gy // 256)
+        return None if t is None else float(t[gy % 256, gx % 256])
+
+    def at(self, lat, lon):
+        fx, fy = world_px(lat, lon)
+        fx, fy = fx - 0.5, fy - 0.5
+        ix, iy = math.floor(fx), math.floor(fy)
+        dx, dy = fx - ix, fy - iy
+        v = [self.pixel(ix + a, iy + b) for b in (0, 1) for a in (0, 1)]
+        if None in v:
+            return None
+        return (v[0] * (1 - dx) + v[1] * dx) * (1 - dy) + (v[2] * (1 - dx) + v[3] * dx) * dy
+
+
+def terrain_tiles_for(coords):
+    lat0 = math.radians(coords[0][0])
+    kx, ky = 111320 * math.cos(lat0), 110540
+    samples, _ = resample([(lon * kx, lat * ky) for lat, lon in coords], 100)
+    tiles = set()
+    for x, y in samples + [(lon * kx, lat * ky) for lat, lon in coords]:
+        px, py = world_px(y / ky, x / kx)
+        for ox in (-1, 1):
+            for oy in (-1, 1):
+                tiles.add((int(px + ox) // 256, int(py + oy) // 256))
+    return tiles
+
+
+def hills_and_blind(coords, elev):
+    """Up-and-down per km, and spots where a tight turn sits on a crest."""
+    lat0 = math.radians(coords[0][0])
+    kx, ky = 111320 * math.cos(lat0), 110540
+    samples, length = resample([(lon * kx, lat * ky) for lat, lon in coords], STEP)
+    latlon = [(y / ky, x / kx) for x, y in samples]
+    e = [elev.at(lat, lon) for lat, lon in latlon]
+    if len(e) < 7 or None in e:
+        return None, []
+
+    climb, ref = 0.0, e[0]
+    for v in e[1:]:
+        if abs(v - ref) >= CLIMB_STEP:
+            climb += abs(v - ref)
+            ref = v
+    hill = round(climb / max(length, 1) * 1000, 1)
+
+    r = [math.inf, *radii(samples), math.inf]  # turn radius at each sample
+    blind, skip_to = [], 0
+    for i in range(3, len(e) - 3):
+        if i < skip_to:
+            continue
+        crest = e[i] - (e[i - 3] + e[i + 3]) / 2
+        if crest >= CREST_M and e[i] >= max(e[i - 1], e[i + 1]) and min(r[i - 1:i + 4]) < BLIND_RADIUS:
+            blind += [round(latlon[i][0] * 1e5), round(latlon[i][1] * 1e5)]
+            skip_to = i + 8  # one flag per crest
+    return hill, blind
+
+
+def decode(deltas):
+    out, lat, lon = [], 0, 0
+    for i in range(0, len(deltas), 2):
+        lat += deltas[i]
+        lon += deltas[i + 1]
+        out.append((lat / 1e5, lon / 1e5))
+    return out
 
 
 def encode(coords):
@@ -267,6 +408,18 @@ def main(args):
             if row[4] is None:
                 row[5] = estimate_mph(row, residential)
             row.pop()
+
+    # Elevation, only for the curvy roads and sweepers (rows with a curve score or sweep).
+    curvy_rows = [row for rows in tiles.values() for row in rows if row[7] or row[9]]
+    needed = set()
+    for row in curvy_rows:
+        needed |= terrain_tiles_for(decode(row[11]))
+    download_terrain(needed)
+    print(f"Measuring hills on {len(curvy_rows):,} curvy roads...", flush=True)
+    elev = Elevation()
+    for rows in tiles.values():
+        for row in rows:
+            row += hills_and_blind(decode(row[11]), elev) if (row[7] or row[9]) else (None, [])
 
     shutil.rmtree(OUT_DIR, ignore_errors=True)
     os.makedirs(OUT_DIR)

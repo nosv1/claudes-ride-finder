@@ -15,6 +15,7 @@
     --blue: #1c7ed6;
   }
   html, body { margin: 0; height: 100%; background: #111; }
+  [hidden] { display: none !important; }
   body { font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); }
   #map { position: absolute; inset: 0; }
   #map.picking, #map.picking .leaflet-interactive { cursor: crosshair; }
@@ -108,7 +109,7 @@
   .leaflet-popup-content b { font-size: 14px; }
   .leaflet-popup-content .meta { color: #777; }
   .popup-add {
-    margin-top: 8px; padding: 5px 12px; border: 0; border-radius: 6px;
+    margin: 6px 0; padding: 5px 12px; border: 0; border-radius: 6px;
     background: var(--blue); color: #fff; font: inherit; cursor: pointer;
   }
   .fuel-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 11px; color: var(--muted); }
@@ -127,6 +128,18 @@
     background: none; color: var(--text); cursor: pointer;
   }
   .fuel-stop .add:hover { background: var(--blue); border-color: var(--blue); }
+  .blind-icon {
+    display: inline-block; width: 14px; height: 12px; background: #ffd43b;
+    clip-path: polygon(50% 0, 100% 100%, 0 100%); vertical-align: -1px;
+  }
+  .blind-marker {
+    position: absolute; transform: translate(-50%, -60%); width: 16px; height: 14px;
+    background: #111; clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+  .blind-marker::after {
+    content: "!"; position: absolute; inset: 2px 2px 1px; background: #ffd43b;
+    clip-path: polygon(50% 0, 100% 100%, 0 100%); color: #111; font: 800 8px/13px system-ui, sans-serif; text-align: center;
+  }
   .shield {
     position: absolute; transform: translate(-50%, -50%); white-space: nowrap; pointer-events: none;
     padding: 1px 4px; border: 1px solid #222; border-radius: 3px; background: #f1f3f5;
@@ -164,10 +177,18 @@
         </label>
         <div class="note">Curvy roads you can actually ride at speed. Most rural roads have no posted limit in the data, so those are estimated (55 state routes, 45 county roads, 30 in town).</div>
       </div>
+      <label class="row" id="hillsRow">Hills
+        <select id="minHills">
+          <option value="0">Any</option><option value="1">Rolling or more</option>
+          <option value="2">Hilly or more</option><option value="3">Very hilly</option>
+        </select>
+      </label>
       <div class="sub" style="margin-top:8px">Click a color to show or hide it</div>
       <div id="legend"></div>
       <label class="row"><input type="checkbox" id="hideUnpaved" checked> Hide gravel &amp; dirt roads</label>
       <div class="note">Dashed = county road with no surface on record (could be gravel).</div>
+      <label class="row"><input type="checkbox" id="showBlind" checked> Show blind crest corners <span class="blind-icon"></span></label>
+      <div class="note">A tight turn right at the top of a rise, where you can't see through the corner.</div>
       <label class="row"><input type="checkbox" id="showFuel"> Show gas stations</label>
       <div id="fuelLegend" class="fuel-legend" hidden></div>
 
@@ -314,11 +335,15 @@ function decode(deltas) {
 }
 
 window.addTile = (key, rows) => {
-  rows.forEach(([id, hw, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords]) => {
+  rows.forEach(([id, hw, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords, hill, blind]) => {
     const geom = decode(coords);
-    roads.push({ id, hw, name, ref, mph, estMph, surface, score, curvy, sweep, length, geom, bounds: L.latLngBounds(geom) });
+    const blindPts = [];
+    for (let i = 0; i < blind.length; i += 2) blindPts.push([blind[i] / 1e5, blind[i + 1] / 1e5]);
+    roads.push({ id, hw, name, ref, mph, estMph, surface, score, curvy, sweep, length, hill, blind: blindPts,
+      geom, bounds: L.latLngBounds(geom) });
   });
   tileState.set(key, 'done');
+  groupsVersion++;
   scheduleRender();
 };
 
@@ -366,6 +391,16 @@ function curvyBin(r) {
   if (!bin && isSweeper(r)) bin = SWEEP_BIN;
   return bin;
 }
+// Hills: metres of climbing + descending per km of road (see build_tiles.py). Typical curvy
+// roads run ~11 in western Kansas, ~18 around KC and ~30 in the Ozarks.
+const HILLS = [
+  { label: 'Flat',       min: 0 },
+  { label: 'Rolling',    min: 12 },
+  { label: 'Hilly',      min: 22 },
+  { label: 'Very hilly', min: 35 },
+];
+const hillLevel = h => h == null ? -1 : HILLS.reduce((lvl, c, i) => h >= c.min ? i : lvl, 0);
+const ftPerMile = h => Math.round(h * 5.28);
 const curveRank = b => b === SWEEP_BIN ? -0.5 : CURVY_BINS.indexOf(b);
 const curveMeters = r => r.curvy + r.sweep;
 const roadName = r => r.name || r.ref || 'Unnamed road';
@@ -379,6 +414,7 @@ function styleFor(r) {
   let bin, weight;
   if (mode === 'ride' && (r.mph ?? r.estMph) < minSpeed.value) return null;
   if (mode !== 'speed') {
+    if (hillLevel(r.hill) < +minHills.value) return null;
     bin = curvyBin(r);
     weight = bin && bin.weight;
   } else {
@@ -396,7 +432,10 @@ function render() {
     let line = lines.get(i);
     if (!style) { if (line) roadLayer.removeLayer(line); return; }
     if (!line) {
-      line = L.polyline(r.geom, { renderer, ...style }).bindPopup(() => popupFor(r));
+      line = L.polyline(r.geom, { renderer, ...style }).bindPopup(() => popupFor(r), popupPadding());
+      // Hovering a piece outlines its whole stretch, same as hovering it in the list.
+      line.on('mouseover', () => showHighlight(groupFor(r)));
+      line.on('mouseout', () => showHighlight(selected));
       lines.set(i, line);
     } else {
       line.setStyle(style);
@@ -405,6 +444,7 @@ function render() {
   });
   updateRoadList();
   updateLabels();
+  updateBlind();
   updateStatus();
   updateTripStats();  // newly loaded roads may lie along the route
 }
@@ -416,6 +456,13 @@ function scheduleRender() {
 }
 
 // ---------- popups ----------
+// Keep popups clear of the panel: it sits on the right on wide screens, along the bottom on phones.
+function popupPadding() {
+  const panel = document.getElementById('panel').getBoundingClientRect();
+  return innerWidth > 600
+    ? { autoPanPaddingTopRight: [panel.width + 30, 20] }
+    : { autoPanPaddingBottomLeft: [20, panel.height + 30] };
+}
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -431,23 +478,26 @@ function popupFor(r) {
   const streetView = `${gmaps}pano&viewpoint=${lat},${lon}&heading=${heading}`;
   const satellite = `${gmaps}map&center=${lat},${lon}&zoom=17&basemap=satellite`;
 
+  // The whole stretch this piece belongs to is what gets added to a trip.
+  const g = groupFor(r);
   const el = document.createElement('div');
   el.innerHTML = `<b>${escapeHtml(roadName(r))}</b>` +
     (r.name && r.ref ? ` <span class="meta">(${escapeHtml(r.ref)})</span>` : '') + '<br>' +
-    `Curviness: <b>${bin ? bin.label : 'mostly straight'}</b>` +
+    (g.roads.length > 1 ? `<span class="meta">Whole stretch: ${miles(g.curvy)} mi of curves` +
+      (hillLevel(g.hill) >= 0 ? ` · ${HILLS[hillLevel(g.hill)].label.toLowerCase()}` : '') + '</span><br>' : '') +
+    '<button class="popup-add">＋ Add to trip</button><br>' +
+    `<span class="meta">This piece:</span> <b>${bin ? bin.label : 'mostly straight'}</b>` +
     (curveMeters(r) ? ` <span class="meta">· ${miles(curveMeters(r))} mi of curves in ${miles(r.length)} mi</span>` : '') + '<br>' +
+    (r.hill != null ? `Hills: <b>${HILLS[hillLevel(r.hill)].label}</b> <span class="meta">· ${ftPerMile(r.hill)} ft/mi of up &amp; down</span><br>` : '') +
+    (r.blind.length ? `<span class="blind-icon"></span> ${r.blind.length} blind crest corner${r.blind.length > 1 ? 's' : ''}<br>` : '') +
     `Speed limit: ${r.mph != null ? `<b>${r.mph} mph</b>` :
       `~${r.estMph} mph <span class="meta">(estimate, not posted in data)</span>`}<br>` +
     `Surface: ${SURFACE[r.surface]}<br>` +
     `<span class="meta">${escapeHtml(r.hw.replace('_', ' '))} road · ` +
     `<a href="${streetView}" target="_blank" rel="noopener">Street View</a> · ` +
     `<a href="${satellite}" target="_blank" rel="noopener">Satellite</a> · ` +
-    `<a href="https://www.openstreetmap.org/way/${r.id}" target="_blank" rel="noopener">OSM</a></span><br>`;
-  const add = document.createElement('button');
-  add.className = 'popup-add';
-  add.textContent = '＋ Add to trip';
-  add.onclick = () => { addRoad(groupFor(r)); map.closePopup(); };
-  el.appendChild(add);
+    `<a href="https://www.openstreetmap.org/way/${r.id}" target="_blank" rel="noopener">OSM</a></span>`;
+  el.querySelector('.popup-add').onclick = () => { addRoad(g); map.closePopup(); };
   return el;
 }
 
@@ -492,24 +542,39 @@ function clusterRoads(list) {
 
 function summarize(c, key) {
   c.key = key;
-  c.score = c.roads.reduce((s, r) => s + r.score + 0.5 * r.sweep, 0);
+  // Hills make a curvy road better: a "very hilly" one ranks about twice a flat one.
+  c.score = c.roads.reduce((s, r) => s + (r.score + 0.5 * r.sweep) * (1 + (r.hill || 0) / 30), 0);
   c.curvy = c.roads.reduce((s, r) => s + curveMeters(r), 0);
+  const measured = c.roads.filter(r => r.hill != null);
+  const len = measured.reduce((s, r) => s + r.length, 0);
+  c.hill = len ? measured.reduce((s, r) => s + r.hill * r.length, 0) / len : null;
   c.best = c.roads.map(curvyBin).reduce((a, b) => curveRank(b) > curveRank(a) ? b : a);
   return c;
 }
 
-// The stretch of named road a clicked piece belongs to (just the piece if it has no name).
+// The stretch of named road a piece belongs to (just the piece if it has no name).
+// Cached per road until more tiles load, since hovering asks for it constantly.
+let groupsVersion = 0;
 function groupFor(r) {
+  if (r.group && r.groupVersion === groupsVersion) return r.group;
   const key = r.ref || r.name;
-  if (!key) return summarize({ roads: [r], bounds: r.bounds }, 'Unnamed road');
-  const same = roads.filter(x => x === r || ((x.ref || x.name) === key && curvyBin(x)));
-  return summarize(clusterRoads(same).find(c => c.roads.includes(r)), key);
+  let g;
+  if (!key) {
+    g = summarize({ roads: [r], bounds: r.bounds }, 'Unnamed road');
+  } else {
+    const same = roads.filter(x => x === r || ((x.ref || x.name) === key && curvyBin(x)));
+    g = summarize(clusterRoads(same).find(c => c.roads.includes(r)), key);
+  }
+  r.group = g;
+  r.groupVersion = groupsVersion;
+  return g;
 }
 
 // ---------- best roads list ----------
 const roadsEl = document.getElementById('roads');
 function updateRoadList() {
   document.getElementById('roadsSection').hidden = mode === 'speed';
+  document.getElementById('hillsRow').hidden = mode === 'speed';
   document.getElementById('rideOptions').hidden = mode !== 'ride';
   if (mode === 'speed') return;
   const view = map.getBounds(), byName = new Map();
@@ -531,8 +596,9 @@ function updateRoadList() {
     if (isSelected) selected = g;  // keep the selection in step as the list rebuilds
     const row = document.createElement('div');
     row.className = 'road' + (isSelected ? ' selected' : '');
+    const hills = hillLevel(g.hill) > 0 ? ` · ${HILLS[hillLevel(g.hill)].label.toLowerCase()}` : '';
     row.innerHTML = `<span class="dot" style="background:${g.best.color}"></span><span class="name">${escapeHtml(g.key)}</span>` +
-      `<span class="miles">${miles(g.curvy)} mi curvy</span><button class="add" title="Add to trip">＋</button>`;
+      `<span class="miles">${miles(g.curvy)} mi curvy${hills}</span><button class="add" title="Add to trip">＋</button>`;
     row.onmouseenter = () => showHighlight(g);
     row.onmouseleave = () => showHighlight(selected);
     row.onclick = () => {
@@ -577,6 +643,23 @@ function updateLabels() {
   }));
 }
 
+// ---------- blind crest corners ----------
+const BLIND_ZOOM = 11;
+const BLIND_ICON = L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="blind-marker"></div>' });
+const blindLayer = L.layerGroup().addTo(map);
+const showBlindEl = document.getElementById('showBlind');
+
+function updateBlind() {
+  blindLayer.clearLayers();
+  if (!showBlindEl.checked || map.getZoom() < BLIND_ZOOM) return;
+  const view = map.getBounds().pad(0.1);
+  roads.forEach((r, i) => {
+    const line = lines.get(i);
+    if (!r.blind.length || !line || !roadLayer.hasLayer(line) || !view.intersects(r.bounds)) return;
+    r.blind.forEach(p => L.marker(p, { icon: BLIND_ICON, keyboard: false, title: 'Blind crest corner' }).addTo(blindLayer));
+  });
+}
+
 // ---------- gas stations ----------
 const FUEL_STATUS = {
   2:  { label: '90+ listed',  color: '#40c057' },
@@ -614,7 +697,7 @@ function stationMarker(s, big) {
   return L.circleMarker([s.lat, s.lon], {
     renderer: fuelRenderer, radius: big ? 8 : 5, color: big ? '#fff' : '#111', weight: big ? 2.5 : 1.5,
     fillColor: FUEL_STATUS[s.status].color, fillOpacity: 1,
-  }).bindPopup(() => stationPopup(s));
+  }).bindPopup(() => stationPopup(s), popupPadding());
 }
 
 let fuelBuilt = false;
@@ -882,8 +965,14 @@ function fmtDuration(s) {
 
 function updateTripStats() {
   if (!route) return;
+  const area = L.latLngBounds(route.path).pad(0.02), crests = [];
+  roads.forEach(r => {
+    if (r.blind.length && area.intersects(r.bounds)) r.blind.forEach(([lat, lon]) => crests.push({ lat, lon }));
+  });
+  const blindCount = alongRoute(route.path, crests, 40, 25).stops.length;
   summaryEl.innerHTML = `<b>${miles(route.meters)} mi</b> · ${fmtDuration(route.seconds)} · ` +
     `<b>${miles(curvyMetersOn(route.path))} mi</b> on curvy roads` +
+    (blindCount ? `<div style="margin-top:4px"><span class="blind-icon"></span> ${blindCount} blind crest corner${blindCount > 1 ? 's' : ''} on the route</div>` : '') +
     (route.fallback ? '<div class="note">The back-roads router is unavailable right now, so this is the fastest route.</div>' : '');
   renderFuelPlan();
 }
@@ -895,14 +984,14 @@ const fuelPlanEl = document.getElementById('fuelPlan');
 const NEAR_ROUTE = 1200;  // metres off the route a station can be and still count
 const RESERVE = 0.85;     // plan to refuel with ~15% of the tank left
 
-// Stations within reach of the route, with the mile they're at.
-function stationsAlongRoute(path) {
-  // Points every ~300 m along the route (long straight highways have few vertices), with their mile.
+// Points (anything with lat/lon) within maxM of the route, with the mile they're at.
+function alongRoute(path, points, maxM, spacing) {
+  // Points every `spacing` m along the route (long straight highways have few vertices), with their mile.
   const pts = [];
   let total = 0;
   path.forEach((p, i) => {
     if (i) {
-      const prev = path[i - 1], d = map.distance(prev, p), n = Math.ceil(d / 300);
+      const prev = path[i - 1], d = map.distance(prev, p), n = Math.ceil(d / spacing);
       for (let k = 1; k <= n; k++) {
         pts.push({ lat: prev[0] + (p[0] - prev[0]) * k / n, lon: prev[1] + (p[1] - prev[1]) * k / n, m: total + d * k / n });
       }
@@ -919,8 +1008,8 @@ function stationsAlongRoute(path) {
     grid.get(k).push(p);
   });
   const found = [];
-  stations.forEach(s => {
-    let best = null, bd = NEAR_ROUTE;
+  points.forEach(s => {
+    let best = null, bd = maxM;
     const cy = Math.floor(s.lat / CELL), cx = Math.floor(s.lon / CELL);
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       (grid.get(`${cy + dy},${cx + dx}`) || []).forEach(p => {
@@ -935,7 +1024,7 @@ function stationsAlongRoute(path) {
 
 // Assume a full tank at the start; refuel at the farthest usable station before the reserve.
 function planFuel() {
-  const { stops: along, totalMiles } = stationsAlongRoute(route.path);
+  const { stops: along, totalMiles } = alongRoute(route.path, stations, NEAR_ROUTE, 300);
   const usable = rangeEl.value * RESERVE;
   const ok = along.filter(a => !need90El.checked || a.s.status >= 1);
   const picks = [], gaps = [];
@@ -1174,6 +1263,9 @@ const hideUnpaved = document.getElementById('hideUnpaved');
 hideUnpaved.onchange = render;
 const minSpeed = document.getElementById('minSpeed');
 minSpeed.onchange = render;
+const minHills = document.getElementById('minHills');
+minHills.onchange = render;
+showBlindEl.onchange = updateBlind;
 document.getElementById('home').onclick = () => map.setView(HOME, HOME_ZOOM);
 document.getElementById('locate').onclick = () => map.locate({ setView: true, maxZoom: 10 });
 map.on('locationerror', () => setStatus('Couldn’t get your location (the browser may have blocked it).', true));
@@ -1189,7 +1281,7 @@ map.on('moveend', () => {
   // speed mode's minor-road cutoff depends on zoom; otherwise only the list needs updating
   const crossed = (lastZoom < MINOR_ZOOM) !== (map.getZoom() < MINOR_ZOOM);
   lastZoom = map.getZoom();
-  crossed && mode === 'speed' ? render() : (updateRoadList(), updateLabels());
+  crossed && mode === 'speed' ? render() : (updateRoadList(), updateLabels(), updateBlind());
   syncFuel();
 });
 
