@@ -145,7 +145,10 @@ in its own direction (no ⇄). Ramp cards show sweep, lanes, posted limit (never
 - Twisty ≥ 0.9
 - Sweepers (cyan) when no tight-curve class applies
 
-Tapping a class in the key toggles it.
+Tapping a class in the key toggles it. **What's this?** at the end of the key opens plain-words rules for each
+class (from `about` in `config.js`), plus dashed lines, blind crests and hill levels in ft/mi (rolling 60+, hilly 115+,
+very hilly 185+). Desktop also shows each class's rule as a tooltip. The road and ramp cards repeat their class's rule
+under the tag, and the Hills chip lists ft/mi.
 
 **Filters**
 - **Hills:** any / rolling+ / hilly+ / very hilly, in the curvy modes. Only applied when set above "any".
@@ -182,6 +185,8 @@ Tapping a class in the key toggles it.
   - a road frames its bounds, then opens that stretch's card once its tiles load;
   - a place flies there and drops a pin;
   - **Start** makes it the ride's start and opens Plan a ride.
+- Picking a result drops online results still on their way, so they don't reopen the list (and push the side
+  panel down) after the pick.
 - **Keys:** Enter picks the first result, Esc clears.
 
 ## 5. Plan and ride
@@ -189,16 +194,30 @@ Tapping a class in the key toggles it.
 **Stops** (Your ride)
 - **Pinned points:** the start (my location, a map spot, or a search result) and stops added on the map. Pins can be dragged.
 - **Roads:** ridden end to end. Each has an entry, up to 2 "through" points that keep the router on the road, and an exit.
-  - Added roads are oriented to start from the end nearer the previous stop.
+  - **Add to ride** (road card, ＋ on a card, or **Add road** on Your ride then tap a road on the map) puts the road
+    where it adds the least straight-line distance (counting the ride home on a loop, never before the start),
+    entered from whichever end does that. The toast says which end ("in at the north end") with **Switch ends**.
+  - Road rows say which end they're entered and left at ("South end → north end").
 - Rows can be reordered by dragging their grip (touch too), flipped (⇄) and removed (✕).
+  - The drag is followed on the whole window: moving the row in the list drops the grip's pointer capture.
+    Re-renders wait until the row is dropped.
 - **Options:** "Return to start" (loop); between roads: Fastest / Balanced / Back roads.
 
 **Routing**
 - Valhalla motorcycle profile (valhalla1.openstreetmap.de) with `use_highways` 1 / 0.5 / 0.
 - **The public server takes at most 10 locations per request.** Longer trips are sent in overlapping chunks and joined.
+- **No U-turns at stops** (Valhalla `break_through`; the start and finish stay `break`), so a route doesn't ride
+  back down a road it just finished. If Valhalla answers with no route that way (a dead end), it's asked again
+  allowing them.
 - Falls back to OSRM (fastest only, with a note shown) if Valhalla fails. OSRM can't avoid motorways.
+- Arrows along the route line show the direction of travel (zoom 10+).
 
 **Summary**
+- **Doubled back:** miles of the route ridden a second time, along or against an earlier pass (crossings don't
+  count; the first and last 1.5 km from the start and finish don't either). Sampled every 15 m on a ~60 m grid,
+  needing headings within ~37° (either way) and 400 m of route between passes. Shown from 0.25 mi as a note with the
+  stretches dashed orange on the map, and **Try fixing**: each road is tried the other way round (one route request
+  each), keeping a flip when it cuts the doubling back by 200 m+ without adding more than 15% to the ride.
 - Miles, riding time, miles on curvy roads, and the blind-crest count along the route.
 - **Elevation profile:** total climbing, low and high points, from Terrain Tiles z11 read in the browser.
   Scrubbing the chart (mouse or finger) marks that point on the map.
@@ -224,7 +243,14 @@ Tapping a class in the key toggles it.
 - Generated stops are marked `gen`. Generating again swaps them but keeps the rider's.
 - Trimming a loop that runs more than 15% over time only drops generated roads.
 - Routes the top 6 up front.
-- Option cards show time, miles, curvy miles and %, blind crests, and the roads, with the rider's in bold.
+- Roads are turned end for end to make the rides between them shortest over the whole loop (not nearest end first).
+- **Doubling back:** loops are ranked by curvy² / miles × (1 − 3 × share ridden twice), floor 0.1. A loop riding
+  more than 4% twice is tried without the generated road most to blame (the one the doubled-back miles are on,
+  else the nearest), up to twice, keeping the change only if it ranks higher. Loops riding more than 20% twice are
+  left out when at least 3 others remain. Measured on Oct-31 data: the top loop from south KC went from 29% to 13%,
+  from the Lake of the Ozarks from 28% to 1%.
+- Option cards show time, miles, curvy miles and %, blind crests, miles ridden twice, and the roads, with the
+  rider's in bold.
   Hover previews a loop; tap loads it as the ride.
 
 **Export**

@@ -4,7 +4,7 @@
 // end { type: 'road', label, curvy, score, ids, pts: [entry, ...through, exit] }; the "through"
 // points keep the router on that road instead of cutting across.
 import { ROUTING } from './config.js';
-import { d2, nearestIndex } from './geo.js';
+import { d2, nearestIndex, bearing, heading } from './geo.js';
 
 export const newTrip = () => ({ items: [], loop: true, pref: '0.5', range: 120, need90: false });
 
@@ -70,6 +70,34 @@ export function addRoad(trip, g) {
   trip.items.push(orientFrom(roadStop(g), lastPoint(trip)));
   return trip;
 }
+
+// Add a road where it fits best: the place in the ride, and the direction, that add the least
+// distance (counting the ride back to the start on a loop). Never before the start. Returns its index.
+export function insertRoad(trip, g) {
+  const stop = roadStop(g), items = trip.items, n = items.length, wrap = trip.loop && n;
+  const dist = (a, b) => a && b ? Math.sqrt(d2(a, b)) : 0;
+  const entry = it => it.pts[0], exit = it => it.pts[it.pts.length - 1];
+  let best = null;
+  // From the end backwards, so a tie keeps the old behaviour of adding it last.
+  for (let i = n; i >= (startOf(trip) ? 1 : 0); i--) {
+    const prev = i > 0 ? exit(items[i - 1]) : wrap ? exit(items[n - 1]) : null;
+    const next = i < n ? entry(items[i]) : wrap ? entry(items[0]) : null;
+    const nearer = orientFrom({ ...stop, pts: [...stop.pts] }, prev).pts;
+    for (const pts of stop.oneway ? [nearer] : [nearer, [...nearer].reverse()]) {
+      const cost = dist(prev, pts[0]) + dist(pts[pts.length - 1], next) - dist(prev, next);
+      if (!best || cost < best.cost - 1e-9) best = { cost, i, pts };
+    }
+  }
+  stop.pts = best.pts;
+  items.splice(best.i, 0, stop);
+  return best.i;
+}
+
+// Which end a road stop is entered and left at, as compass words ("north", "southwest").
+export const ends = stop => {
+  const a = stop.pts[0], b = stop.pts[stop.pts.length - 1];
+  return { entry: heading(bearing(b, a)), exit: heading(bearing(a, b)) };
+};
 
 export function addPoint(trip, at, label, atStart = false) {
   const stop = { type: 'point', label, pts: [round5(at)] };

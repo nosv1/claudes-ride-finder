@@ -73,6 +73,14 @@ export async function launch({ mobile = false, width = 1400, height = 900 } = {}
       }
       throw new Error(`timed out waiting for: ${expression}`);
     },
+    // Real input, as the browser would get it: (mousePressed|mouseMoved|mouseReleased, x, y).
+    async mouse(type, x, y) {
+      await send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
+    },
+    // (touchStart|touchMove|touchEnd, x, y); needs a mobile page.
+    async touch(type, x, y) {
+      await send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+    },
     async screenshot(path) {
       const r = await send('Page.captureScreenshot', { format: 'png' });
       writeFileSync(path, Buffer.from(r.result.data, 'base64'));

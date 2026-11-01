@@ -7,7 +7,7 @@ async function fetchJson(url, ms) {
   try {
     const res = await fetch(url, { signal: ctl.signal });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+    if (!res.ok) throw Object.assign(new Error(data.error || data.message || `HTTP ${res.status}`), { status: res.status });
     return data;
   } finally {
     clearTimeout(timer);
@@ -15,15 +15,19 @@ async function fetchJson(url, ms) {
 }
 
 // The public server takes 10 locations per request, so longer trips go in overlapping chunks.
-// useHighways: 1 fastest … 0 back roads only.
-async function valhalla(pts, useHighways) {
+// useHighways: 1 fastest … 0 back roads only. Unless uTurns, the route may not turn around at a
+// stop (Valhalla's break_through), so it doesn't ride back down a road it just finished.
+async function valhalla(pts, useHighways, uTurns) {
   const result = { path: [], meters: 0, seconds: 0, maneuvers: [] };
   for (let i = 0; i < pts.length - 1; i += ROUTING.valhallaMax - 1) {
     const chunk = pts.slice(i, i + ROUTING.valhallaMax);
+    const type = (via, j) => {
+      if (via && j > 0 && j < chunk.length - 1) return 'through';
+      const end = i + j === 0 || i + j === pts.length - 1;
+      return end || uTurns ? 'break' : 'break_through';
+    };
     const req = {
-      locations: chunk.map(({ p, via }, j) => ({
-        lat: p[0], lon: p[1], type: via && j > 0 && j < chunk.length - 1 ? 'through' : 'break',
-      })),
+      locations: chunk.map(({ p, via }, j) => ({ lat: p[0], lon: p[1], type: type(via, j) })),
       costing: 'motorcycle',
       costing_options: { motorcycle: { use_highways: useHighways, use_trails: 0 } },
       units: 'miles',
@@ -52,10 +56,16 @@ async function osrm(pts) {
   return { path: r.geometry.coordinates.map(([lon, lat]) => [lat, lon]), meters: r.distance, seconds: r.duration, fallback: true };
 }
 
-// Null if neither router answers.
+// Null if neither router answers. If Valhalla answers but finds no route without turning around
+// at a stop (a dead end, say), it's asked again allowing that.
 export async function fetchRoute(pts, useHighways) {
   try {
-    return await valhalla(pts, useHighways);
+    try {
+      return await valhalla(pts, useHighways, false);
+    } catch (e) {
+      if (!e.status) throw e;
+      return await valhalla(pts, useHighways, true);
+    }
   } catch (e) {
     console.warn('Valhalla failed, trying OSRM', e);
     try { return await osrm(pts); } catch (e2) { console.warn(e2); return null; }

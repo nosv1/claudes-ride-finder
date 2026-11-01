@@ -1,6 +1,6 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS } from './config.js';
-import { miles, fmtDuration, spotOnLine, pad, boundsOf, intersects } from './geo.js';
+import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT } from './config.js';
+import { miles, fmtDuration, spotOnLine, pad, boundsOf, intersects, km } from './geo.js';
 import { visible, stretchOf, bestInView, clusterRoads, summarize } from './roads.js';
 import * as T from './trip.js';
 import * as P from './plan.js';
@@ -30,7 +30,10 @@ let route = null;            // { path, meters, seconds, maneuvers, fallback }
 let info = null;             // what's along the route: { curvy, blind, fuel, profile }
 let selected = null;         // { group, piece, at }: the road picked on the map or in a list
 let view = 'home', viewArg = null;
-let picking = null;          // 'start' | 'stop' while waiting for a map tap
+let picking = null;          // 'start' | 'stop' | 'road' while waiting for a map tap
+let dragging = false;        // a stop row is being dragged: hold re-renders until it's dropped
+let showKey = false;         // the map key's explanations are open
+let fixing = '';             // status while trying roads the other way to stop doubling back
 let gen = { options: [], index: -1, running: false, status: '' };
 let showGoogleParts = false;
 let tilted = false;
@@ -173,6 +176,7 @@ function refreshInfo(withProfile) {
   if (!route) {
     info = null;
     mapView.setRouteStations([]);
+    mapView.setRetrace([]);
     return renderSoon();
   }
   loadTiles(boundsOf(route.path));
@@ -180,16 +184,38 @@ function refreshInfo(withProfile) {
   info = {
     ...(withProfile ? {} : { profile: info && info.profile }),
     curvy: P.curvyMetersOn(r.path, store.roads), blind: P.blindCrestsOn(r.path, store.roads).length, fuel,
+    back: P.retrace(r.path),
   };
+  mapView.setRetrace(info.back.lines);
   mapView.setRouteStations(fuel.along.map(a => ({ k: a.item.k, status: a.item.status, pick: fuel.picks.includes(a) })));
   if (withProfile) profile(r.path).then(p => { if (route === r && info) { info.profile = p; renderSoon(); } });
   renderSoon();
 }
 
+// Added where it fits best in the ride, entered from the end that makes sense; the toast offers
+// the other end.
 function addRoad(g) {
-  T.addRoad(trip, g);
+  const it = trip.items[T.insertRoad(trip, g)];
   tripChanged();
-  toast(`Added ${g.key} to your ride`, view === 'trip' ? null : { label: 'View ride', run: () => go('trip') });
+  roadToast(it, 'Added');
+}
+
+function roadToast(it, verb) {
+  const i = trip.items.indexOf(it);
+  if (i < 0) return;
+  const where = it.oneway ? '' : `, in at the ${T.ends(it).entry} end`;
+  toast(`${verb} ${it.label} as stop ${i + 1}${where}`, [
+    it.oneway ? null : { label: 'Switch ends', run: () => flipRoad(it) },
+    view === 'trip' ? null : { label: 'View ride', run: () => go('trip') },
+  ].filter(Boolean));
+}
+
+function flipRoad(it) {
+  const i = trip.items.indexOf(it);
+  if (i < 0) return;
+  T.flipStop(trip, i);
+  tripChanged();
+  roadToast(it, 'Riding');
 }
 
 // Make this road a must-include and open the planner.
@@ -241,6 +267,38 @@ function locationError(e) {
   toast(messages[e && e.code] || 'Couldn’t get your location. Pick your start on the map instead.');
 }
 
+// Ride each road the other way in turn, keeping a flip when it cuts the doubling back without
+// making the ride much longer.
+async function fixDoubleBack() {
+  const roads = trip.items.filter(it => it.type === 'road' && !it.oneway);
+  let best = { r: route, back: info.back.meters };
+  const flipped = [];
+  clearTimeout(routeTimer);
+  const seq = ++routeSeq;
+  for (const it of roads) {
+    it.pts.reverse();
+    fixing = `Trying ${it.label} the other way…`;
+    renderSoon();
+    const r = await fetchRoute(T.routablePoints(trip), +trip.pref);
+    if (seq !== routeSeq) { it.pts.reverse(); fixing = ''; return; }  // the ride changed meanwhile
+    const back = r && !r.fallback ? P.retrace(r.path).meters : Infinity;
+    if (back < best.back - 200 && r.meters < best.r.meters * 1.15) {
+      best = { r, back };
+      flipped.push(it.label);
+    } else {
+      it.pts.reverse();
+    }
+  }
+  fixing = '';
+  if (!flipped.length) {
+    toast('Riding the roads the other way doesn’t help. Try dragging the stops into another order.');
+    return renderSoon();
+  }
+  tripChanged({ reroute: false });
+  setRoute(best.r);
+  toast(`Flipped ${flipped.join(', ')}. ${best.back >= 400 ? `Still ${miles(best.back)} mi doubled back.` : 'No more doubling back.'}`);
+}
+
 // ---------- generator ----------
 
 async function generate() {
@@ -277,26 +335,56 @@ async function generate() {
     renderSoon();
     await routeOption(options[i], start, hours);
   }
-  // Best first: curvy miles, scaled by the share of the ride they make up.
-  const worth = o => o.route ? o.curvy * o.curvy / o.route.meters : -1;
-  gen = { options: options.sort((a, b) => worth(b) - worth(a)), index: -1, running: false, status: '' };
+  const worth = o => o.route ? o.worth : -1, twice = o => o.route && o.back > GEN.hideBack * o.route.meters;
+  // Leave out loops that ride a fifth of the way twice, when there are enough without.
+  const clean = options.filter(o => o.route && !twice(o));
+  gen = { options: (clean.length >= 3 ? clean : options).sort((a, b) => worth(b) - worth(a)), index: -1, running: false, status: '' };
   if (gen.options[0].route) selectOption(0);
   else renderSoon();
 }
 
-// Route a loop for real, dropping its weakest road while it runs more than 15% over.
+// How good a routed loop is: curvy miles, scaled by the share of the ride they make up, and
+// cut by the share it rides twice (each 10% doubled back costs 30%). Best first.
+function rate(r) {
+  if (!r) return null;
+  const curvy = P.curvyMetersOn(r.path, store.roads), back = P.retrace(r.path).meters;
+  return { route: r, curvy, back, blind: P.blindCrestsOn(r.path, store.roads).length,
+    worth: curvy * curvy / r.meters * Math.max(0.1, 1 - 3 * back / r.meters) };
+}
+
+// Route a loop for real, dropping its weakest road while it runs more than 15% over. While it
+// then doubles back, try it without the generated road most to blame (up to twice): the one the
+// doubled-back miles are on, like a lake road that dead-ends, or else the one nearest them.
 async function routeOption(opt, start, hours) {
-  const items = [start, ...opt.stops];
-  const routeOf = () => fetchRoute(T.routablePoints({ ...trip, items, loop: true }), +trip.pref);
-  let r = await routeOf();
+  let items = [start, ...opt.stops];
+  const routeOf = list => {
+    P.orientStops(start.pts[0], list.slice(1));
+    return fetchRoute(T.routablePoints({ ...trip, items: list, loop: true }), +trip.pref);
+  };
+  let r = await routeOf(items);
   for (let tries = 0; r && r.seconds > hours * 3600 * GEN.overrun && tries < 2; tries++) {
     const added = items.filter(it => it.gen);
     if (!added.length) break;  // only the rider's own stops left: keep them even if it runs long
     items.splice(items.indexOf(added.reduce((a, b) => b.score < a.score ? b : a)), 1);
-    r = await routeOf();
+    r = await routeOf(items);
   }
-  Object.assign(opt, { items, route: r });
-  if (r) Object.assign(opt, { curvy: P.curvyMetersOn(r.path, store.roads), blind: P.blindCrestsOn(r.path, store.roads).length });
+  let best = rate(r);
+  for (let tries = 0; tries < 2 && best && best.back > GEN.maxBack * best.route.meters; tries++) {
+    const added = items.filter(it => it.gen);
+    if (!added.length || items.length <= 2) break;
+    const spots = P.retrace(best.route.path).lines.flat();
+    const geoms = it => (it.ids || []).map(id => store.byId.get(id)).filter(Boolean).map(x => x.geom);
+    const onIt = it => spots.filter(q => geoms(it).some(g => g.some(p => km(p, q) < 0.15))).length;
+    const near = it => Math.min(...it.pts.flatMap(p => spots.map(q => km(p, q))));
+    const blame = added.map(it => ({ it, on: onIt(it), near: near(it) }))
+      .sort((a, b) => b.on - a.on || a.near - b.near)[0].it;
+    const fewer = items.filter(it => it !== blame).map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
+    const other = rate(await routeOf(fewer));
+    if (!other || other.worth <= best.worth) break;
+    items = fewer;
+    best = other;
+  }
+  Object.assign(opt, { items, route: best && best.route }, best ? { curvy: best.curvy, blind: best.blind, back: best.back, worth: best.worth } : {});
 }
 
 function selectOption(i) {
@@ -315,7 +403,7 @@ function selectOption(i) {
 // ---------- map interactions ----------
 
 function onRoadTap(id, at) {
-  if (usePick(at)) return;
+  if (usePick(at, id)) return;
   const piece = store.byId.get(id);
   select(stretchOf(store.roads, piece), piece, at);
 }
@@ -354,24 +442,34 @@ function spotMenu(at, pt) {
   ], { x: pt.x, y: pt.y });
 }
 
-// While picking a spot for the start or a stop, the next map tap is used for that.
-function usePick(at) {
+// While picking a spot for the start or a stop, or a road, the next map tap is used for that.
+function usePick(at, roadId = null) {
   if (!picking || !at) return false;
-  if (picking === 'start') setStartAt(at, 'Start');
+  if (picking === 'road' && roadId == null) {
+    toast('Tap one of the colored roads to add it.');
+    return true;
+  }
+  const kind = picking;
+  stopPicking();
+  if (kind === 'start') setStartAt(at, 'Start');
+  else if (kind === 'road') addRoad(stretchOf(store.roads, store.byId.get(roadId)));
   else { T.addPoint(trip, at, 'Stop'); tripChanged(); }
-  picking = null;
-  $('#pickBanner').hidden = true;
   renderSoon();
   return true;
 }
 
+const PICK_PROMPTS = { start: 'Tap the map to set your start', stop: 'Tap the map to add a stop', road: 'Tap a road to add it to your ride' };
 function startPicking(kind) {
   picking = kind;
   const banner = $('#pickBanner');
-  banner.replaceChildren(h('span', {}, kind === 'start' ? 'Tap the map to set your start' : 'Tap the map to add a stop'),
-    h('button', { onclick: () => { picking = null; banner.hidden = true; } }, 'Cancel'));
+  banner.replaceChildren(h('span', {}, PICK_PROMPTS[kind]), h('button', { onclick: stopPicking }, 'Cancel'));
   banner.hidden = false;
   if (!Sheet.wide()) sheet.set('peek');
+}
+
+function stopPicking() {
+  picking = null;
+  $('#pickBanner').hidden = true;
 }
 
 // ---------- views ----------
@@ -395,14 +493,16 @@ function renderSoon() {
 }
 
 function render() {
+  if (dragging) return;
   const views = { home: homeView, road: roadView, station: stationView, plan: planView, trip: tripView };
-  $('#sheetBody').replaceChildren(...[(views[view] || homeView)()].flat().filter(Boolean));
+  $('#sheetBody').replaceChildren(...[(views[view] || homeView)()].flat(Infinity).filter(Boolean));
 }
 
 const iconEl = (svg, cls = 'i') => h(`span.${cls}`, { html: svg });
 const backBar = (title, sub) => h('div.view-head', {},
   h('button.icon-btn', { title: 'Back', onclick: () => go('home'), html: icon.back }),
   h('div', {}, h('h2', {}, title), sub ? h('div.muted', {}, sub) : ''));
+const cap = s => s[0].toUpperCase() + s.slice(1);
 const stat = (value, label) => h('div.stat', {}, h('b', {}, value), h('span', {}, label));
 const hillWord = hill => hill == null ? null : HILLS[Math.max(0, HILLS.reduce((l, c, i) => hill >= c.min ? i : l, 0))].label;
 
@@ -425,19 +525,38 @@ function homeView() {
   ];
 }
 
+// The map key: tap a class to hide or show it; "What's this?" explains what puts a road in each.
 function legend() {
   if (settings.mode === 'speed') {
-    return h('div.legend', {}, SPEED_BINS.map((b, i) => legendChip(b.label, b.color, settings.speedBins.includes(i), () => toggleIn('speedBins', i))));
+    return h('div.legend', {}, SPEED_BINS.map((b, i) => legendChip(b, settings.speedBins.includes(i), () => toggleIn('speedBins', i))));
   }
-  if (settings.mode === 'ramps') {
-    const on = settings.rampTiers || RAMP_TIERS.map((_, i) => i);
-    return h('div.legend', {}, RAMP_TIERS.map((t, i) => legendChip(t.label, t.color, on.includes(i), () => toggleIn('rampTiers', i))));
-  }
-  return h('div.legend', {}, CURVE_CLASSES.map((c, i) => legendChip(c.label, c.color, settings.classes.includes(i), () => toggleIn('classes', i))));
+  const ramps = settings.mode === 'ramps', classes = ramps ? RAMP_TIERS : CURVE_CLASSES;
+  const on = ramps ? settings.rampTiers || RAMP_TIERS.map((_, i) => i) : settings.classes;
+  return [
+    h('div.legend', {},
+      classes.map((c, i) => legendChip(c, on.includes(i), () => toggleIn(ramps ? 'rampTiers' : 'classes', i))),
+      h(`button.legend-chip.key-btn${showKey ? '.on' : ''}`, { title: 'What do these mean?', 'aria-expanded': showKey ? 'true' : 'false',
+        onclick: () => { showKey = !showKey; render(); } }, iconEl(icon.help), showKey ? 'Hide' : 'What’s this?')),
+    showKey ? keyHelp(classes, ramps) : null,
+  ];
+}
+
+function keyHelp(classes, ramps) {
+  const row = (swatch, label, about) => h('div.key-row', {}, swatch, h('div', {}, h('b', {}, label), ' ', about));
+  const sw = color => h('span.swatch', { style: `background:${color}` });
+  return h('div.key-help', {},
+    h('p', {}, ramps ? RAMP_ABOUT : CORNER_ABOUT),
+    classes.map(c => row(sw(c.color), c.label, c.about)),
+    ramps ? '' : [
+      row(h('span.swatch.dashed'), 'Dashed', 'Surface not recorded, so it could be gravel.'),
+      row(h('span.key-icon', {}, '⚠'), 'Blind crest', 'A tight turn at or just past the top of a rise, so you can’t see through it.'),
+      row(iconEl(icon.mountain, 'key-icon'), 'Hills', `Feet of up and down per mile: ${HILLS.slice(1).map(l => `${l.label.toLowerCase()} ${l.ft}+`).join(', ')}. Around KC is about 95, the Ozarks about 160.`),
+    ]);
 }
 const groupColor = g => g.rampTier >= 0 ? RAMP_TIERS[g.rampTier].color : CURVE_CLASSES[Math.max(0, g.cls)].color;
-const legendChip = (label, color, on, onclick) => h(`button.legend-chip${on ? '' : '.off'}`, { onclick, title: on ? 'Hide these' : 'Show these' },
-  h('span.swatch', { style: `background:${color}` }), label);
+const legendChip = (c, on, onclick) => h(`button.legend-chip${on ? '' : '.off'}`, {
+  onclick, title: `${c.about ? `${c.label}: ${c.about}\n` : ''}Tap to ${on ? 'hide' : 'show'} these`,
+}, h('span.swatch', { style: `background:${c.color}` }), c.label);
 function toggleIn(key, v) {
   const list = settings[key] || RAMP_TIERS.map((_, i) => i);
   setSetting({ [key]: list.includes(v) ? list.filter(x => x !== v) : [...list, v] });
@@ -480,6 +599,7 @@ function rampView(g, r, links) {
   return [
     backBar(g.key, 'One-way interchange ramp'),
     h('div.tag', { style: `--c:${tier.color}` }, tier.label),
+    h('p.about', {}, tier.about),
     h('div.stats', {},
       stat(`${miles(g.roads.reduce((s, x) => s + x.sweep, 0))} mi`, 'of sweeping curve'),
       stat(lanes ? `${lanes}` : '—', lanes === 1 ? 'lane' : 'lanes'),
@@ -512,6 +632,7 @@ function roadView() {
   return [
     backBar(g.key, r.name && r.name !== g.key ? r.name : (r.ref && r.ref !== g.key ? r.ref : null)),
     h('div.tag', { style: `--c:${cls.color}` }, g.cls >= 0 ? cls.label : 'Mostly straight'),
+    g.cls >= 0 ? h('p.about', {}, cls.about) : '',
     h('div.stats', {},
       stat(`${miles(g.curvy)} mi`, 'of curves'),
       stat(hillWord(g.hill) || '—', g.hill != null ? `${Math.round(g.hill * 5.28)} ft/mi up & down` : 'hills'),
@@ -591,7 +712,7 @@ function optionCard(o, i) {
   h('div.option-head', {}, h('span.num', {}, i + 1), h('b', {}, P.heading(o.dir)[0].toUpperCase() + P.heading(o.dir).slice(1)),
     h('span.muted.push', {}, fmtDuration(o.route.seconds))),
   h('div.option-stats', {}, `${miles(o.route.meters)} mi · `, h('b', {}, `${miles(o.curvy)} mi curvy`), ` (${pct}%)`,
-    o.blind ? h('span.warn', {}, ` · ⚠ ${o.blind}`) : ''),
+    o.blind ? h('span.warn', {}, ` · ⚠ ${o.blind}`) : '', o.back >= 400 ? h('span.warn', {}, ` · ↩ ${miles(o.back)} mi twice`) : ''),
   h('div.muted.small', {}, o.items.slice(1).flatMap((it, k) => [k ? ', ' : '', it.gen ? it.label : h('b.own', {}, it.label)])));
 }
 
@@ -610,7 +731,8 @@ function tripView() {
     routeSummary(),
     stopList(),
     h('div.btn-row', {},
-      h('button.btn', { onclick: () => startPicking('stop') }, iconEl(icon.plus), 'Add stop on map'),
+      h('button.btn', { onclick: () => startPicking('road') }, iconEl(icon.route), 'Add road'),
+      h('button.btn', { onclick: () => startPicking('stop') }, iconEl(icon.plus), 'Add stop'),
       h('button.btn', { onclick: async () => {
         try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'Start from me')),
@@ -643,10 +765,21 @@ function routeSummary() {
       stat(info && info.curvy != null ? `${miles(info.curvy)} mi` : '…', 'on curvy roads'),
       stat(info && info.blind != null ? (info.blind ? `⚠ ${info.blind}` : 'None') : '…', 'blind crests')),
     route.fallback ? h('p.muted.small', {}, 'The back-roads router is busy, so this is the plain fastest route.') : '',
+    doubleBack(),
     p ? h('div', {},
       h('div.chart-head', {}, h('span', {}, h('b', {}, `${Math.round(p.climbFt).toLocaleString()} ft`), ' of climbing'),
         h('span', {}, `${Math.round(p.lo).toLocaleString()}–${Math.round(p.hi).toLocaleString()} ft`)),
       elevationChart(p, s => mapView.setDot(s && s.p))) : '');
+}
+
+function doubleBack() {
+  const back = info && info.back;
+  if (!back || back.meters < 400) return '';
+  const canFlip = trip.items.some(it => it.type === 'road' && !it.oneway);
+  return h('div.back-note', {},
+    h('div.grow', {}, h('b', {}, `↩ ${miles(back.meters)} mi doubled back`),
+      h('div.muted.small', {}, fixing || 'Roads ridden twice are dashed orange on the map.')),
+    canFlip ? h('button.btn.small', { onclick: fixDoubleBack, disabled: !!fixing }, fixing ? 'Working…' : 'Try fixing') : '');
 }
 
 function stopList() {
@@ -655,36 +788,52 @@ function stopList() {
     h('span.num', {}, i + 1),
     h('div.grow', { onclick: () => mapView.fit(boundsOf(it.pts), 13) },
       h('div', {}, it.label),
-      h('div.muted.small', {}, it.type === 'road' ? `${miles(it.curvy || 0)} mi of curves` : 'Stop · drag its pin to move')),
-    it.type === 'road' && !it.oneway ? h('button.icon-btn', { title: 'Ride it the other way', html: icon.swap,
-      onclick: () => { T.flipStop(trip, i); tripChanged(); } }) : '',
+      h('div.muted.small', {}, it.type !== 'road' ? 'Stop · drag its pin to move'
+        : `${it.oneway ? 'One way' : `${cap(T.ends(it).entry)} end → ${T.ends(it).exit} end`} · ${miles(it.curvy || 0)} mi of curves`)),
+    it.type === 'road' && !it.oneway ? h('button.icon-btn', { title: 'Switch ends: ride it the other way', html: icon.swap,
+      onclick: () => flipRoad(it) }) : '',
     h('button.icon-btn', { title: 'Remove', html: icon.x, onclick: () => { T.removeStop(trip, i); tripChanged(); } }))));
   sortable(list, (from, to) => { T.moveStop(trip, from, to); tripChanged(); });
   return list;
 }
 
-// Drag rows by their grip to reorder (works with touch too).
+// Drag rows by their grip to reorder (works with touch too). The move and the drop are watched
+// on the whole window: moving the row in the list drops the grip's pointer capture, so the grip
+// alone loses the drag after the first step.
 function sortable(list, onMove) {
   list.addEventListener('pointerdown', e => {
     const grip = e.target.closest('.grip');
-    if (!grip) return;
-    const item = grip.closest('li'), from = [...list.children].indexOf(item);
+    if (!grip || e.button > 0) return;
     e.preventDefault();
-    grip.setPointerCapture(e.pointerId);
+    const item = grip.closest('li'), from = [...list.children].indexOf(item), body = $('#sheetBody');
+    let y = e.clientY;
+    dragging = true;
     item.classList.add('lifting');
-    const move = ev => {
-      const before = [...list.children].find(o => o !== item && ev.clientY < o.getBoundingClientRect().top + o.offsetHeight / 2);
-      list.insertBefore(item, before || null);
+    const place = () => {
+      const before = [...list.children].find(o => o !== item && y < o.getBoundingClientRect().top + o.offsetHeight / 2) || null;
+      if (before !== item.nextElementSibling) list.insertBefore(item, before);
     };
-    const up = () => {
-      grip.removeEventListener('pointermove', move);
-      grip.removeEventListener('pointerup', up);
+    // Held near the sheet's top or bottom edge, the list scrolls.
+    const scroller = setInterval(() => {
+      const box = body.getBoundingClientRect(), dy = y < box.top + 40 ? -8 : y > box.bottom - 40 ? 8 : 0;
+      if (dy) { body.scrollTop += dy; place(); }
+    }, 16);
+    const move = ev => { if (ev.pointerId === e.pointerId) { y = ev.clientY; place(); } };
+    const drop = ev => {
+      if (ev.pointerId !== e.pointerId) return;
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', drop);
+      removeEventListener('pointercancel', drop);
+      clearInterval(scroller);
       item.classList.remove('lifting');
+      dragging = false;
       const to = [...list.children].indexOf(item);
       if (to !== from) onMove(from, to);
+      else renderSoon();
     };
-    grip.addEventListener('pointermove', move);
-    grip.addEventListener('pointerup', up);
+    addEventListener('pointermove', move);
+    addEventListener('pointerup', drop);
+    addEventListener('pointercancel', drop);
   });
 }
 
@@ -763,7 +912,8 @@ function renderChips() {
   }
   if (s.mode === 'ride' || s.mode === 'curvy') {
     chips.push(chip(s.minHills ? `${HILLS[s.minHills].label}+` : 'Any hills', { on: s.minHills > 0, menuItems: [{ heading: 'Hills' },
-      ...['Any', 'Rolling or more', 'Hilly or more', 'Very hilly'].map((l, v) => ({ label: l, on: s.minHills === v, run: () => setSetting({ minHills: v }) }))] }));
+      ...['Any', 'Rolling or more', 'Hilly or more', 'Very hilly'].map((l, v) => ({
+        label: v ? `${l} (${HILLS[v].ft}+ ft/mi)` : l, on: s.minHills === v, run: () => setSetting({ minHills: v }) }))] }));
   }
   chips.push(
     chip('Paved', { on: s.hideUnpaved, title: 'Hide gravel and dirt roads', onclick: () => setSetting({ hideUnpaved: !s.hideUnpaved }) }),
@@ -803,7 +953,13 @@ function showResults(list, waiting) {
     : [h('div.result.muted', {}, waiting ? 'Searching…' : 'No matches.')]));
 }
 
-function closeSearch() { results.hidden = true; q.blur(); }
+// Also drops online results still on their way, so they don't reopen the list.
+function closeSearch() {
+  searchSeq++;
+  clearTimeout(photonTimer);
+  results.hidden = true;
+  q.blur();
+}
 
 async function pickResult(r) {
   closeSearch();

@@ -5,8 +5,8 @@ import { readFileSync, existsSync } from 'node:fs';
 
 import { distance, decodePolyline, spotOnLine, alongRoute, nearestIndex } from '../../js/geo.js';
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel } from '../../js/roads.js';
-import { newTrip, addRoad, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { planFuel, googlePoints, googleLinks, buildOptions, estimate, gpx } from '../../js/plan.js';
+import { newTrip, addRoad, insertRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
+import { planFuel, googlePoints, googleLinks, buildOptions, estimate, gpx, orientStops, retrace } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 
 const TILES = new URL('../../tiles/', import.meta.url);
@@ -111,6 +111,57 @@ test('trip points loop back, and roads are ridden from the nearer end', () => {
   assert.ok(trip.items[1].pts[0][1] > trip.items[1].pts.at(-1)[1], 'entry is the east end');
   moveStop(trip, 1, 0);
   assert.equal(trip.items[0].type, 'road');
+});
+
+test('an added road goes where it fits best, entered from the sensible end, and can be switched', () => {
+  // A loop from home west to road A, then north; road B sits between them.
+  const trip = newTrip();
+  setStart(trip, [38, -94], 'Start');
+  const a = row({ id: 1, ref: 'A', score: 600, pts: east(38, -94.5, 10, 0.01) });     // runs west to east, 0.5° west of home
+  addRoad(trip, stretchOf([a], a));
+  const north = row({ id: 2, ref: 'N', score: 600, pts: east(38.5, -94.3, 10, 0.01) });
+  addRoad(trip, stretchOf([north], north));
+  const between = row({ id: 3, ref: 'B', score: 600, pts: Array.from({ length: 10 }, (_, i) => [38.05 + i * 0.03, -94.45]) });  // runs north
+  const at = insertRoad(trip, stretchOf([between], between));
+  assert.equal(at, 2, 'between A and N');
+  assert.deepEqual(trip.items.map(i => i.label), ['Start', 'A', 'B', 'N']);
+  assert.deepEqual(ends(trip.items[2]), { entry: 'south', exit: 'north' });
+  flipStop(trip, 2);
+  assert.deepEqual(ends(trip.items[2]), { entry: 'north', exit: 'south' });
+  // Never before the start, and onto an empty trip it just goes in.
+  const empty = newTrip();
+  assert.equal(insertRoad(empty, stretchOf([a], a)), 0);
+});
+
+test('loop roads are turned so the rides between them are shortest overall', () => {
+  // Road E runs east from near the start; road N runs north from just by E's west end.
+  // Nearest-end-first would ride N from its south end and finish 30 km out; turned around, N
+  // is ridden south, back toward home.
+  const start = [38, -94];
+  const first = { type: 'road', label: 'E', pts: [[38.1, -93.98], [38.1, -93.85]] };
+  const second = { type: 'road', label: 'N', pts: [[38.12, -93.99], [38.3, -93.99]] };
+  orientStops(start, [first, second]);
+  assert.deepEqual(first.pts[0], [38.1, -93.98], 'enters E at its west end');
+  assert.deepEqual(second.pts[0], [38.3, -93.99], 'enters N at its north end');
+  const ramp = { type: 'road', oneway: true, label: 'R', pts: [[38.2, -94], [38.1, -94]] };
+  orientStops(start, [ramp]);
+  assert.deepEqual(ramp.pts[0], [38.2, -94], 'a ramp keeps its direction');
+});
+
+test('doubling back is measured, crossings and the ride home are not', () => {
+  const out = east(38.5, -94, 301, 0.0002);                 // ~5 km east
+  const outAndBack = [...out, ...[...out].reverse().slice(1, 151)];  // back half of the way
+  const r = retrace(outAndBack, 0);
+  assert.ok(r.meters > 2300 && r.meters < 2800, `about 2.6 km ridden twice, got ${r.meters}`);
+  assert.equal(r.lines.length, 1);
+  // A plus-shaped crossing isn't doubling back.
+  const cross = [...east(38.5, -94, 101, 0.0002), ...Array.from({ length: 100 }, (_, i) => [38.49 + i * 0.0002, -93.99])];
+  assert.equal(retrace(cross, 0).meters, 0);
+  // Leaving home and coming back the same last mile isn't counted by default.
+  const home = [...east(38.5, -94, 51, 0.0002), ...Array.from({ length: 200 }, (_, i) => [38.5 + i * 0.0002, -93.99]),
+    ...Array.from({ length: 50 }, (_, i) => [38.54, -93.99 - i * 0.0002]), ...Array.from({ length: 200 }, (_, i) => [38.54 - i * 0.0002, -94]),
+  ];
+  assert.equal(retrace([...home, ...east(38.5, -94, 51, 0.0002).reverse()]).meters, 0);
 });
 
 test('share links round-trip and read v1 links', () => {

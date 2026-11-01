@@ -51,7 +51,7 @@ async function showMo150() {
 test('loads roads, draws them, and lists the best ones', async () => {
   assert.ok(await page.eval('RF.store.roads.length') > 1000);
   assert.equal(await page.eval("document.querySelectorAll('#chips .chip').length"), 6);
-  assert.equal(await page.eval("document.querySelectorAll('.legend-chip').length"), 5);
+  assert.equal(await page.eval("document.querySelectorAll('.legend-chip:not(.key-btn)').length"), 5);
   assert.match(await sheetText(), /Best roads in view/);
   assert.ok(await page.eval("document.querySelectorAll('.road-card').length") > 0);
 });
@@ -108,6 +108,88 @@ test('search finds a route number and opens the road', async () => {
   assert.match(await page.eval("document.querySelector('#results .result').innerText"), /^MO 7/);
   await page.eval("document.querySelector('#results .result').click()");
   await page.waitFor("/MO 7/.test(document.getElementById('sheetBody').innerText) && /Add to ride/.test(document.getElementById('sheetBody').innerText)", 30000);
+});
+
+// Drag a stop row by its grip with real mouse or touch input, from row `from` to row `to`.
+async function dragRow(p, from, to, kind = 'mouse') {
+  // Let any route that's being fetched land first: it adds the summary above the list.
+  await sleep(450);
+  await p.waitFor('!(RF.info && RF.info.loading)', 40000);
+  await sleep(100);
+  const { x, y, ty } = await p.eval(`(() => {
+    const rows = [...document.querySelectorAll('.stops li')], g = rows[${from}].querySelector('.grip').getBoundingClientRect();
+    const t = rows[${to}].getBoundingClientRect();
+    return { x: g.left + g.width / 2, y: g.top + g.height / 2, ty: t.top + t.height * (${to} > ${from} ? 0.85 : 0.15) };
+  })()`);
+  const [down, moveT, up] = kind === 'mouse' ? ['mousePressed', 'mouseMoved', 'mouseReleased'] : ['touchStart', 'touchMove', 'touchEnd'];
+  const send = kind === 'mouse' ? (t, a, b) => p.mouse(t, a, b) : (t, a, b) => p.touch(t, a, b);
+  await send(down, x, y);
+  for (let k = 1; k <= 8; k++) { await send(moveT, x, y + (ty - y) * k / 8); await sleep(30); }
+  await send(up, x, ty);
+  await sleep(200);
+}
+
+const pointTrip = `(async () => {
+  const T = await import('./js/trip.js');
+  RF.trip.items.length = 0;
+  T.setStart(RF.trip, [38.852, -94.343], 'Start');
+  ['A', 'B', 'C'].forEach((l, i) => T.addPoint(RF.trip, [38.86 + i * 0.01, -94.3], l));
+  RF.go('trip');
+})()`;
+
+test('stops can be dragged into a new order', async () => {
+  await page.eval(pointTrip);
+  await page.waitFor("document.querySelectorAll('.stops li').length === 4");
+  await dragRow(page, 1, 3);
+  assert.deepEqual(await page.eval('RF.trip.items.map(i => i.label)'), ['Start', 'B', 'C', 'A']);
+  await dragRow(page, 3, 1);
+  assert.deepEqual(await page.eval('RF.trip.items.map(i => i.label)'), ['Start', 'A', 'B', 'C']);
+});
+
+test('stops can be dragged on a phone too', async () => {
+  const phone = await launch({ mobile: true });
+  try {
+    await phone.goto(base);
+    await phone.waitFor('window.RF && RF.store.roads.length > 0', 60000);
+    await phone.eval(pointTrip);
+    await phone.eval("document.getElementById('sheet').dataset.snap = 'full'");
+    await sleep(400);
+    await dragRow(phone, 1, 2, 'touch');
+    assert.deepEqual(await phone.eval('RF.trip.items.map(i => i.label)'), ['Start', 'B', 'A', 'C']);
+  } finally {
+    phone.close();
+  }
+});
+
+test('Add road on the ride page: tap a road, it goes in where it fits, and its ends can be switched', async () => {
+  await showMo150();
+  await page.eval(pointTrip);
+  await page.waitFor("[...document.querySelectorAll('#sheetBody button')].some(b => b.textContent === 'Add road')");
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => b.textContent === 'Add road').click()");
+  assert.match(await page.eval("document.getElementById('pickBanner').innerText"), /Tap a road/);
+  await page.eval(`(() => { const r = RF.store.byId.get(${MO150}); RF.mapView.emit('road', r.id, r.geom[2]); })()`);
+  await sleep(300);
+  const labels = await page.eval('RF.trip.items.map(i => i.label)');
+  assert.ok(labels.includes('MO 150') && labels.length === 5, JSON.stringify(labels));
+  assert.equal(await page.eval("document.getElementById('pickBanner').hidden"), true);
+  assert.match(await page.eval("document.getElementById('toast').innerText"), /Added MO 150 as stop \d, in at the \w+ end/);
+  const entry = await page.eval("JSON.stringify(RF.trip.items.find(i => i.label === 'MO 150').pts[0])");
+  await page.eval("[...document.querySelectorAll('#toast button')].find(b => /Switch ends/.test(b.textContent)).click()");
+  const it = await page.eval("(() => { const it = RF.trip.items.find(i => i.label === 'MO 150'); return { first: JSON.stringify(it.pts[0]), last: JSON.stringify(it.pts.at(-1)) }; })()");
+  assert.equal(it.last, entry, 'entered from the other end now');
+  assert.match(await sheetText(), /MO 150\s+\w+ end → \w+ end/);
+});
+
+test('the map key explains what each class means', async () => {
+  await page.eval("RF.go('home')");
+  await page.eval("document.querySelector('.key-btn').click()");
+  const text = await page.eval("document.querySelector('.key-help').innerText");
+  assert.match(text, /Sweepers.*500–2,000 ft radius/);
+  assert.match(text, /Twisty/);
+  assert.match(text, /Blind crest/);
+  assert.match(await page.eval("document.querySelector('.legend-chip').title"), /^Sweepers: Fast, wide bends/);
+  await page.eval("document.querySelector('.key-btn').click()");
+  assert.equal(await page.eval("!!document.querySelector('.key-help')"), false);
 });
 
 test('a share link reopens the same ride', async () => {

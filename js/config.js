@@ -3,20 +3,24 @@
 export const DATA_URL = 'tiles/';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
+// `about` is the plain-words rule shown in the map key.
 export const CURVE_CLASSES = [
-  { label: 'Sweepers', hint: 'fast, wide curves', min: null, color: '#22d3ee', width: 3 },
-  { label: 'Some curves', min: 0.15, color: '#e6d52a', width: 3 },
-  { label: 'Curvy', min: 0.35, color: '#f59f1b', width: 3.5 },
-  { label: 'Very curvy', min: 0.6, color: '#f2542d', width: 4 },
-  { label: 'Twisty', min: 0.9, color: '#e040fb', width: 4.5 },
+  { label: 'Sweepers', min: null, color: '#22d3ee', width: 3,
+    about: 'Fast, wide bends (about 500–2,000 ft radius) for half a mile or more, or most of a short road. Made for speed.' },
+  { label: 'Some curves', min: 0.15, color: '#e6d52a', width: 3, about: 'Corners on about a tenth of the road, straights between them.' },
+  { label: 'Curvy', min: 0.35, color: '#f59f1b', width: 3.5, about: 'Corners on a quarter to a third of the road.' },
+  { label: 'Very curvy', min: 0.6, color: '#f2542d', width: 4, about: 'Corners on about half the road.' },
+  { label: 'Twisty', min: 0.9, color: '#e040fb', width: 4.5, about: 'Corner after corner for most of the road, many of them tight.' },
 ];
+export const CORNER_ABOUT = 'A corner is a bend tighter than about 575 ft radius; tight ones (under 200 ft) count extra.';
 
 // Fast interchange ramps (Interchanges mode), by metres of sweeping curve.
 export const RAMP_TIERS = [
-  { label: 'Sweeping ramp', min: 300, color: '#a3e635' },
-  { label: 'Long sweep', min: 600, color: '#38bdf8' },
-  { label: 'Flyover', min: 1000, color: '#f472b6' },
+  { label: 'Sweeping ramp', min: 300, color: '#a3e635', about: 'At least 1,000 ft of highway-speed curve.' },
+  { label: 'Long sweep', min: 600, color: '#38bdf8', about: 'At least 2,000 ft of it.' },
+  { label: 'Flyover', min: 1000, color: '#f472b6', about: 'Two-thirds of a mile or more: usually the big elevated flyovers.' },
 ];
+export const RAMP_ABOUT = 'One-way interchange ramps that sweep at speed (curves of about 500–5,000 ft radius). Tight cloverleaf loops are left out.';
 export const RAMP_TYPES = new Set(['motorway_link', 'trunk_link']);
 
 export const SPEED_BINS = [
@@ -32,11 +36,12 @@ export const SPEED_BINS = [
 ];
 
 // Metres of climbing + descending per km. Typical curvy roads: W Kansas ~11, KC ~18, Ozarks ~30.
+// `ft` is the same threshold in feet of up and down per mile.
 export const HILLS = [
-  { label: 'Flat', min: 0 },
-  { label: 'Rolling', min: 12 },
-  { label: 'Hilly', min: 22 },
-  { label: 'Very hilly', min: 35 },
+  { label: 'Flat', min: 0, ft: 0 },
+  { label: 'Rolling', min: 12, ft: 60 },
+  { label: 'Hilly', min: 22, ft: 115 },
+  { label: 'Very hilly', min: 35, ft: 185 },
 ];
 
 export const FUEL_STATUS = {
@@ -61,6 +66,8 @@ export const ROUTING = {
 export const GEN = {
   roadKmh: 60, linkKmh: 80, roadFactor: 1.3, maxRoads: 4, spread: 60, maxOptions: 6,
   minCurveM: 2000, overrun: 1.15,
+  maxBack: 0.04,     // share of a loop ridden twice before it tries dropping a road
+  hideBack: 0.2,     // loops riding more than this share twice are left out (if 3 others remain)
 };
 
 export const GOOGLE = { perPart: 9, parts: 2, pastTurn: 200, minSpacing: 800, maxGap: 25000 };

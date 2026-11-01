@@ -62,6 +62,13 @@ const blindImage = () => canvasImage(40, 36, ctx => {
   ctx.fillStyle = '#ffd43b'; ctx.fill();
   ctx.fillStyle = '#111'; ctx.fillRect(18.5, 15, 3, 9); ctx.fillRect(18.5, 26, 3, 3);
 });
+// A chevron pointing along the line (east is "forward" for line-placed icons).
+const arrowImage = () => canvasImage(24, 24, ctx => {
+  ctx.beginPath(); ctx.moveTo(8, 5); ctx.lineTo(16, 12); ctx.lineTo(8, 19);
+  ctx.lineCap = ctx.lineJoin = 'round';
+  ctx.lineWidth = 6; ctx.strokeStyle = '#0b1d33'; ctx.stroke();
+  ctx.lineWidth = 3; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+});
 
 export class MapView {
   constructor(container, { center, zoom, insets }) {
@@ -82,6 +89,7 @@ export class MapView {
           roads: { type: 'geojson', data: EMPTY, attribution: 'Roads © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Routing FOSSGIS Valhalla' },
           blind: { type: 'geojson', data: EMPTY },
           route: { type: 'geojson', data: EMPTY },
+          retrace: { type: 'geojson', data: EMPTY },
           routeLabels: { type: 'geojson', data: EMPTY },
           preview: { type: 'geojson', data: EMPTY },
           fuel: { type: 'geojson', data: EMPTY },
@@ -105,6 +113,11 @@ export class MapView {
             paint: { 'line-color': '#ffffff', 'line-opacity': 0.85, 'line-width': zoomWidth(12), 'line-blur': 1 } },
           { id: 'roads-solid', type: 'line', source: 'roads', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: {} },
           { id: 'roads-dashed', type: 'line', source: 'roads', layout: { 'line-join': 'round' }, paint: { 'line-dasharray': [2, 1.5] } },
+          { id: 'retrace', type: 'line', source: 'retrace', layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#ff922b', 'line-opacity': 0.9, 'line-width': zoomWidth(6), 'line-dasharray': [1.2, 1] } },
+          { id: 'route-arrows', type: 'symbol', source: 'route', minzoom: 10, layout: {
+            'symbol-placement': 'line', 'symbol-spacing': 110, 'icon-image': 'arrow', 'icon-size': 0.75,
+            'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-rotation-alignment': 'map', 'icon-pitch-alignment': 'map' } },
           { id: 'preview', type: 'line', source: 'preview', layout: { 'line-join': 'round', 'line-cap': 'round' },
             paint: { 'line-color': '#ffffff', 'line-width': 4, 'line-dasharray': [2, 1.5] } },
           { id: 'darkLabels', type: 'raster', source: 'darkLabels' },
@@ -146,6 +159,7 @@ export class MapView {
       this.map.addImage('shield', shieldImage('#222'), SHIELD_OPTS);
       this.map.addImage('shield-route', shieldImage('#1c7ed6'), SHIELD_OPTS);
       this.map.addImage('blind', blindImage(), { pixelRatio: 2 });
+      this.map.addImage('arrow', arrowImage(), { pixelRatio: 2 });
     });
     this.bindEvents();
   }
@@ -196,6 +210,8 @@ export class MapView {
     this.map.getSource('route').setData(route ? fc([line(route.path)]) : EMPTY);
     this.map.getSource('routeLabels').setData(fc((labels || []).map(l => line(l.geom, { ref: l.ref }))));
   }
+  // Where the route rides a road a second time.
+  setRetrace(lines) { this.map.getSource('retrace').setData(fc((lines || []).map(l => line(l)))); }
   setPreview(path) { this.map.getSource('preview').setData(path ? fc([line(path)]) : EMPTY); }
 
   setStations(stations) {

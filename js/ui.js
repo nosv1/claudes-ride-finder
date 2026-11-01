@@ -23,6 +23,7 @@ export const icon = {
   route: svg('<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h7"/>'),
   pin: svg('<path d="M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/>'),
   chevron: svg('<path d="m6 9 6 6 6-6"/>'),
+  help: svg('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17v.5"/>'),
 };
 
 // h('div.card.on', { onclick }, child, 'text', …)
@@ -125,13 +126,14 @@ export class Sheet {
   }
 }
 
+// action: { label, run }, or a list of them.
 let toastTimer = null;
 export function toast(msg, action) {
-  const el = document.getElementById('toast');
-  el.replaceChildren(h('span', {}, msg), action ? h('button', { onclick: () => { el.hidden = true; action.run(); } }, action.label) : '');
+  const el = document.getElementById('toast'), actions = [action || []].flat();
+  el.replaceChildren(h('span', {}, msg), ...actions.map(a => h('button', { onclick: () => { el.hidden = true; a.run(); } }, a.label)));
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, action || msg.length > 80 ? 9000 : 3200);
+  toastTimer = setTimeout(() => { el.hidden = true; }, actions.length || msg.length > 80 ? 9000 : 3200);
 }
 
 // A small popover menu under an anchor element or at a screen point. Tapping the same anchor

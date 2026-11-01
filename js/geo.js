@@ -23,6 +23,9 @@ export function bearing(a, b) {
 // Angle of b relative to dir, in -180..180.
 export const relAngle = (b, dir) => ((b - dir + 540) % 360) - 180;
 
+export const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+export const heading = dir => COMPASS[Math.round(dir / 45) % 8];
+
 export function decodeDeltas(deltas) {
   const pts = [];
   let lat = 0, lon = 0;

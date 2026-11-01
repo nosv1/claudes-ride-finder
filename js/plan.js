@@ -1,7 +1,7 @@
 // Ride planning on top of a routed trip: fuel stops, the loop generator, curvy miles and blind
 // crests along a route, and exports (Google Maps links, GPX). Pure: no DOM, no map library.
 import { FUEL, GEN, GOOGLE, DECISION_TURNS } from './config.js';
-import { distance, km, bearing, relAngle, d2, cumulative, nearestIndex, alongRoute, boundsOf, pad, intersects, center } from './geo.js';
+import { distance, km, bearing, relAngle, cumulative, nearestIndex, alongRoute, boundsOf, pad, intersects, center } from './geo.js';
 import { clusterRoads, summarize } from './roads.js';
 import { tripPoints, roadStop } from './trip.js';
 
@@ -33,6 +33,39 @@ export function blindCrestsOn(path, roads) {
     if (r.blind.length && intersects(area, r.bounds)) r.blind.forEach(([lat, lon]) => crests.push({ lat, lon }));
   }
   return alongRoute(path, crests, 40, 25).hits;
+}
+
+// Metres of a route ridden a second time, back down the same road or along it again (crossing
+// an earlier pass doesn't count), and those stretches as lines for the map. The first and last
+// `ends` metres from the start and finish are left out: leaving home and coming back the same
+// way isn't what spoils a ride.
+export function retrace(path, ends = 1500) {
+  const CELL = 0.0006, STEP = 15, RAD = Math.PI / 180, seen = new Map(), lines = [];
+  const first = path[0], last = path[path.length - 1];
+  let meters = 0, at = 0, line = null;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i], d = distance(a, b);
+    if (!d) continue;
+    const hd = bearing(a, b), n = Math.ceil(d / STEP);
+    for (let k = 0; k < n; k++) {
+      const t = (k + 0.5) / n, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], m = at + d * t;
+      const key = Math.round(p[0] / CELL) + ',' + Math.round(p[1] / CELL);
+      const visits = seen.get(key) || [];
+      // Along or against an earlier pass (not across it), and not just the same pass a moment ago.
+      const again = visits.some(v => m - v.m > 400 && Math.abs(Math.cos((hd - v.hd) * RAD)) > 0.8)
+        && distance(p, first) > ends && distance(p, last) > ends;
+      if (visits.length < 4) seen.set(key, [...visits, { m, hd }]);
+      if (again) {
+        meters += d / n;
+        if (!line) lines.push(line = []);
+        line.push(p);
+      } else {
+        line = null;
+      }
+    }
+    at += d;
+  }
+  return { meters, lines: lines.filter(l => l.length > 1) };
 }
 
 // ---------- fuel ----------
@@ -83,15 +116,28 @@ export function candidateGroups(roads, start, maxKm, isWorthy) {
 // Stops the generator added are marked `gen`, so the next generate swaps them out but keeps the
 // rider's own.
 export function orderLoop(start, groups, dir) {
-  let prev = start;
-  return [...groups]
+  const stops = [...groups]
     .sort((a, b) => relAngle(bearing(start, a.center), dir) - relAngle(bearing(start, b.center), dir))
-    .map(g => {
-      const s = { ...g.stop, pts: g.stop.pts.map(p => [...p]), ...(g.required ? {} : { gen: true }) };
-      if (d2(prev, s.pts[s.pts.length - 1]) < d2(prev, s.pts[0])) s.pts.reverse();
-      prev = s.pts[s.pts.length - 1];
-      return s;
+    .map(g => ({ ...g.stop, pts: g.stop.pts.map(p => [...p]), ...(g.required ? {} : { gen: true }) }));
+  return orientStops(start, stops);
+}
+
+// Turn road stops end for end so the rides between them (and back to the start) are as short as
+// possible, looking at the whole loop rather than one stop at a time, so a road isn't entered at
+// the end that leaves you riding back down it. Changes the stops in place.
+export function orientStops(start, stops, loop = true) {
+  const ends = s => [s.pts[0], s.pts[s.pts.length - 1]];
+  let best = [{ cost: 0, at: start, flips: [] }];
+  for (const s of stops) {
+    const ways = s.type === 'road' && !s.oneway ? [ends(s), ends(s).reverse()] : [ends(s)];
+    best = ways.map(([entry, exit], flip) => {
+      const from = best.reduce((a, b) => b.cost + km(b.at, entry) < a.cost + km(a.at, entry) ? b : a);
+      return { cost: from.cost + km(from.at, entry), at: exit, flips: [...from.flips, flip] };
     });
+  }
+  const last = best.reduce((a, b) => b.cost + (loop ? km(b.at, start) : 0) < a.cost + (loop ? km(a.at, start) : 0) ? b : a);
+  last.flips.forEach((flip, i) => { if (flip) stops[i].pts.reverse(); });
+  return stops;
 }
 
 // Rough riding hours for a loop, and how many of them are on the chosen roads.
@@ -152,8 +198,7 @@ export function buildOptions(groups, start, hours, required = []) {
   return options.sort((a, b) => b.value - a.value).slice(0, GEN.maxOptions);
 }
 
-export const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
-export const heading = dir => COMPASS[Math.round(dir / 45) % 8];
+export { COMPASS, heading } from './geo.js';
 
 // ---------- Google Maps ----------
 // Google re-plans between stops, so give it extra ones: the trip's own stops, then the middle

@@ -131,6 +131,18 @@ h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0 0 
 }
 .legend-chip.off { opacity: .4; }
 .swatch { width: 14px; height: 5px; border-radius: 3px; flex: none; }
+.swatch.dashed { background: repeating-linear-gradient(90deg, var(--muted) 0 5px, transparent 5px 8px); }
+.key-btn { color: var(--muted); }
+.key-btn svg { width: 15px; height: 15px; }
+.key-btn.on { color: var(--text); border-color: rgba(255,255,255,.3); }
+.key-help { margin: -4px 0 14px; padding: 10px 12px; border-radius: 12px; background: var(--raise); font-size: 13px; color: var(--muted); }
+.key-help p { margin: 0 0 8px; }
+.key-help b { color: var(--text); }
+.key-row { display: flex; align-items: baseline; gap: 10px; padding: 4px 0; }
+.key-row .swatch { position: relative; top: -2px; }
+.key-icon { flex: none; width: 14px; text-align: center; color: var(--warn); }
+.key-icon svg { width: 14px; height: 14px; color: var(--muted); }
+.about { margin: -4px 0 12px; font-size: 13px; color: var(--muted); }
 
 .cards { display: flex; flex-direction: column; gap: 8px; }
 .card {
@@ -224,8 +236,15 @@ select { min-height: 38px; padding: 0 8px; border-radius: 10px; border: 1px soli
 
 .stops { list-style: none; margin: 12px 0 0; padding: 0; }
 .stops li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); background: var(--panel-solid); }
-.stops li.lifting { opacity: .7; }
-.grip { color: var(--muted); cursor: grab; touch-action: none; padding: 4px 0; }
+.stops li.lifting { position: relative; z-index: 2; background: var(--raise); box-shadow: 0 6px 18px rgba(0,0,0,.5); border-radius: 10px; }
+.stops li.lifting .grip { cursor: grabbing; color: var(--text); }
+.grip { flex: none; display: grid; place-items: center; width: 32px; align-self: stretch; margin-left: -6px; color: var(--muted); cursor: grab; touch-action: none; }
+.grip:hover { color: var(--text); }
+.back-note {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px;
+  background: rgba(255, 146, 43, .12); border: 1px solid rgba(255, 146, 43, .45);
+}
+.back-note b { color: #ffa94d; }
 .fuel-stop { display: flex; align-items: center; gap: 10px; padding: 6px 0; cursor: pointer; }
 .dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #111; flex: none; }
 .parts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
