@@ -13,7 +13,12 @@ Ideas that came up, roughly in order of how much they'd help.
 - **Route fly-through**: a 3D camera flight along a planned ride (inspired by the "god's eye
   view" project). Tilted camera following the route and looking ahead, play/pause and speed,
   a scrubber tied to the elevation chart, blind crests called out as it passes them.
-- **Swap v2 in as the main app** once it's been tried on a phone for a while.
+- **Fun interchange ramps**: long, fast, multi-lane on/off ramps and flyovers, like the
+  Grandview Triangle (I-435 / I-470 / US-71 / I-49 in KC). Ramps (`motorway_link`,
+  `trunk_link`) are left out of curve scoring today because tight cloverleaf loops would all
+  look "twisty". Score them separately: keep sweeping ones (150–600 m radius over a few hundred
+  metres), prefer `lanes` ≥ 2 and higher speeds, skip short tight loops; show them as their own
+  class ("Ramps") with their own toggle.
 - **Hide maybe-gravel roads**: an option to hide county roads whose surface isn't recorded
   (drawn dashed today). Many are gravel in the Ozarks.
 - **Generator avoids city traffic**: today loops through town only rank lower. Penalize

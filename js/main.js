@@ -1,4 +1,4 @@
-// Ride Finder v2: app state, views and wiring. See FEATURES.md for what each feature must do.
+// Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
 import { CURVE_CLASSES, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN } from './config.js';
 import { miles, fmtDuration, spotOnLine, pad, boundsOf, intersects } from './geo.js';
 import { visible, stretchOf, bestInView, clusterRoads, summarize } from './roads.js';
@@ -121,7 +121,7 @@ function loadSavedTrip() {
       const pts = trip.items.flatMap(it => it.pts);
       if (pts.length) mapView.fit(boundsOf(pts), 12);
     } else {
-      const saved = localStorage.getItem(TRIP_KEY);
+      const saved = localStorage.getItem(TRIP_KEY) || localStorage.getItem('ride-finder-trip');  // the old app's key
       if (saved) trip = T.decodeTrip(saved);
     }
   } catch (e) {

@@ -1,6 +1,6 @@
 // Shared constants. The thresholds come from FEATURES.md; change them there too.
 
-export const DATA_URL = '../tiles/';
+export const DATA_URL = 'tiles/';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 export const CURVE_CLASSES = [

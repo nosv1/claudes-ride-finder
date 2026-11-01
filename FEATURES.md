@@ -6,8 +6,8 @@ lists what each feature must do, the numbers it relies on, and the lessons that 
 so a rewrite can keep the behavior without rediscovering them.
 
 Live site: https://nosv1.github.io/claudes-ride-finder/ (GitHub Pages, `main` branch, repo root).
-v2, the new map-first interface (MapLibre, 3D terrain, bottom sheet, offline), is at `/v2/` and implements the same
-features; its logic lives in `v2/js/` as plain modules tested in Node.
+The app is static: `index.html`, `app.css` and the modules in `js/` (the logic ones are plain modules tested
+in Node), plus the prebuilt data in `tiles/`. `/v2/` only redirects to the root (the app was previewed there).
 
 ---
 
@@ -81,69 +81,83 @@ committed as `tiles/`. The app needs no OSM server at runtime.
 
 ## 2. Map
 
-**Basemaps**
-- Esri Dark Gray Canvas (default) or World Imagery. Both are keyless.
-- Place-name labels sit in a separate layer above the roads.
-- CARTO now requires a key, so don't use it.
+MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 
-**Hillshade**
-- Esri World_Hillshade blended under the roads: `overlay` at 55% on Dark, `multiply` at 40% on Satellite.
-- Toggled in the layer control.
+**Basemaps and terrain**
+- Esri Dark Gray Canvas (default) or World Imagery as raster layers, both keyless. CARTO now requires a key.
+- Place-name labels sit in a separate raster layer above the roads.
+- Hillshade drawn by MapLibre from AWS Terrain Tiles (Terrarium encoding), toggled in the layers menu.
+- **3D** button: terrain from the same tiles at 1.5× exaggeration and a 60° pitch.
+- Map text (shields) uses OpenFreeMap's font server (Noto Sans).
+
+**Roads on the map**
+- One GeoJSON source of every loaded road. Each road carries its curve class, speed, whether the limit is
+  posted, speed bin, hill level, surface, minor-road flag and ref.
+- The mode and filters become layer filters that mirror `roads.visible()`, so changing a filter never rebuilds the data.
+- Unknown-surface county roads draw dashed, in a separate layer.
+- **Highway shields:** a line-placed symbol layer on numbered and lettered highways (motorway–tertiary with a `ref`)
+  at zoom ≥ 9. MapLibre handles spacing and collisions.
+- Planned routes get blue-ringed shields from the router's street names (I/US/MO/K/KS refs).
+- Blind crest ⚠ symbols on visible roads at zoom ≥ 11 (toggle).
+- Gas stations colored by 90+ status at zoom ≥ 9 (toggle, off by default).
 
 **Tile loading**
-- Loads the 0.5° tiles in view (padded 20%) at zoom ≥ 7 by injecting script tags.
-- Tiles listed in `TILE_INDEX` load once. Status line: "Loading N areas…".
-
-**Highway shields**
-- One per stretch of numbered or lettered highway (motorway–tertiary with a `ref`) on highlighted roads.
-- Shown at zoom ≥ 10, at least 80 px apart.
-- Planned routes get their own blue-ringed shields, from the router's street names (I/US/MO/K/KS refs).
+- Road data loads by injecting script tags for the 0.5° tiles in view (padded 10%). It doesn't wait for the map
+  to be ready. Tiles in `TILE_INDEX` load once.
 
 ## 3. Find roads
+
+**Layout**
+- A floating search bar with filter chips under it: mode, speed floor (Best rides), hills, Paved, ⚠ Blind crests, Gas.
+- Chip menus close on a second tap of the chip, a tap anywhere else, Esc, or the map moving.
+- **Phones:** a bottom sheet with peek, half and full heights. Drag its handle, or tap the handle to step through.
+  - Its height is always the visible part, placed from `window.innerHeight`, so nothing runs under the browser's
+    bottom toolbar (Edge).
+  - At full height it stops just below the chips.
+- **Desktop (≥ 900 px):** the same content in a left panel.
+- The map's padding follows the sheet or panel, so centring and fitting use the uncovered part of the map.
+- Map buttons: my location, 3D, layers (Dark / Satellite / terrain shading).
 
 **Modes**
 | Mode | Shows | Colored by |
 |---|---|---|
 | Best rides (default) | curvy and sweeper roads with a limit (posted or estimated) ≥ the chosen 35/40/45/50/55 mph | curviness |
-| Curvy | all curvy and sweeper roads | curviness |
+| All curvy roads | all curvy and sweeper roads | curviness |
 | Speed limits | roads with a posted limit only; county and residential roads hidden below zoom 11 | 9 speed bins (≤20 … 70+) |
 
-**Curviness bins**, by score per metre:
+**Curve classes**, by score per metre:
 - Some curves ≥ 0.15
 - Curvy ≥ 0.35
 - Very curvy ≥ 0.6
 - Twisty ≥ 0.9
-- Sweepers (cyan) when no tight-curve bin applies
+- Sweepers (cyan) when no tight-curve class applies
 
-Clicking a legend entry toggles that bin.
+Tapping a class in the key toggles it.
 
 **Filters**
-- **Hills:** any / rolling+ / hilly+ / very hilly (curvy modes).
-- **Hide gravel & dirt** (default on). Unknown-surface county roads draw dashed.
+- **Hills:** any / rolling+ / hilly+ / very hilly, in the curvy modes. Only applied when set above "any".
+- **Paved** (default on) hides roads recorded as gravel or dirt.
 
 **Best roads in view**
 - Named stretches in view, at most 8, ranked by Σ (score + 0.5 × sweep) × (1 + hill/30).
-- Each row shows curvy miles and a hill word.
-- Hover outlines the stretch, click zooms to it and selects it, and ＋ adds it to the trip.
+- Each card shows curvy miles, a hill word and the blind-crest count.
+- Hover (desktop) outlines the stretch, tap opens its card, and ＋ adds it to the ride.
 - A "stretch" means pieces of the same ref/name within ~3 km. Missouri reuses lettered routes in every county.
+- **Plan a ride** stays pinned at the bottom of the sheet.
 
-**Hover and popups on the map**
-- Hovering a road outlines its whole stretch.
-- Clicking opens a popup at the click point. It shows:
-  - the road name and ref;
-  - whole-stretch curve miles and hills, with **＋ Add to trip** at the top;
-  - this piece's curviness, hills ft/mi, blind-crest count, speed limit (or "~55 mph (estimate)"), and surface;
-  - **Street View** at the nearest point on the road, facing along it;
-  - **Satellite** and **OSM** links.
-- Popups pan clear of the panel.
+**Road card** (tap a road, a card, or a search result)
+- For the whole stretch: curve class, curve miles, hills (word and ft/mi), speed (posted, or "~55 mph" when
+  estimated) and blind crests.
+- For this piece: surface, and an elevation chart. Scrubbing the chart marks the spot on the map.
+- Buttons: **Add to ride**, **Plan a loop with this road**, **Street View** at the tapped spot facing along the
+  road, and **Satellite**.
+- Hovering a road on the map (desktop) outlines its whole stretch.
 
-**Overlays**
-- Blind crest ⚠ markers on displayed roads at zoom ≥ 11 (toggle).
-- Gas stations colored by 90+ status at zoom ≥ 9 (toggle, off by default).
+**Long-press the map** (right-click on desktop): Start a ride here, Add a stop here, Street View here.
 
 ## 4. Search
 
-- One box at the top of the panel.
+- The floating search bar. **/** focuses it on desktop.
 - **Local results (instant, offline):**
   - road stretches by ref or name, ignoring words like hwy/route/road and normalizing "K-10"/"k10"/"K 10";
   - towns, with apostrophes ignored ("lees summit");
@@ -152,19 +166,19 @@ Clicking a legend entry toggles that bin.
   - Queries that look like route numbers list roads first.
 - **Online results:** Photon (photon.komoot.io) after 350 ms, biased to the map center and limited to the covered area plus 1°.
 - **Picking a result:**
-  - a road frames its bounds, then outlines that stretch once its tiles load;
-  - a place zooms there and drops a pin;
-  - **Start** makes it the trip start.
+  - a road frames its bounds, then opens that stretch's card once its tiles load;
+  - a place flies there and drops a pin;
+  - **Start** makes it the ride's start and opens Plan a ride.
 - **Keys:** Enter picks the first result, Esc clears.
 
-## 5. Plan trip
+## 5. Plan and ride
 
-**Stops**
-- **Pinned points:** a start from "my location", or "Pin a stop" by clicking the map. These pins can be dragged.
+**Stops** (Your ride)
+- **Pinned points:** the start (my location, a map spot, or a search result) and stops added on the map. Pins can be dragged.
 - **Roads:** ridden end to end. Each has an entry, up to 2 "through" points that keep the router on the road, and an exit.
   - Added roads are oriented to start from the end nearer the previous stop.
-- Rows can be reordered (↑↓), flipped (⇄) and removed (✕).
-- **Options:** "Return to start" (loop); between roads: Fastest / Balanced / Back roads only.
+- Rows can be reordered by dragging their grip (touch too), flipped (⇄) and removed (✕).
+- **Options:** "Return to start" (loop); between roads: Fastest / Balanced / Back roads.
 
 **Routing**
 - Valhalla motorcycle profile (valhalla1.openstreetmap.de) with `use_highways` 1 / 0.5 / 0.
@@ -173,48 +187,76 @@ Clicking a legend entry toggles that bin.
 
 **Summary**
 - Miles, riding time, miles on curvy roads, and the blind-crest count along the route.
-- **Elevation profile:** total climbing, low and high points, from Terrain Tiles z11 read in the browser. Hovering the chart marks that point on the map.
+- **Elevation profile:** total climbing, low and high points, from Terrain Tiles z11 read in the browser.
+  Scrubbing the chart (mouse or finger) marks that point on the map.
+- A ride bar on the main list shows the ride's stats with **Go**.
 
 **Fuel**
-- Settings: tank range (80–250 mi, default 120) and "only 90+ stations".
+- Settings: tank range (80–250 mi, default 120) and "90+ only".
 - Uses stations within 1.2 km of the route.
 - Suggests stops by refueling at the farthest station within 85% of the range, assuming a full tank at the start.
 - Warns about any stretch longer than the range, and shows the longest stretch without a station.
-- ＋ inserts a station at the right place in the trip.
+- ＋ inserts a station at the right place in the ride.
 
-**Generate a ride**
+**Generate loops** (Plan a ride)
 - Ride time 1–8 h. The start is the first stop, or the rider's location.
+- **Must include:** the rider's own stops (roads, gas stops, pinned points).
+  - Every loop goes through them.
+  - Loops head their way: straight at them, or swinging 35° or 70° to either side.
+  - Without any, all 12 directions are tried.
 - Looks at roads within `hours × 80 / 2.6` km.
-- For each of 12 directions (60° either side):
+- For each direction (60° either side):
   - adds roads one at a time, taking the most score per extra hour of estimated riding (60 km/h on roads, 80 km/h between, ×1.3 road factor);
-  - up to 4 roads per loop, ordered by angle so the loop goes out one side and back the other.
-- Ranks loops by fun × the share of time on good roads, routes the top 6, and trims the weakest road while one runs more than 15% over time.
-- Lists the options with time, miles, curvy miles and %, and blind crests. Hover previews a loop and click loads it.
+  - up to 4 roads, ordered by angle so the loop goes out one side and back the other.
+- Generated stops are marked `gen`. Generating again swaps them but keeps the rider's.
+- Trimming a loop that runs more than 15% over time only drops generated roads.
+- Routes the top 6 up front.
+- Option cards show time, miles, curvy miles and %, blind crests, and the roads, with the rider's in bold.
+  Hover previews a loop; tap loads it as the ride.
 
 **Export**
-- **Google Maps:** directions links (9 waypoints each, split into parts).
+- **Go / Open in Google Maps:** directions links (9 waypoints each, split into parts).
   - Google re-plans between stops, so the app adds its own stops, up to 2 links' worth.
   - The trip's own stops are always kept.
   - Then a stop in the middle of any stretch over 25 km without one.
   - Then stops 200 m past the turns onto the longest roads, at least 800 m apart.
 - **GPX:** waypoints, a route and the full track. For OsmAnd (free and follows the track), Calimoto, REVER, Garmin.
-- **Share link:** `#trip=` base64 JSON of the stops and settings. Opening it loads the trip and switches to Plan trip.
-- **Persistence:** the trip saves to localStorage on every change.
+- **Share:** the phone's share sheet (or the clipboard) with a `#trip=` link.
+  - The link holds base64 JSON of the stops and settings.
+  - Links from the original app work too. Opening one loads the ride.
+- **Persistence:** the ride saves to localStorage on every change. A ride saved by the original app is picked up once.
+
+**Location**
+- A quick, rough fix first (or one the phone already has), then a precise GPS fix.
+- Errors say which problem it was: blocked permission (with iPhone steps), no fix, a timeout, or a non-https page.
+
+**Installable and offline**
+- Web app manifest and icons (`tools/make_icons.py`).
+- The service worker serves app files network-first, so updates show at once and the cache covers offline use.
+- Map imagery, terrain and fonts are cached as you browse (cache-first), up to ~4,000 tiles.
 
 ## 6. Constraints and lessons (don't relearn these)
 
 - **Public Overpass servers are unreliable**: 504s, timeouts, and 406s for curl's user agent. This is why data is prebuilt.
-- **Leaflet renderers:** any vector layer without an explicit `renderer` uses the default canvas, which
-  lands *above* the roads' canvas and swallows every road click and hover. This bug happened three times.
-  - Overlays above the roads must use SVG in a pane whose `<svg>` has `pointer-events: none`.
-  - Layers below the roads can be canvas.
-- Elements with the `hidden` attribute need `[hidden] { display: none !important }`, because `.row { display: flex }` overrides it.
+- **MapLibre's `load` event** waits for every first tile and may never come on a slow connection or in a headless
+  browser.
+  - The app waits for the style instead, by polling `isStyleLoaded()`.
+  - Road data doesn't wait for the map at all.
+- **Headless `--virtual-time-budget` races MapLibre's web workers.** Browser tests drive Edge/Chrome over the
+  DevTools protocol with real waiting instead (`tests/app/cdp.mjs`).
+- **Phones and `100vh`:** the visible height excludes browser toolbars, so size from `window.innerHeight`.
+- **A sheet slid partly off-screen hides its end.** Size the sheet to its visible height instead of translating it.
+- Elements with the `hidden` attribute need `[hidden] { display: none !important }`, because `display: flex` rules override it.
 - **Hosts and access:**
-  - Terrain Tiles and Photon allow cross-origin reads.
-  - FOSSGIS Valhalla and OSRM do too.
+  - Terrain Tiles, Photon, OpenFreeMap fonts, FOSSGIS Valhalla and OSRM allow cross-origin reads.
   - Esri tiles need no key.
-- **Google Maps URLs:** the reliable forms are `/maps/@?api=1&map_action=pano&viewpoint=…&heading=…` (Street View) and `/maps/dir/?api=1&…&waypoints=a|b` (directions).
+- **Google Maps URLs:** the reliable forms are `/maps/@?api=1&map_action=pano&viewpoint=…&heading=…` (Street View)
+  and `/maps/dir/?api=1&…&waypoints=a|b` (directions).
+  - "No Street View" means Google has no imagery near that spot, and it offers no way to search farther.
 
 ## 7. Tests
 
-See `tests/README.md`. `python -m unittest discover tests` runs the build-logic tests. `python tests/browser/run.py` drives the page in headless Edge or Chrome.
+See `tests/README.md`:
+- Build logic in Python: `python -m unittest discover tests`.
+- The app's logic modules in Node: `node --test tests/app/logic.test.mjs`.
+- The app in headless Edge/Chrome: `node --test tests/app/browser.test.mjs` (`RF_NETWORK=1` adds live routing).

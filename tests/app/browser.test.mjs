@@ -1,6 +1,6 @@
 // Behaviour tests for v2 in headless Edge/Chrome. Run from the repo root:
-//   node --test tests/v2/browser.test.mjs
-//   RF_NETWORK=1 node --test tests/v2/browser.test.mjs   (adds routing and the generator)
+//   node --test tests/app/browser.test.mjs
+//   RF_NETWORK=1 node --test tests/app/browser.test.mjs   (adds routing and the generator)
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -29,7 +29,7 @@ before(async () => {
     }
   });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  base = `http://127.0.0.1:${server.address().port}/v2/`;
+  base = `http://127.0.0.1:${server.address().port}/`;
   page = await launch();
   await page.goto(base);
   await page.waitFor("window.RF && RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).length > 0", 60000);

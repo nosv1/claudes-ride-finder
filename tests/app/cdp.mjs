@@ -2,7 +2,7 @@
 // --virtual-time-budget races ahead of MapLibre's background workers). Used by the v2 browser
 // tests and handy for screenshots:
 //
-//   node tests/v2/cdp.mjs http://127.0.0.1:8765/v2/ shot.png [--mobile] [--wait "<js expr>"]
+//   node tests/app/cdp.mjs http://127.0.0.1:8765/ shot.png [--mobile] [--wait "<js expr>"]
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';

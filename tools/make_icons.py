@@ -54,8 +54,8 @@ def draw(size, inset=0.0):
 
 
 if __name__ == "__main__":
-    os.makedirs(os.path.join(ROOT, "v2", "icons"), exist_ok=True)
+    os.makedirs(os.path.join(ROOT, "icons"), exist_ok=True)
     draw(180).save(os.path.join(ROOT, "apple-touch-icon.png"))
-    draw(192).save(os.path.join(ROOT, "v2", "icons", "icon-192.png"))
-    draw(512, inset=0.1).save(os.path.join(ROOT, "v2", "icons", "icon-512.png"))
+    draw(192).save(os.path.join(ROOT, "icons", "icon-192.png"))
+    draw(512, inset=0.1).save(os.path.join(ROOT, "icons", "icon-512.png"))
     print("icons written")

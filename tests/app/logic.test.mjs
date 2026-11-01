@@ -1,13 +1,13 @@
-// Tests for v2's pure modules. Run from the repo root:  node --test tests/v2
+// Tests for the app's logic modules. Run from the repo root:  node --test tests/app/logic.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 
-import { distance, decodePolyline, spotOnLine, alongRoute, nearestIndex } from '../../v2/js/geo.js';
-import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel } from '../../v2/js/roads.js';
-import { newTrip, addRoad, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../v2/js/trip.js';
-import { planFuel, googlePoints, googleLinks, buildOptions, estimate, gpx } from '../../v2/js/plan.js';
-import { normWords, matchesAll, localResults } from '../../v2/js/search.js';
+import { distance, decodePolyline, spotOnLine, alongRoute, nearestIndex } from '../../js/geo.js';
+import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel } from '../../js/roads.js';
+import { newTrip, addRoad, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
+import { planFuel, googlePoints, googleLinks, buildOptions, estimate, gpx } from '../../js/plan.js';
+import { normWords, matchesAll, localResults } from '../../js/search.js';
 
 const TILES = new URL('../../tiles/', import.meta.url);
 const haveTiles = existsSync(new URL('index.js', TILES));
