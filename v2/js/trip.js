@@ -104,11 +104,11 @@ export function indexAlongRoute(trip, p, path) {
   return at < 0 ? trip.items.length : at;
 }
 
-// Share links: base64 JSON, compatible with v1's #trip= links (v1 ignores the extra ids field).
+// Share links: base64 JSON, compatible with v1's #trip= links (v1 ignores the extra ids and gen fields).
 export function encodeTrip(trip) {
   const data = {
     l: trip.loop ? 1 : 0, p: trip.pref, r: trip.range, n: trip.need90 ? 1 : 0,
-    s: trip.items.map(it => [it.type === 'road' ? 'r' : 'p', it.label, Math.round(it.curvy || 0), it.pts.map(round5), it.ids || 0]),
+    s: trip.items.map(it => [it.type === 'road' ? 'r' : 'p', it.label, Math.round(it.curvy || 0), it.pts.map(round5), it.ids || 0, it.gen ? 1 : 0]),
   };
   const bytes = new TextEncoder().encode(JSON.stringify(data));
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -119,8 +119,8 @@ export function decodeTrip(s) {
   const d = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
   return {
     loop: !!d.l, pref: d.p ?? '0.5', range: +(d.r ?? 120), need90: !!d.n,
-    items: d.s.map(([t, label, curvy, pts, ids], i) => ({
-      type: t === 'r' ? 'road' : 'point', label, curvy, pts, ...(ids ? { ids } : {}),
+    items: d.s.map(([t, label, curvy, pts, ids, gen], i) => ({
+      type: t === 'r' ? 'road' : 'point', label, curvy, pts, ...(ids ? { ids } : {}), ...(gen ? { gen: true } : {}),
       ...(t !== 'r' && i === 0 && /^Start/.test(label) ? { start: true } : {}),
     })),
   };

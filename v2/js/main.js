@@ -190,6 +190,17 @@ function addRoad(g) {
   toast(`Added ${g.key} to your ride`, view === 'trip' ? null : { label: 'View ride', run: () => go('trip') });
 }
 
+// Make this road a must-include and open the planner.
+function planAround(g) {
+  const inTrip = trip.items.some(it => it.ids && it.ids.some(id => g.ids.includes(id)) && !it.gen);
+  if (!inTrip) {
+    T.addRoad(trip, g);
+    tripChanged();
+  }
+  gen = { options: [], index: -1, running: false, status: T.startOf(trip) ? '' : 'Now set a start: your location or a spot on the map.' };
+  go('plan');
+}
+
 function addStation(s) {
   const stop = { type: 'point', label: `Gas: ${s.name}`, pts: [[s.lat, s.lon]] };
   const at = route ? T.indexAlongRoute(trip, stop.pts[0], route.path) : trip.items.length;
@@ -245,15 +256,16 @@ async function generate() {
       return renderSoon();
     }
   }
-  if (trip.items.length > 1 && !confirm('Replace the stops in your ride with a generated loop? Your start stays.')) return;
+  const required = ownStops();
   const s = start.pts[0], reach = P.reachKm(hours);
   const dLat = reach / 111, dLon = reach / (111 * Math.cos(s[0] * Math.PI / 180));
-  gen = { options: [], index: -1, running: true, status: 'Loading roads around your start…' };
+  gen = { options: [], index: -1, running: true,
+    status: required.length ? `Building loops through ${required.map(r => r.label).join(', ')}…` : 'Loading roads around your start…' };
   renderSoon();
   loadTiles([s[0] - dLat, s[1] - dLon, s[0] + dLat, s[1] + dLon]);
   await tilesSettled();
   const f = filters(), worthy = r => visible(r, { ...f, mode: f.mode === 'speed' ? 'ride' : f.mode });
-  const options = P.buildOptions(P.candidateGroups(store.roads, s, reach, worthy), s, hours);
+  const options = P.buildOptions(P.candidateGroups(store.roads, s, reach, worthy), s, hours, required);
   if (!options.length) {
     gen = { options: [], index: -1, running: false, status: 'No good roads within reach. Try a longer ride, or loosen the filters.' };
     return renderSoon();
@@ -275,8 +287,10 @@ async function routeOption(opt, start, hours) {
   const items = [start, ...opt.stops];
   const routeOf = () => fetchRoute(T.routablePoints({ ...trip, items, loop: true }), +trip.pref);
   let r = await routeOf();
-  for (let tries = 0; r && r.seconds > hours * 3600 * GEN.overrun && items.length > 2 && tries < 2; tries++) {
-    items.splice(items.indexOf(items.slice(1).reduce((a, b) => b.score < a.score ? b : a)), 1);
+  for (let tries = 0; r && r.seconds > hours * 3600 * GEN.overrun && tries < 2; tries++) {
+    const added = items.filter(it => it.gen);
+    if (!added.length) break;  // only the rider's own stops left: keep them even if it runs long
+    items.splice(items.indexOf(added.reduce((a, b) => b.score < a.score ? b : a)), 1);
     r = await routeOf();
   }
   Object.assign(opt, { items, route: r });
@@ -468,6 +482,7 @@ function roadView() {
     prof,
     h('div.actions', {},
       h('button.btn.primary.wide', { onclick: () => addRoad(g) }, iconEl(icon.plus), 'Add to ride'),
+      h('button.btn.wide', { onclick: () => planAround(g) }, iconEl(icon.route), 'Plan a loop with this road'),
       h('a.btn', { href: `${gm}pano&viewpoint=${lat},${lon}&heading=${Math.round(spot.heading)}`, target: '_blank', rel: 'noopener' }, iconEl(icon.person), 'Street View'),
       h('a.btn', { href: `${gm}map&center=${lat},${lon}&zoom=17&basemap=satellite`, target: '_blank', rel: 'noopener' }, iconEl(icon.globe), 'Satellite')),
     h('p.fineprint', {}, `OSM way ${r.id} · ${r.hw.replace('_', ' ')} road`),
@@ -492,7 +507,7 @@ function stationView() {
 function planView() {
   const start = T.startOf(trip);
   return [
-    backBar('Plan a ride', 'A loop through the best roads near your start'),
+    backBar('Plan a ride', 'A loop from your start through the best roads'),
     h('div.field', {}, h('label', {}, 'Start'),
       h('div.start-row', {}, iconEl(icon.pin), h('span.grow', {}, start ? start.label.replace(/^Start:?\s*/, '') || 'Pinned on the map' : 'Not set yet'))),
     h('div.btn-row', {},
@@ -500,6 +515,7 @@ function planView() {
         try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'My location'),
       h('button.btn', { onclick: () => startPicking('start') }, iconEl(icon.pin), 'Pick on map')),
+    mustInclude(),
     h('div.field', {}, h('label', {}, 'Ride time'),
       h('div.seg', {}, [1, 1.5, 2, 3, 4, 5, 6, 8].map(t => h(`button${settings.genHours === t ? '.on' : ''}`,
         { onclick: () => setSetting({ genHours: t }) }, t === 1.5 ? '1½ h' : `${t} h`)))),
@@ -509,6 +525,21 @@ function planView() {
     gen.index >= 0 ? h('button.btn.wide', { onclick: () => go('trip') }, 'Ride this loop →') : '',
     h('p.fineprint', {}, 'Uses the filters at the top (speed, hills, paved). Riding time doesn’t include stops. Or build your own: tap roads on the map and Add to ride.'),
   ];
+}
+
+// The rider's own stops: every generated loop goes through them.
+const ownStops = () => trip.items.filter((it, i) => !(i === 0 && T.startOf(trip)) && !it.gen);
+
+function mustInclude() {
+  const own = ownStops();
+  return h('div.field', {}, h('label', {}, 'Must include'),
+    own.length
+      ? h('div', {}, own.map(it => h('div.start-row.must', {},
+          iconEl(it.type === 'road' ? icon.route : icon.pin),
+          h('span.grow', {}, it.label, it.type === 'road' && it.curvy ? h('span.muted.small', {}, ` · ${miles(it.curvy)} mi of curves`) : ''),
+          h('button.icon-btn', { title: 'Remove', html: icon.x, onclick: () => { T.removeStop(trip, trip.items.indexOf(it)); tripChanged(); } }))),
+        h('p.muted.small', {}, 'Loops will go through these and fill the rest of your time with the best roads nearby.'))
+      : h('p.muted.small', {}, 'Nothing yet. To build a loop around a road, tap it on the map and choose “Plan a loop with this road”.'));
 }
 
 function optionCard(o, i) {
@@ -523,7 +554,7 @@ function optionCard(o, i) {
     h('span.muted.push', {}, fmtDuration(o.route.seconds))),
   h('div.option-stats', {}, `${miles(o.route.meters)} mi · `, h('b', {}, `${miles(o.curvy)} mi curvy`), ` (${pct}%)`,
     o.blind ? h('span.warn', {}, ` · ⚠ ${o.blind}`) : ''),
-  h('div.muted.small', {}, o.items.slice(1).map(it => it.label).join(', ')));
+  h('div.muted.small', {}, o.items.slice(1).flatMap((it, k) => [k ? ', ' : '', it.gen ? it.label : h('b.own', {}, it.label)])));
 }
 
 function tripView() {

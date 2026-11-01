@@ -156,6 +156,26 @@ test('generator builds loops that fit the time', () => {
   options.forEach(o => assert.ok(estimate(start, o.stops).hours <= 2));
 });
 
+test('generator builds every loop through the rider’s own road', () => {
+  const start = [38.5, -94];
+  const groups = [0, 1, 2, 3, 4, 5].map(i => {
+    const a = [38.5 + 0.3 * Math.cos(i), -94 + 0.3 * Math.sin(i)], b = [a[0] + 0.03, a[1] + 0.03];
+    return { key: `R${i}`, score: 1000 + i, curvy: 5000, ids: [i], stop: { type: 'road', label: `R${i}`, pts: [a, b] }, center: a };
+  });
+  const mine = { type: 'road', label: 'MO 150', ids: [99], pts: [[38.2, -94.2], [38.22, -94.15]] };
+  const options = buildOptions(groups, start, 3, [mine]);
+  assert.ok(options.length > 0);
+  for (const o of options) {
+    const own = o.stops.filter(s => s.label === 'MO 150');
+    assert.equal(own.length, 1, 'includes MO 150 exactly once');
+    assert.ok(!own[0].gen, 'the rider’s road is not marked as generated');
+    assert.ok(o.stops.filter(s => s.label !== 'MO 150').every(s => s.gen), 'added roads are marked');
+  }
+  // The rider's road is used even when nothing else fits the time.
+  const tight = buildOptions(groups, start, 0.1, [mine]);
+  assert.ok(tight.every(o => o.stops.length === 1 && o.stops[0].label === 'MO 150'));
+});
+
 test('GPX has waypoints, a route and the track', () => {
   const trip = { ...newTrip(), items: [{ type: 'point', label: 'Start & go', pts: [[38, -94]] }, { type: 'point', label: 'B', pts: [[38.1, -94]] }] };
   const out = gpx(trip, { path: [[38, -94], [38.05, -94], [38.1, -94]] });

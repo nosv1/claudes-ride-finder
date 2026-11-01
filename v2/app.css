@@ -201,6 +201,8 @@ h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0 0 
 .field { margin: 12px 0; }
 .field > label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 .start-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--raise); }
+.start-row.must { padding: 4px 4px 4px 12px; margin-bottom: 6px; }
+.own { color: var(--text); }
 .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 6px; }
 .seg button { min-height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
 .seg button.on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }

@@ -80,12 +80,14 @@ export function candidateGroups(roads, start, maxKm, isWorthy) {
   return groups;
 }
 
+// Stops the generator added are marked `gen`, so the next generate swaps them out but keeps the
+// rider's own.
 export function orderLoop(start, groups, dir) {
   let prev = start;
   return [...groups]
     .sort((a, b) => relAngle(bearing(start, a.center), dir) - relAngle(bearing(start, b.center), dir))
     .map(g => {
-      const s = { ...g.stop, pts: g.stop.pts.map(p => [...p]) };
+      const s = { ...g.stop, pts: g.stop.pts.map(p => [...p]), ...(g.required ? {} : { gen: true }) };
       if (d2(prev, s.pts[s.pts.length - 1]) < d2(prev, s.pts[0])) s.pts.reverse();
       prev = s.pts[s.pts.length - 1];
       return s;
@@ -106,12 +108,27 @@ export function estimate(start, stops) {
 
 export const reachKm = hours => hours * GEN.linkKmh / (2 * GEN.roadFactor);
 
-export function buildOptions(groups, start, hours) {
+// required: the rider's own stops (roads or points) every loop must include. With some, loops
+// head their way (straight at them, or swinging out to either side) and fill the remaining time.
+export function buildOptions(groups, start, hours, required = []) {
+  const req = required.map(stop => ({
+    key: stop.label, score: stop.score || 0, stop, required: true,
+    center: center(boundsOf([stop.pts[0], stop.pts[stop.pts.length - 1]])),
+  }));
+  const taken = new Set(req.flatMap(r => r.stop.ids || []));
+  const free = groups.filter(g => !(g.ids || []).some(id => taken.has(id)));
+  let dirs = Array.from({ length: 12 }, (_, i) => i * 30);
+  if (req.length) {
+    const mid = [req.reduce((s, r) => s + r.center[0], 0) / req.length, req.reduce((s, r) => s + r.center[1], 0) / req.length];
+    const toward = bearing(start, mid);
+    dirs = [0, -35, 35, -70, 70].map(d => (toward + d + 360) % 360);
+  }
   const options = [], seen = new Set();
-  for (let dir = 0; dir < 360; dir += 30) {
-    const pool = groups.filter(g => Math.abs(relAngle(bearing(start, g.center), dir)) <= GEN.spread);
-    let chosen = [], stops = [], est = { hours: 0, roadHours: 0 };
-    while (chosen.length < GEN.maxRoads) {
+  for (const dir of dirs) {
+    const pool = free.filter(g => Math.abs(relAngle(bearing(start, g.center), dir)) <= GEN.spread);
+    let chosen = [...req], stops = orderLoop(start, chosen, dir), est = estimate(start, stops);
+    const maxExtra = Math.max(1, GEN.maxRoads - req.length);
+    while (chosen.length - req.length < maxExtra) {
       let best = null;
       for (const g of pool) {
         if (chosen.includes(g)) continue;
@@ -130,7 +147,7 @@ export function buildOptions(groups, start, hours) {
     if (!chosen.length || seen.has(sig)) continue;
     seen.add(sig);
     const fun = chosen.reduce((s, g) => s + g.score, 0);
-    options.push({ dir, stops, value: fun * est.roadHours / est.hours });
+    options.push({ dir, stops, value: fun * est.roadHours / (est.hours || 1), required: req.length });
   }
   return options.sort((a, b) => b.value - a.value).slice(0, GEN.maxOptions);
 }

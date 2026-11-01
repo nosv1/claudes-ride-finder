@@ -148,3 +148,23 @@ test('generator routes loops and loads the best one as the ride', { skip: !NETWO
   await page.waitFor('RF.route && RF.info && RF.info.curvy != null', 30000);
   assert.ok(await page.eval('RF.trip.items.length') >= 2);
 });
+
+test('a loop built around a chosen road always goes through it', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {
+  await showMo150();
+  await page.eval(`(async () => {
+    const T = await import('./js/trip.js');
+    RF.trip.items.length = 0;
+    T.setStart(RF.trip, [38.852, -94.343], 'Start');
+    const r = RF.store.byId.get(${MO150});
+    RF.mapView.emit('road', r.id, r.geom[2]);
+  })()`);
+  await sleep(300);
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Plan a loop with this road/.test(b.textContent)).click()");
+  assert.match(await sheetText(), /Must include[\s\S]*MO 150/);
+  await page.eval("[...document.querySelectorAll('#sheetBody .cta')].find(b => /Generate/.test(b.textContent)).click()");
+  await page.waitFor('RF.gen.options.length > 0 && !RF.gen.running', 180000);
+  const loops = await page.eval('RF.gen.options.filter(o => o.route).map(o => o.items.map(i => i.label + (i.gen ? "*" : "")))');
+  assert.ok(loops.length >= 2, JSON.stringify(loops));
+  loops.forEach(l => assert.ok(l.includes('MO 150'), `loop without MO 150: ${l}`));
+  assert.ok(await page.eval("RF.trip.items.some(i => i.label === 'MO 150' && !i.gen)"));
+});
