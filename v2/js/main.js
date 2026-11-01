@@ -56,6 +56,10 @@ window.RF = { store, mapView, go: (v, arg) => go(v, arg), get trip() { return tr
 async function start() {
   // The side panel starts below the top bar, whose height depends on how the chips wrap.
   new ResizeObserver(() => document.documentElement.style.setProperty('--topbar-h', `${$('#topbar').offsetHeight}px`)).observe($('#topbar'));
+  // The height the browser actually shows (phones hide part of 100vh under toolbars).
+  const setAppHeight = () => document.documentElement.style.setProperty('--app-h', `${innerHeight}px`);
+  setAppHeight();
+  addEventListener('resize', setAppHeight);
   render();
   renderChips();
   await initData();
@@ -199,11 +203,29 @@ function setStartAt(p, label) {
   tripChanged();
 }
 
+// A quick, rough fix first (or a recent one the phone already has); if that fails for any
+// reason other than permission, try once more for a precise GPS fix.
 function locate() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error('no geolocation'));
-    navigator.geolocation.getCurrentPosition(pos => resolve([pos.coords.latitude, pos.coords.longitude]), reject, { timeout: 15000 });
-  });
+  if (!window.isSecureContext) return Promise.reject({ code: 'insecure' });
+  if (!navigator.geolocation) return Promise.reject({ code: 'unsupported' });
+  const get = opts => new Promise((resolve, reject) =>
+    navigator.geolocation.getCurrentPosition(p => resolve([p.coords.latitude, p.coords.longitude]), reject, opts));
+  return get({ enableHighAccuracy: false, maximumAge: 5 * 60000, timeout: 10000 })
+    .catch(e => e.code === 1 ? Promise.reject(e) : get({ enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }));
+}
+
+function locationError(e) {
+  const iphone = /iPhone|iPad/.test(navigator.userAgent);
+  const messages = {
+    insecure: 'Location only works on the https site (nosv1.github.io), not a local address.',
+    unsupported: 'This browser can’t share your location. Pick your start on the map instead.',
+    1: iphone
+      ? 'Location is blocked. On iPhone: Settings › Privacy & Security › Location Services › Safari Websites › While Using, then reload.'
+      : 'Location is blocked for this site. Tap the lock or settings icon by the address bar, allow Location, then reload.',
+    2: 'Your phone couldn’t find a location. Check that Location / GPS is on, then try again.',
+    3: 'Finding your location took too long. Try again, or pick your start on the map.',
+  };
+  toast(messages[e && e.code] || 'Couldn’t get your location. Pick your start on the map instead.');
 }
 
 // ---------- generator ----------
@@ -218,6 +240,7 @@ async function generate() {
       setStartAt(await locate(), 'Start: my location');
       start = T.startOf(trip);
     } catch (e) {
+      locationError(e);
       gen.status = 'Set a start first: use your location or pick a spot on the map.';
       return renderSoon();
     }
@@ -380,7 +403,7 @@ function homeView() {
       : groups.length
         ? h('div.cards', {}, groups.map(roadCard))
         : h('p.empty', {}, !store.roads.length || mapView.zoom() < 7 ? 'Zoom in to see roads.' : 'Nothing matches here. Pan around or loosen the filters.'),
-    h('button.cta', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
+    h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
   ];
 }
@@ -474,7 +497,7 @@ function planView() {
       h('div.start-row', {}, iconEl(icon.pin), h('span.grow', {}, start ? start.label.replace(/^Start:?\s*/, '') || 'Pinned on the map' : 'Not set yet'))),
     h('div.btn-row', {},
       h('button.btn', { onclick: async () => {
-        try { setStartAt(await locate(), 'Start: my location'); } catch (e) { toast('Couldn’t get your location.'); }
+        try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'My location'),
       h('button.btn', { onclick: () => startPicking('start') }, iconEl(icon.pin), 'Pick on map')),
     h('div.field', {}, h('label', {}, 'Ride time'),
@@ -520,7 +543,7 @@ function tripView() {
     h('div.btn-row', {},
       h('button.btn', { onclick: () => startPicking('stop') }, iconEl(icon.plus), 'Add stop on map'),
       h('button.btn', { onclick: async () => {
-        try { setStartAt(await locate(), 'Start: my location'); } catch (e) { toast('Couldn’t get your location.'); }
+        try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'Start from me')),
     h('div.field', {}, h('label.switch', {},
       h('input', { type: 'checkbox', checked: trip.loop, onchange: e => { trip.loop = e.target.checked; tripChanged(); } }),
@@ -747,7 +770,7 @@ document.addEventListener('pointerdown', e => { if (!e.target.closest('#topbar')
 // ---------- map buttons ----------
 
 $('#locateBtn').addEventListener('click', async () => {
-  try { mapView.flyTo(await locate(), 11); } catch (e) { toast('Couldn’t get your location.'); }
+  try { mapView.flyTo(await locate(), 11); } catch (e) { locationError(e); }
 });
 $('#tiltBtn').addEventListener('click', () => {
   tilted = !tilted;

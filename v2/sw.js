@@ -1,7 +1,8 @@
-// Offline support. The app and road data are served from cache and refreshed in the background;
+// Offline support. The app and road data come from the network when there is one (so updates
+// show up straight away) and from cache when there isn't;
 // map imagery, terrain and fonts are kept as you browse (up to a limit), so areas you've looked
 // at keep working without signal. Routing and place search always need the network.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const APP = `rf-app-${VERSION}`, MAP = `rf-map-${VERSION}`;
 const MAP_LIMIT = 4000;   // map tiles to keep (~150 MB at most)
 const SHELL = [
@@ -27,15 +28,20 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  if (url.origin === location.origin) return e.respondWith(staleWhileRevalidate(e.request, APP));
+  if (url.origin === location.origin) return e.respondWith(networkFirst(e.request, APP));
   if (MAP_HOSTS.includes(url.hostname)) return e.respondWith(cacheFirst(e.request, MAP));
   // Everything else (routing, search) goes straight to the network.
 });
 
-async function staleWhileRevalidate(req, name) {
-  const cache = await caches.open(name), hit = await cache.match(req);
-  const fresh = fetch(req).then(res => { if (res.ok) cache.put(req, res.clone()); return res; }).catch(() => hit);
-  return hit || fresh;
+async function networkFirst(req, name) {
+  const cache = await caches.open(name);
+  try {
+    const res = await fetch(req);
+    if (res.ok) cache.put(req, res.clone());
+    return res;
+  } catch (e) {
+    return (await cache.match(req)) || Response.error();
+  }
 }
 
 let puts = 0;

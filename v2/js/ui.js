@@ -71,41 +71,47 @@ export function elevationChart(prof, onScrub) {
   return wrap;
 }
 
-// The sheet: a bottom sheet with three heights on phones, a fixed side panel on wide screens.
+// The sheet: a bottom sheet with three heights on phones (dragged by its handle), a fixed side
+// panel on wide screens. Its height is always the visible part, so its content never runs off-screen.
 export class Sheet {
   constructor(el, grab, onChange) {
     this.el = el;
     this.onChange = onChange;
-    this.snap = 'half';
-    let startY = null, startOffset = 0;
-    const offsetOf = () => new DOMMatrix(getComputedStyle(el).transform).m42;
+    this.snap = el.dataset.snap || 'half';
+    let startY = null, startH = 0;
+    const setH = hgt => {
+      this.el.style.height = `${hgt}px`;
+      this.el.style.top = `${innerHeight - hgt}px`;
+    };
     grab.addEventListener('pointerdown', e => {
       if (Sheet.wide()) return;
       startY = e.clientY;
-      startOffset = offsetOf();
+      startH = el.getBoundingClientRect().height;
       el.classList.add('dragging');
       grab.setPointerCapture(e.pointerId);
     });
     grab.addEventListener('pointermove', e => {
       if (startY == null) return;
-      el.style.transform = `translateY(${Math.max(0, startOffset + e.clientY - startY)}px)`;
+      setH(Math.max(90, Math.min(this.heightFor('full'), startH - (e.clientY - startY))));
     });
     grab.addEventListener('pointerup', e => {
       if (startY == null) return;
-      const moved = e.clientY - startY, offset = offsetOf();
+      const moved = e.clientY - startY, hgt = el.getBoundingClientRect().height;
       startY = null;
       el.classList.remove('dragging');
-      el.style.transform = '';
+      el.style.height = el.style.top = '';
       if (Math.abs(moved) < 6) return this.set(this.snap === 'peek' ? 'half' : this.snap === 'half' ? 'full' : 'peek');
       // Snap to whichever height is nearest where it was let go.
-      const heights = { full: 0, half: this.offsetFor('half'), peek: this.offsetFor('peek') };
-      this.set(Object.entries(heights).sort((a, b) => Math.abs(a[1] - offset) - Math.abs(b[1] - offset))[0][0]);
+      const snaps = ['full', 'half', 'peek'];
+      this.set(snaps.sort((a, b) => Math.abs(this.heightFor(a) - hgt) - Math.abs(this.heightFor(b) - hgt))[0]);
     });
   }
   static wide() { return matchMedia('(min-width: 900px)').matches; }
-  offsetFor(snap) {
-    const h = this.el.getBoundingClientRect().height;
-    return snap === 'full' ? 0 : snap === 'half' ? h - innerHeight * 0.5 : h - 132;
+  heightFor(snap) {
+    if (snap === 'peek') return 132;
+    if (snap === 'half') return innerHeight * 0.5;
+    const css = getComputedStyle(document.documentElement);
+    return innerHeight - (parseFloat(css.getPropertyValue('--topbar-h')) || 110) - 18;
   }
   set(snap) {
     this.snap = snap;
@@ -115,8 +121,7 @@ export class Sheet {
   // Pixels of map hidden under the sheet (bottom on phones, left on wide screens).
   covered() {
     if (Sheet.wide()) return { left: this.el.getBoundingClientRect().right, bottom: 0 };
-    const h = this.el.getBoundingClientRect().height;
-    return { left: 0, bottom: Math.max(0, h - this.offsetFor(this.snap)) };
+    return { left: 0, bottom: this.heightFor(this.snap) };
   }
 }
 
@@ -126,7 +131,7 @@ export function toast(msg, action) {
   el.replaceChildren(h('span', {}, msg), action ? h('button', { onclick: () => { el.hidden = true; action.run(); } }, action.label) : '');
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, action ? 6000 : 3200);
+  toastTimer = setTimeout(() => { el.hidden = true; }, action || msg.length > 80 ? 9000 : 3200);
 }
 
 // A small popover menu under an anchor element or at a screen point. Tapping the same anchor
