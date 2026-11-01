@@ -12,14 +12,16 @@
     --muted: #9aa0aa;
     --border: rgba(255, 255, 255, 0.12);
     --accent: rgba(255, 255, 255, 0.14);
+    --blue: #1c7ed6;
   }
   html, body { margin: 0; height: 100%; background: #111; }
   body { font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); }
   #map { position: absolute; inset: 0; }
+  #map.picking, #map.picking .leaflet-interactive { cursor: crosshair; }
 
   #panel {
     position: absolute; top: 12px; right: 12px; z-index: 1000;
-    width: 260px; max-height: calc(100vh - 24px); overflow: auto; box-sizing: border-box; padding: 14px 16px;
+    width: 290px; max-height: calc(100vh - 24px); overflow: auto; box-sizing: border-box; padding: 14px 16px;
     background: var(--panel-bg); border: 1px solid var(--border); border-radius: 10px;
     backdrop-filter: blur(6px); box-shadow: 0 4px 20px rgba(0,0,0,0.4);
   }
@@ -32,10 +34,11 @@
     color: var(--muted); font: inherit; font-size: 13px; cursor: pointer;
   }
   .tabs button.on { background: var(--accent); color: var(--text); }
+  #viewTabs button { padding: 7px 0; font-weight: 600; }
   .sub { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
 
   .bin, .road {
-    display: flex; align-items: center; gap: 10px; width: calc(100% + 12px);
+    display: flex; align-items: center; gap: 10px; width: calc(100% + 12px); box-sizing: border-box;
     padding: 4px 6px; margin: 0 -6px; border: 0; border-radius: 6px;
     background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
   }
@@ -46,6 +49,11 @@
   .road .miles { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .road .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .road .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .road .add {
+    flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 50%;
+    background: none; color: var(--text); font: inherit; line-height: 1; cursor: pointer;
+  }
+  .road .add:hover { background: var(--blue); border-color: var(--blue); }
   #roads .empty { color: var(--muted); font-size: 12px; }
 
   .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; }
@@ -54,11 +62,32 @@
     background: #23262e; color: var(--text); font: inherit;
   }
   .btns { display: flex; gap: 6px; margin-top: 10px; }
-  .btns button {
-    flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+  .btns button, .btns a {
+    flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; text-align: center; text-decoration: none;
     background: rgba(255,255,255,0.06); color: var(--text); font: inherit; font-size: 12px; cursor: pointer;
   }
-  .btns button:hover { background: rgba(255,255,255,0.12); }
+  .btns button:hover, .btns a:hover { background: rgba(255,255,255,0.12); }
+  .btns .primary, .btns .on { background: var(--blue); border-color: var(--blue); }
+  .btns .primary:hover { background: #1971c2; }
+  .btns button:disabled { opacity: 0.4; cursor: default; }
+
+  #stops { list-style: none; margin: 10px 0 0; padding: 0; }
+  #stops li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  #stops .num {
+    flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--blue);
+    color: #fff; font-size: 11px; font-weight: 600; display: grid; place-items: center;
+  }
+  #stops .stop-name { flex: 1; min-width: 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #stops small { display: block; color: var(--muted); font-size: 11px; }
+  #stops .stop-btns { flex: none; display: flex; }
+  #stops .stop-btns button {
+    padding: 2px 4px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer;
+  }
+  #stops .stop-btns button:hover { color: var(--text); }
+  #stops .empty { display: block; color: var(--muted); font-size: 12px; border: 0; }
+  #tripSummary { margin-top: 12px; font-size: 13px; }
+  #googleParts { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; font-size: 12px; }
+  #googleParts a { color: #74c0fc; }
 
   #status { margin-top: 10px; min-height: 18px; font-size: 12px; color: var(--muted); }
   #status.err { color: #ff8a80; }
@@ -78,6 +107,14 @@
   .leaflet-popup-content { font: 13px/1.5 system-ui, sans-serif; }
   .leaflet-popup-content b { font-size: 14px; }
   .leaflet-popup-content .meta { color: #777; }
+  .popup-add {
+    margin-top: 8px; padding: 5px 12px; border: 0; border-radius: 6px;
+    background: var(--blue); color: #fff; font: inherit; cursor: pointer;
+  }
+  .trip-marker {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--blue); border: 2px solid #fff;
+    color: #fff; font: 600 11px/22px system-ui, sans-serif; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.6);
+  }
 </style>
 </head>
 <body>
@@ -87,33 +124,69 @@
   <button id="toggle">hide</button>
   <h1>Ride Finder</h1>
   <div class="body">
-    <div class="tabs">
-      <button data-mode="ride" class="on">Best rides</button>
-      <button data-mode="curvy">Curvy</button>
-      <button data-mode="speed">Speed limits</button>
+    <div class="tabs" id="viewTabs">
+      <button data-view="find" class="on">Find roads</button>
+      <button data-view="trip">Plan trip<span id="tripCount"></span></button>
     </div>
-    <div id="rideOptions">
-      <label class="row" style="margin-top:4px">Speed limit at least
-        <select id="minSpeed">
-          <option>35</option><option>40</option><option selected>45</option><option>50</option><option>55</option>
-        </select> mph
+
+    <div id="findView">
+      <div class="tabs" id="modeTabs">
+        <button data-mode="ride" class="on">Best rides</button>
+        <button data-mode="curvy">Curvy</button>
+        <button data-mode="speed">Speed limits</button>
+      </div>
+      <div id="rideOptions">
+        <label class="row" style="margin-top:4px">Speed limit at least
+          <select id="minSpeed">
+            <option>35</option><option>40</option><option selected>45</option><option>50</option><option>55</option>
+          </select> mph
+        </label>
+        <div class="note">Curvy roads you can actually ride at speed. Most rural roads have no posted limit in the data, so those are estimated (55 state routes, 45 county roads, 30 in town).</div>
+      </div>
+      <div class="sub" style="margin-top:8px">Click a color to show or hide it</div>
+      <div id="legend"></div>
+      <label class="row"><input type="checkbox" id="hideUnpaved" checked> Hide gravel &amp; dirt roads</label>
+      <div class="note">Dashed = county road with no surface on record (could be gravel).</div>
+
+      <div id="roadsSection">
+        <h2>Best roads in view</h2>
+        <div id="roads"></div>
+        <div class="note">＋ adds a road to your trip.</div>
+      </div>
+
+      <div class="btns">
+        <button id="locate">My location</button>
+        <button id="home">Kansas City</button>
+      </div>
+    </div>
+
+    <div id="tripView" hidden>
+      <div class="btns" style="margin-top:0">
+        <button id="startHere">Start from my location</button>
+        <button id="pinMode">＋ Pin a stop</button>
+      </div>
+      <ol id="stops"></ol>
+      <label class="row"><input type="checkbox" id="loop" checked> Return to start</label>
+      <label class="row">Between roads
+        <select id="pref">
+          <option value="1">Fastest</option>
+          <option value="0.5" selected>Balanced</option>
+          <option value="0">Back roads only</option>
+        </select>
       </label>
-      <div class="note">Curvy roads you can actually ride at speed. Most rural roads have no posted limit in the data, so those are estimated (55 state routes, 45 county roads, 30 in town).</div>
+      <div id="tripSummary"></div>
+      <div class="btns">
+        <button id="toGoogle" class="primary">Open in Google Maps</button>
+        <button id="toGpx">GPX file</button>
+      </div>
+      <div id="googleParts"></div>
+      <div class="btns">
+        <button id="share">Copy share link</button>
+        <button id="clearTrip">Clear trip</button>
+      </div>
+      <div class="note">GPX works with riding apps (Calimoto, REVER, Garmin, OsmAnd) and keeps the exact route. Google Maps re-plans between stops, so it may differ slightly.</div>
     </div>
-    <div class="sub" style="margin-top:8px">Click a color to show or hide it</div>
-    <div id="legend"></div>
-    <label class="row"><input type="checkbox" id="hideUnpaved" checked> Hide gravel &amp; dirt roads</label>
-    <div class="note">Dashed = county road with no surface on record (could be gravel).</div>
 
-    <div id="roadsSection">
-      <h2>Best roads in view</h2>
-      <div id="roads"></div>
-    </div>
-
-    <div class="btns">
-      <button id="locate">My location</button>
-      <button id="home">Kansas City</button>
-    </div>
     <div id="status"></div>
     <div class="note">Road data from OpenStreetMap volunteers. Always check conditions before you ride.</div>
   </div>
@@ -156,18 +229,26 @@ let mode = 'ride';
 // ---------- map ----------
 const map = L.map('map', { preferCanvas: true }).setView(HOME, HOME_ZOOM);
 
-// Esri's dark gray canvas needs no API key; labels go on a separate layer above the roads.
-const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
-L.tileLayer(ESRI + 'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-  maxZoom: 19, maxNativeZoom: 16,
-  attribution: 'Basemap &copy; Esri · Roads &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-}).addTo(map);
+// Esri basemaps need no API key; labels go on a separate layer above the roads.
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
+const ATTRIBUTION = 'Basemap &copy; Esri · Roads &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · ' +
+  'Routing <a href="https://valhalla1.openstreetmap.de">FOSSGIS Valhalla</a>';
 map.createPane('labels');
 map.getPane('labels').style.zIndex = 450;
 map.getPane('labels').style.pointerEvents = 'none';
-L.tileLayer(ESRI + 'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
-  maxZoom: 19, maxNativeZoom: 16, pane: 'labels',
-}).addTo(map);
+const esri = (service, opts) => L.tileLayer(`${ESRI}${service}/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, ...opts });
+const BASEMAPS = {
+  'Dark': L.layerGroup([
+    esri('Canvas/World_Dark_Gray_Base', { maxNativeZoom: 16, attribution: ATTRIBUTION }),
+    esri('Canvas/World_Dark_Gray_Reference', { maxNativeZoom: 16, pane: 'labels' }),
+  ]),
+  'Satellite': L.layerGroup([
+    esri('World_Imagery', { maxNativeZoom: 18, attribution: ATTRIBUTION }),
+    esri('Reference/World_Boundaries_and_Places', { maxNativeZoom: 18, pane: 'labels' }),
+  ]),
+};
+BASEMAPS['Dark'].addTo(map);
+L.control.layers(BASEMAPS, null, { position: 'topleft', collapsed: false }).addTo(map);
 
 const renderer = L.canvas({ padding: 0.5, tolerance: 6 });
 const roadLayer = L.layerGroup().addTo(map);
@@ -203,15 +284,12 @@ window.addTile = (key, rows) => {
   scheduleRender();
 };
 
-function loadTilesInView() {
-  if (!window.TILE_INDEX) {
-    setStatus('No road data yet. Run "python build_tiles.py" in this folder, then refresh.', true);
-    return;
-  }
-  if (map.getZoom() < LOAD_ZOOM) { updateStatus(); return; }
-  const size = TILE_INDEX.size, b = map.getBounds().pad(0.2);
-  for (let x = Math.floor(b.getWest() / size); x <= Math.floor(b.getEast() / size); x++) {
-    for (let y = Math.floor(b.getSouth() / size); y <= Math.floor(b.getNorth() / size); y++) {
+const AVAILABLE = new Set(window.TILE_INDEX ? TILE_INDEX.tiles : []);
+
+function loadTiles(bounds) {
+  const size = TILE_INDEX.size;
+  for (let x = Math.floor(bounds.getWest() / size); x <= Math.floor(bounds.getEast() / size); x++) {
+    for (let y = Math.floor(bounds.getSouth() / size); y <= Math.floor(bounds.getNorth() / size); y++) {
       const key = `${x}_${y}`;
       if (tileState.has(key) || !AVAILABLE.has(key)) continue;
       tileState.set(key, 'loading');
@@ -223,7 +301,15 @@ function loadTilesInView() {
   }
   updateStatus();
 }
-const AVAILABLE = new Set(window.TILE_INDEX ? TILE_INDEX.tiles : []);
+
+function loadTilesInView() {
+  if (!window.TILE_INDEX) {
+    setStatus('No road data yet. Run "python build_tiles.py" in this folder, then refresh.', true);
+    return;
+  }
+  if (map.getZoom() < LOAD_ZOOM) { updateStatus(); return; }
+  loadTiles(map.getBounds().pad(0.2));
+}
 
 function updateStatus() {
   if (!window.TILE_INDEX) return;
@@ -277,6 +363,7 @@ function render() {
   });
   updateRoadList();
   updateStatus();
+  updateTripStats();  // newly loaded roads may lie along the route
 }
 
 let renderTimer = null;
@@ -285,7 +372,7 @@ function scheduleRender() {
   renderTimer = setTimeout(render, 150);
 }
 
-// ---------- popups & list ----------
+// ---------- popups ----------
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -300,7 +387,9 @@ function popupFor(r) {
   const gmaps = 'https://www.google.com/maps/@?api=1&map_action=';
   const streetView = `${gmaps}pano&viewpoint=${lat},${lon}&heading=${heading}`;
   const satellite = `${gmaps}map&center=${lat},${lon}&zoom=17&basemap=satellite`;
-  return `<b>${escapeHtml(r.name || 'Unnamed road')}</b>` +
+
+  const el = document.createElement('div');
+  el.innerHTML = `<b>${escapeHtml(r.name || 'Unnamed road')}</b>` +
     (r.ref ? ` <span class="meta">(${escapeHtml(r.ref)})</span>` : '') + '<br>' +
     `Curviness: <b>${bin ? bin.label : 'mostly straight'}</b>` +
     (r.curvy ? ` <span class="meta">· ${miles(r.curvy)} mi of curves in ${miles(r.length)} mi</span>` : '') + '<br>' +
@@ -310,7 +399,13 @@ function popupFor(r) {
     `<span class="meta">${escapeHtml(r.hw.replace('_', ' '))} road · ` +
     `<a href="${streetView}" target="_blank" rel="noopener">Street View</a> · ` +
     `<a href="${satellite}" target="_blank" rel="noopener">Satellite</a> · ` +
-    `<a href="https://www.openstreetmap.org/way/${r.id}" target="_blank" rel="noopener">OSM</a></span>`;
+    `<a href="https://www.openstreetmap.org/way/${r.id}" target="_blank" rel="noopener">OSM</a></span><br>`;
+  const add = document.createElement('button');
+  add.className = 'popup-add';
+  add.textContent = '＋ Add to trip';
+  add.onclick = () => { addRoad(groupFor(r)); map.closePopup(); };
+  el.appendChild(add);
+  return el;
 }
 
 // ---------- highlight ----------
@@ -352,6 +447,23 @@ function clusterRoads(list) {
   return clusters;
 }
 
+function summarize(c, key) {
+  c.key = key;
+  c.score = c.roads.reduce((s, r) => s + r.score, 0);
+  c.curvy = c.roads.reduce((s, r) => s + r.curvy, 0);
+  c.best = c.roads.map(curvyBin).reduce((a, b) => CURVY_BINS.indexOf(b) > CURVY_BINS.indexOf(a) ? b : a);
+  return c;
+}
+
+// The stretch of named road a clicked piece belongs to (just the piece if it has no name).
+function groupFor(r) {
+  const key = r.ref || r.name;
+  if (!key) return summarize({ roads: [r], bounds: r.bounds }, 'Unnamed road');
+  const same = roads.filter(x => x === r || ((x.ref || x.name) === key && curvyBin(x)));
+  return summarize(clusterRoads(same).find(c => c.roads.includes(r)), key);
+}
+
+// ---------- best roads list ----------
 const roadsEl = document.getElementById('roads');
 function updateRoadList() {
   document.getElementById('roadsSection').hidden = mode === 'speed';
@@ -367,36 +479,425 @@ function updateRoadList() {
   });
 
   const groups = [];
-  byName.forEach((list, key) => clusterRoads(list).forEach(c => {
-    c.key = key;
-    c.score = c.roads.reduce((s, r) => s + r.score, 0);
-    c.curvy = c.roads.reduce((s, r) => s + r.curvy, 0);
-    c.best = c.roads.map(curvyBin).reduce((a, b) => CURVY_BINS.indexOf(b) > CURVY_BINS.indexOf(a) ? b : a);
-    groups.push(c);
-  }));
+  byName.forEach((list, key) => clusterRoads(list).forEach(c => groups.push(summarize(c, key))));
   const top = groups.sort((a, b) => b.score - a.score).slice(0, 8);
 
   roadsEl.innerHTML = top.length ? '' : '<div class="empty">No curvy roads in view. Try panning or zooming out.</div>';
   top.forEach(g => {
     const isSelected = selected && g.roads.includes(selected.roads[0]);
     if (isSelected) selected = g;  // keep the selection in step as the list rebuilds
-    const btn = document.createElement('button');
-    btn.className = 'road' + (isSelected ? ' selected' : '');
-    btn.innerHTML = `<span class="dot" style="background:${g.best.color}"></span><span class="name">${escapeHtml(g.key)}</span>` +
-      `<span class="miles">${miles(g.curvy)} mi curvy</span>`;
-    btn.onmouseenter = () => showHighlight(g);
-    btn.onmouseleave = () => showHighlight(selected);
-    btn.onclick = () => {
+    const row = document.createElement('div');
+    row.className = 'road' + (isSelected ? ' selected' : '');
+    row.innerHTML = `<span class="dot" style="background:${g.best.color}"></span><span class="name">${escapeHtml(g.key)}</span>` +
+      `<span class="miles">${miles(g.curvy)} mi curvy</span><button class="add" title="Add to trip">＋</button>`;
+    row.onmouseenter = () => showHighlight(g);
+    row.onmouseleave = () => showHighlight(selected);
+    row.onclick = () => {
       selected = isSelected ? null : g;
       showHighlight(selected);
       if (selected) map.fitBounds(g.bounds, { maxZoom: 13, padding: [40, 40] });
       else updateRoadList();
     };
-    roadsEl.appendChild(btn);
+    row.querySelector('.add').onclick = e => { e.stopPropagation(); addRoad(g); };
+    roadsEl.appendChild(row);
   });
 }
 
-// ---------- legend & controls ----------
+// ---------- trip ----------
+// A trip is an ordered list of stops: pinned points, or roads to ride end to end.
+// Road stops carry an entry point, up to two "through" points so the router stays on
+// that road instead of cutting across, and an exit point.
+const VALHALLA = 'https://valhalla1.openstreetmap.de/route';
+const OSRM = 'https://router.project-osrm.org/route/v1/driving';
+const MAX_LOCATIONS = 20;   // the public Valhalla server's limit
+const STORAGE_KEY = 'ride-finder-trip';
+
+let trip = { items: [], loop: true };
+let route = null;           // { path, meters, seconds, fallback }
+
+const loopEl = document.getElementById('loop');
+const prefEl = document.getElementById('pref');
+const stopsEl = document.getElementById('stops');
+const summaryEl = document.getElementById('tripSummary');
+const googlePartsEl = document.getElementById('googleParts');
+
+map.createPane('route');
+map.getPane('route').style.zIndex = 395;  // under the colored roads so they show through
+const routeRenderer = L.canvas({ pane: 'route', padding: 0.5 });
+const routeLayer = L.layerGroup().addTo(map);
+const tripLayer = L.layerGroup().addTo(map);
+
+// Distances here only compare points, so a flat approximation is plenty.
+function d2([a0, a1], [b0, b1]) {
+  const dx = (a1 - b1) * Math.cos(a0 * Math.PI / 180), dy = a0 - b0;
+  return dx * dx + dy * dy;
+}
+
+function roadStop(g) {
+  const ends = g.roads.flatMap(r => [r.geom[0], r.geom[r.geom.length - 1]]);
+  let a = ends[0], b = ends[1], far = -1;
+  ends.forEach((p, i) => ends.slice(i + 1).forEach(q => {
+    const d = d2(p, q);
+    if (d > far) { far = d; a = p; b = q; }
+  }));
+  // Where each piece's midpoint falls along the entry→exit line (0 at entry, 1 at exit).
+  const len = d2(a, b) || 1;
+  const along = p => ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / len;
+  const mids = g.roads.map(r => r.geom[Math.floor(r.geom.length / 2)]).map(p => [along(p), p])
+    .filter(([t]) => t > 0.15 && t < 0.85);
+  const vias = [];
+  [1 / 3, 2 / 3].forEach(t => {
+    const m = mids.reduce((best, m) => !best || Math.abs(m[0] - t) < Math.abs(best[0] - t) ? m : best, null);
+    if (m && !vias.includes(m[1])) vias.push(m[1]);
+  });
+  return { type: 'road', label: g.key, curvy: g.curvy, pts: [a, ...vias, b], geoms: g.roads.map(r => r.geom) };
+}
+
+function addRoad(g) {
+  const stop = roadStop(g);
+  // Ride it in whichever direction starts closer to where the trip currently ends.
+  const last = trip.items.length && trip.items[trip.items.length - 1].pts.slice(-1)[0];
+  if (last && d2(last, stop.pts[stop.pts.length - 1]) < d2(last, stop.pts[0])) stop.pts.reverse();
+  trip.items.push(stop);
+  setStatus(`Added ${stop.label} to your trip (${trip.items.length} stop${trip.items.length > 1 ? 's' : ''}).`);
+  tripChanged();
+}
+
+function addPoint(latlng, label, atStart) {
+  const stop = { type: 'point', label, pts: [[+latlng[0].toFixed(5), +latlng[1].toFixed(5)]] };
+  atStart ? trip.items.unshift(stop) : trip.items.push(stop);
+  tripChanged();
+}
+
+function tripAction(act, i) {
+  const items = trip.items;
+  if (act === 'del') items.splice(i, 1);
+  if (act === 'up' && i > 0) [items[i - 1], items[i]] = [items[i], items[i - 1]];
+  if (act === 'down' && i < items.length - 1) [items[i + 1], items[i]] = [items[i], items[i + 1]];
+  if (act === 'flip') items[i].pts.reverse();
+  tripChanged();
+}
+
+// Every point the route must pass, in order; `via` points are pass-through, not stops.
+function tripPoints(withVias = true) {
+  const pts = [];
+  trip.items.forEach(it => it.pts.forEach((p, j) => {
+    const via = it.type === 'road' && j > 0 && j < it.pts.length - 1;
+    if (!via || withVias) pts.push({ p, via });
+  }));
+  if (trip.loop && trip.items.length && pts.length > 1) pts.push({ p: pts[0].p, via: false });
+  return pts;
+}
+
+function tripChanged() {
+  trip.loop = loopEl.checked;
+  renderTrip();
+  saveTrip();
+  scheduleRoute();
+}
+
+function renderTrip() {
+  document.getElementById('tripCount').textContent = trip.items.length ? ` (${trip.items.length})` : '';
+  stopsEl.innerHTML = trip.items.length ? '' :
+    '<li class="empty">No stops yet. Add roads with ＋ in Find roads or from any road\'s popup, and pin a start point.</li>';
+  trip.items.forEach((it, i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="num">${i + 1}</span>` +
+      `<span class="stop-name">${escapeHtml(it.label)}<small>${it.type === 'road' ? `${miles(it.curvy)} mi curvy` : 'Stop · drag pin to move'}</small></span>` +
+      `<span class="stop-btns">${it.type === 'road' ? '<button data-act="flip" title="Ride it the other way">⇄</button>' : ''}` +
+      '<button data-act="up" title="Move up">↑</button><button data-act="down" title="Move down">↓</button>' +
+      '<button data-act="del" title="Remove">✕</button></span>';
+    li.querySelectorAll('button').forEach(b => b.onclick = () => tripAction(b.dataset.act, i));
+    li.querySelector('.stop-name').onclick = () => map.fitBounds(L.latLngBounds(it.pts), { maxZoom: 13, padding: [40, 40] });
+    stopsEl.appendChild(li);
+  });
+
+  tripLayer.clearLayers();
+  trip.items.forEach((it, i) => {
+    (it.geoms || []).forEach(g => L.polyline(g, {
+      renderer: glowRenderer, color: '#4dabf7', weight: 12, opacity: 0.6, interactive: false,
+    }).addTo(tripLayer));
+    const marker = L.marker(it.pts[0], {
+      draggable: it.type === 'point',
+      icon: L.divIcon({ className: '', html: `<div class="trip-marker">${i + 1}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }),
+      title: it.label,
+    }).addTo(tripLayer);
+    marker.on('dragend', () => {
+      const { lat, lng } = marker.getLatLng();
+      it.pts[0] = [+lat.toFixed(5), +lng.toFixed(5)];
+      tripChanged();
+    });
+  });
+
+  const hasRoute = tripPoints().length > 1;
+  document.getElementById('toGoogle').disabled = !hasRoute;
+  document.getElementById('toGpx').disabled = !hasRoute;
+  document.getElementById('share').disabled = !trip.items.length;
+  googlePartsEl.innerHTML = '';
+}
+
+// ---------- routing ----------
+let routeTimer = null, routeSeq = 0;
+function scheduleRoute() {
+  clearTimeout(routeTimer);
+  routeTimer = setTimeout(computeRoute, 300);
+}
+
+async function fetchJson(url, ms) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctl.signal });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.message || 'HTTP ' + res.status);
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function decodePolyline(str, precision = 6) {
+  const factor = 10 ** precision, out = [];
+  let i = 0, lat = 0, lon = 0;
+  const next = () => {
+    let result = 0, shift = 0, b;
+    do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    return result & 1 ? ~(result >> 1) : result >> 1;
+  };
+  while (i < str.length) {
+    lat += next(); lon += next();
+    out.push([lat / factor, lon / factor]);
+  }
+  return out;
+}
+
+// Valhalla's motorcycle profile, with a dial for how much to avoid highways between roads.
+async function valhallaRoute(pts) {
+  const req = {
+    locations: pts.map(({ p, via }) => ({ lat: p[0], lon: p[1], type: via ? 'through' : 'break' })),
+    costing: 'motorcycle',
+    costing_options: { motorcycle: { use_highways: +prefEl.value, use_trails: 0 } },
+    units: 'miles',
+  };
+  const data = await fetchJson(`${VALHALLA}?json=${encodeURIComponent(JSON.stringify(req))}`, 30000);
+  return {
+    path: data.trip.legs.flatMap(l => decodePolyline(l.shape)),
+    meters: data.trip.summary.length * 1609.34,
+    seconds: data.trip.summary.time,
+  };
+}
+
+// Backup router: plain fastest route, no back-roads preference.
+async function osrmRoute(pts) {
+  const coords = pts.map(({ p }) => `${p[1]},${p[0]}`).join(';');
+  const data = await fetchJson(`${OSRM}/${coords}?overview=full&geometries=geojson`, 30000);
+  const r = data.routes[0];
+  return { path: r.geometry.coordinates.map(([lon, lat]) => [lat, lon]), meters: r.distance, seconds: r.duration, fallback: true };
+}
+
+async function computeRoute() {
+  const seq = ++routeSeq;
+  routeLayer.clearLayers();
+  route = null;
+  let pts = tripPoints();
+  if (pts.length > MAX_LOCATIONS) pts = tripPoints(false);
+  if (pts.length < 2) { summaryEl.innerHTML = ''; return; }
+  if (pts.length > MAX_LOCATIONS) {
+    summaryEl.innerHTML = `<span style="color:#ff8a80">Too many stops to route (max ${MAX_LOCATIONS} points). Remove a few.</span>`;
+    return;
+  }
+
+  summaryEl.textContent = 'Finding a route…';
+  let result;
+  try {
+    result = await valhallaRoute(pts);
+  } catch (e) {
+    console.warn('Valhalla failed, trying OSRM', e);
+    try { result = await osrmRoute(pts); } catch (e2) { console.warn(e2); }
+  }
+  if (seq !== routeSeq) return;  // the trip changed while we were waiting
+  if (!result) {
+    summaryEl.innerHTML = '<span style="color:#ff8a80">Couldn’t reach the routing servers. Try again in a minute.</span>';
+    return;
+  }
+
+  route = result;
+  L.polyline(route.path, { renderer: routeRenderer, color: '#0b1d33', weight: 13, opacity: 0.7, interactive: false }).addTo(routeLayer);
+  L.polyline(route.path, { renderer: routeRenderer, color: '#4dabf7', weight: 8, opacity: 0.55, interactive: false }).addTo(routeLayer);
+  loadTiles(L.latLngBounds(route.path));  // so curvy miles count roads outside the current view
+  updateTripStats();
+}
+
+// Miles of the route that run along curvy roads, by matching against road geometry on a ~200 m grid.
+function curvyMetersOn(path) {
+  const CELL = 0.002, cells = new Set(), area = L.latLngBounds(path).pad(0.05);
+  const key = (la, lo) => Math.round(la / CELL) + ',' + Math.round(lo / CELL);
+  roads.forEach(r => {
+    if (!curvyBin(r) || r.surface === 1 || !area.intersects(r.bounds)) return;
+    for (let i = 1; i < r.geom.length; i++) {
+      const [a0, a1] = r.geom[i - 1], [b0, b1] = r.geom[i];
+      const n = Math.ceil(Math.max(Math.abs(b0 - a0), Math.abs(b1 - a1)) / CELL) || 1;
+      for (let k = 0; k <= n; k++) cells.add(key(a0 + (b0 - a0) * k / n, a1 + (b1 - a1) * k / n));
+    }
+  });
+  let m = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    if (cells.has(key((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))) m += map.distance(a, b);
+  }
+  return m;
+}
+
+function fmtDuration(s) {
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return (h ? `${h} h ` : '') + `${m} min`;
+}
+
+function updateTripStats() {
+  if (!route) return;
+  summaryEl.innerHTML = `<b>${miles(route.meters)} mi</b> · ${fmtDuration(route.seconds)} · ` +
+    `<b>${miles(curvyMetersOn(route.path))} mi</b> on curvy roads` +
+    (route.fallback ? '<div class="note">The back-roads router is unavailable right now, so this is the fastest route.</div>' : '');
+}
+
+// ---------- export & sharing ----------
+// Google Maps links take up to 9 stops between start and end, so long trips become several parts.
+function googleLinks() {
+  const pts = tripPoints().map(x => x.p);
+  const f = p => `${p[0].toFixed(5)},${p[1].toFixed(5)}`;
+  const parts = [];
+  for (let i = 0; i < pts.length - 1; i += 10) {
+    const part = pts.slice(i, i + 11);
+    const waypoints = part.slice(1, -1).map(f).join('|');
+    parts.push('https://www.google.com/maps/dir/?api=1&travelmode=driving' +
+      `&origin=${f(part[0])}&destination=${f(part[part.length - 1])}` +
+      (waypoints ? `&waypoints=${encodeURIComponent(waypoints)}` : ''));
+  }
+  return parts;
+}
+
+function tripName() {
+  const names = trip.items.filter(it => it.type === 'road').map(it => it.label);
+  return names.length ? `Ride: ${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''}` : 'Ride Finder trip';
+}
+
+function downloadGpx() {
+  const f = ([la, lo]) => `lat="${la.toFixed(6)}" lon="${lo.toFixed(6)}"`;
+  const name = escapeHtml(tripName());
+  const gpx = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<gpx version="1.1" creator="Ride Finder" xmlns="http://www.topografix.com/GPX/1/1">',
+    `  <metadata><name>${name}</name></metadata>`,
+    ...trip.items.map((it, i) => `  <wpt ${f(it.pts[0])}><name>${i + 1}. ${escapeHtml(it.label)}</name></wpt>`),
+    `  <rte><name>${name}</name>`,
+    ...tripPoints().map(({ p }) => `    <rtept ${f(p)}/>`),
+    '  </rte>',
+    ...(route ? [`  <trk><name>${name}</name><trkseg>`, ...route.path.map(p => `    <trkpt ${f(p)}/>`), '  </trkseg></trk>'] : []),
+    '</gpx>',
+  ].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([gpx], { type: 'application/gpx+xml' }));
+  a.download = tripName().replace(/[^\w ,-]+/g, '').trim().replace(/\s+/g, '-') + '.gpx';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function encodeTrip() {
+  const data = {
+    l: trip.loop ? 1 : 0, p: prefEl.value,
+    s: trip.items.map(it => [it.type === 'road' ? 'r' : 'p', it.label, Math.round(it.curvy || 0),
+      it.pts.map(([a, b]) => [+a.toFixed(5), +b.toFixed(5)])]),
+  };
+  return btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeTrip(s) {
+  const d = JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))));
+  loopEl.checked = !!d.l;
+  if (d.p != null) prefEl.value = d.p;
+  return { loop: !!d.l, items: d.s.map(([t, label, curvy, pts]) => ({ type: t === 'r' ? 'road' : 'point', label, curvy, pts })) };
+}
+
+function saveTrip() {
+  try { localStorage.setItem(STORAGE_KEY, encodeTrip()); } catch (e) { /* storage unavailable */ }
+}
+
+function loadSavedTrip() {
+  const fromLink = location.hash.match(/trip=([\w-]+)/);
+  try {
+    if (fromLink) {
+      trip = decodeTrip(fromLink[1]);
+      history.replaceState(null, '', location.pathname + location.search);
+      showView('trip');
+      const pts = trip.items.flatMap(it => it.pts);
+      if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40] });
+    } else {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) trip = decodeTrip(saved);
+    }
+  } catch (e) {
+    console.warn('Could not load trip', e);
+  }
+  tripChanged();
+}
+
+// ---------- trip controls ----------
+let picking = false;
+function setPicking(on) {
+  picking = on;
+  document.getElementById('map').classList.toggle('picking', on);
+  document.getElementById('pinMode').classList.toggle('on', on);
+  if (on) setStatus('Click the map to drop a stop.');
+}
+document.getElementById('pinMode').onclick = () => setPicking(!picking);
+map.on('click', e => {
+  if (!picking) return;
+  addPoint([e.latlng.lat, e.latlng.lng], trip.items.length ? 'Pinned stop' : 'Start');
+  setPicking(false);
+  setStatus('Stop added. Drag its pin to adjust.');
+  setTimeout(() => map.closePopup(), 0);  // a road under the click may have opened one
+});
+
+document.getElementById('startHere').onclick = () => {
+  if (!navigator.geolocation) return setStatus('This browser can’t share its location.', true);
+  setStatus('Finding your location…');
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      addPoint([pos.coords.latitude, pos.coords.longitude], 'Start (my location)', true);
+      setStatus('Start set to your location.');
+    },
+    () => setStatus('Couldn’t get your location (the browser may have blocked it).', true),
+    { timeout: 15000 });
+};
+
+loopEl.onchange = tripChanged;
+prefEl.onchange = tripChanged;
+
+document.getElementById('toGoogle').onclick = () => {
+  const links = googleLinks();
+  if (links.length === 1) return window.open(links[0], '_blank', 'noopener');
+  googlePartsEl.innerHTML = `<span class="note" style="margin:0">Google Maps allows 9 stops per route, so this trip is in ${links.length} parts:</span>` +
+    links.map((l, i) => `<a href="${l}" target="_blank" rel="noopener">Part ${i + 1} of ${links.length}</a>`).join('');
+};
+document.getElementById('toGpx').onclick = downloadGpx;
+
+document.getElementById('share').onclick = async () => {
+  const url = location.href.split('#')[0] + '#trip=' + encodeTrip();
+  try {
+    await navigator.clipboard.writeText(url);
+    setStatus('Share link copied. Anyone with it can open this trip.');
+  } catch (e) {
+    prompt('Copy this link:', url);
+  }
+};
+
+document.getElementById('clearTrip').onclick = () => {
+  if (trip.items.length && !confirm('Clear all stops from this trip?')) return;
+  trip.items = [];
+  tripChanged();
+};
+
+// ---------- legend & view controls ----------
 const legendEl = document.getElementById('legend');
 function buildLegend() {
   legendEl.innerHTML = '';
@@ -409,12 +910,20 @@ function buildLegend() {
   });
 }
 
-document.querySelectorAll('.tabs button').forEach(tab => tab.onclick = () => {
+document.querySelectorAll('#modeTabs button').forEach(tab => tab.onclick = () => {
   mode = tab.dataset.mode;
-  document.querySelectorAll('.tabs button').forEach(t => t.classList.toggle('on', t === tab));
+  document.querySelectorAll('#modeTabs button').forEach(t => t.classList.toggle('on', t === tab));
   buildLegend();
   render();
 });
+
+function showView(view) {
+  document.querySelectorAll('#viewTabs button').forEach(t => t.classList.toggle('on', t.dataset.view === view));
+  document.getElementById('findView').hidden = view !== 'find';
+  document.getElementById('tripView').hidden = view !== 'trip';
+  if (view !== 'trip') setPicking(false);
+}
+document.querySelectorAll('#viewTabs button').forEach(tab => tab.onclick = () => showView(tab.dataset.view));
 
 const hideUnpaved = document.getElementById('hideUnpaved');
 hideUnpaved.onchange = render;
@@ -439,6 +948,7 @@ map.on('moveend', () => {
 });
 
 buildLegend();
+loadSavedTrip();
 loadTilesInView();
 </script>
 </body>
