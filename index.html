@@ -146,6 +146,22 @@
     padding: 1px 4px; border: 1px solid #222; border-radius: 3px; background: #f1f3f5;
     color: #111; font: 700 10px/1.3 system-ui, sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,.5);
   }
+  #genOptions { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .gen-opt {
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 12px;
+  }
+  .gen-opt:hover { background: rgba(255,255,255,0.06); }
+  .gen-opt.on { border-color: var(--blue); background: rgba(28,126,214,0.18); }
+  .gen-opt.failed { cursor: default; color: var(--muted); }
+  .gen-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+  .gen-num {
+    width: 18px; height: 18px; border-radius: 50%; background: var(--accent);
+    display: grid; place-items: center; font-size: 11px; flex: none;
+  }
+  .gen-opt.on .gen-num { background: var(--blue); }
+  .gen-time { margin-left: auto; font-weight: 400; color: var(--muted); }
+  .gen-stats { margin: 2px 0 1px 24px; }
+  .gen-opt small { display: block; margin-left: 24px; color: var(--muted); }
   .route-shield { border-color: var(--blue); box-shadow: 0 0 0 2px #4dabf7, 0 1px 3px rgba(0,0,0,.5); }
   .trip-marker {
     width: 22px; height: 22px; border-radius: 50%; background: var(--blue); border: 2px solid #fff;
@@ -217,10 +233,10 @@
         <span class="note" style="margin:0">riding, not counting stops</span>
       </label>
       <div class="btns">
-        <button id="generate" class="primary">Generate a loop</button>
-        <button id="another" disabled>Try another</button>
+        <button id="generate" class="primary">Generate loops</button>
       </div>
-      <div id="genStatus" class="note">Builds a loop from your start through the best roads in reach, using the filters from Find roads.</div>
+      <div id="genStatus" class="note">Builds loops from your start through the best roads in reach, using the filters from Find roads.</div>
+      <div id="genOptions"></div>
 
       <h2>Stops</h2>
       <div class="btns" style="margin-top:0">
@@ -849,13 +865,13 @@ function tripAction(act, i) {
 }
 
 // Every point the route must pass, in order; `via` points are pass-through, not stops.
-function tripPoints(withVias = true) {
+function tripPoints(withVias = true, items = trip.items, loop = trip.loop) {
   const pts = [];
-  trip.items.forEach(it => it.pts.forEach((p, j) => {
+  items.forEach(it => it.pts.forEach((p, j) => {
     const via = it.type === 'road' && j > 0 && j < it.pts.length - 1;
     if (!via || withVias) pts.push({ p, via });
   }));
-  if (trip.loop && trip.items.length && pts.length > 1) pts.push({ p: pts[0].p, via: false });
+  if (loop && items.length && pts.length > 1) pts.push({ p: pts[0].p, via: false });
   return pts;
 }
 
@@ -979,14 +995,26 @@ async function osrmRoute(pts) {
   return { path: r.geometry.coordinates.map(([lon, lat]) => [lat, lon]), meters: r.distance, seconds: r.duration, fallback: true };
 }
 
+// Points for a set of stops, dropping pass-through points if there are too many to route.
+function routablePoints(items = trip.items, loop = trip.loop) {
+  const pts = tripPoints(true, items, loop);
+  return pts.length > MAX_LOCATIONS ? tripPoints(false, items, loop) : pts;
+}
+
+// Valhalla, or the plain fastest route if it's down. Null if neither answers.
+async function fetchRoute(pts) {
+  try {
+    return await valhallaRoute(pts);
+  } catch (e) {
+    console.warn('Valhalla failed, trying OSRM', e);
+    try { return await osrmRoute(pts); } catch (e2) { console.warn(e2); return null; }
+  }
+}
+
 async function computeRoute() {
   const seq = ++routeSeq;
-  routeLayer.clearLayers();
-  route = null;
-  renderFuelPlan();
-  updateRouteLabels();
-  let pts = tripPoints();
-  if (pts.length > MAX_LOCATIONS) pts = tripPoints(false);
+  showRoute(null);
+  const pts = routablePoints();
   if (pts.length < 2) { summaryEl.innerHTML = ''; return; }
   if (pts.length > MAX_LOCATIONS) {
     summaryEl.innerHTML = `<span style="color:#ff8a80">Too many stops to route (max ${MAX_LOCATIONS} points). Remove a few.</span>`;
@@ -994,20 +1022,21 @@ async function computeRoute() {
   }
 
   summaryEl.textContent = 'Finding a route…';
-  let result;
-  try {
-    result = await valhallaRoute(pts);
-  } catch (e) {
-    console.warn('Valhalla failed, trying OSRM', e);
-    try { result = await osrmRoute(pts); } catch (e2) { console.warn(e2); }
-  }
+  const result = await fetchRoute(pts);
   if (seq !== routeSeq) return;  // the trip changed while we were waiting
   if (!result) {
     summaryEl.innerHTML = '<span style="color:#ff8a80">Couldn’t reach the routing servers. Try again in a minute.</span>';
     return;
   }
+  showRoute(result);
+}
 
+function showRoute(result) {
+  routeLayer.clearLayers();
   route = result;
+  renderFuelPlan();
+  updateRouteLabels();
+  if (!route) return;
   L.polyline(route.path, { renderer: routeRenderer, color: '#0b1d33', weight: 13, opacity: 0.7, interactive: false }).addTo(routeLayer);
   L.polyline(route.path, { renderer: routeRenderer, color: '#4dabf7', weight: 8, opacity: 0.55, interactive: false }).addTo(routeLayer);
   loadTiles(L.latLngBounds(route.path));  // so curvy miles count roads outside the current view
@@ -1040,13 +1069,17 @@ function fmtDuration(s) {
   return (h ? `${h} h ` : '') + `${m} min`;
 }
 
-function updateTripStats() {
-  if (!route) return;
-  const area = L.latLngBounds(route.path).pad(0.02), crests = [];
+function blindCountOn(path) {
+  const area = L.latLngBounds(path).pad(0.02), crests = [];
   roads.forEach(r => {
     if (r.blind.length && area.intersects(r.bounds)) r.blind.forEach(([lat, lon]) => crests.push({ lat, lon }));
   });
-  const blindCount = alongRoute(route.path, crests, 40, 25).stops.length;
+  return alongRoute(path, crests, 40, 25).stops.length;
+}
+
+function updateTripStats() {
+  if (!route) return;
+  const blindCount = blindCountOn(route.path);
   summaryEl.innerHTML = `<b>${miles(route.meters)} mi</b> · ${fmtDuration(route.seconds)} · ` +
     `<b>${miles(curvyMetersOn(route.path))} mi</b> on curvy roads` +
     (blindCount ? `<div style="margin-top:4px"><span class="blind-icon"></span> ${blindCount} blind crest corner${blindCount > 1 ? 's' : ''} on the route</div>` : '') +
@@ -1170,9 +1203,10 @@ const MAX_GEN_ROADS = 4;    // keeps the route a sensible number of stops
 const GEN_SPREAD = 60;      // degrees either side of a direction to look for roads
 const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
 
+const GEN_MAX_OPTIONS = 6;  // each one is routed up front, so keep the server load modest
+
 const genHoursEl = document.getElementById('genHours');
 const genStatusEl = document.getElementById('genStatus');
-const anotherEl = document.getElementById('another');
 let genOptions = [], genIndex = 0;
 
 const rideWorthy = r => curvyBin(r) && !(hideUnpaved.checked && r.surface === 1) &&
@@ -1268,30 +1302,65 @@ function buildOptions(start, hours, maxKm) {
   return options.sort((a, b) => b.value - a.value);
 }
 
-async function applyOption(i, hours) {
+// Route an option for real, trimming its weakest road while it runs more than 15% over time.
+async function routeOption(opt, start, hours) {
+  const items = [start, ...opt.stops];
+  let r = await fetchRoute(routablePoints(items, true));
+  for (let tries = 0; r && r.seconds > hours * 3600 * 1.15 && items.length > 2 && tries < 2; tries++) {
+    const weakest = items.slice(1).reduce((a, b) => b.score < a.score ? b : a);
+    items.splice(items.indexOf(weakest), 1);
+    r = await fetchRoute(routablePoints(items, true));
+  }
+  Object.assign(opt, { items, route: r });
+  if (r) Object.assign(opt, { curvy: curvyMetersOn(r.path), blind: blindCountOn(r.path) });
+}
+
+const genListEl = document.getElementById('genOptions');
+const previewLayer = L.layerGroup().addTo(map);
+
+function previewOption(opt) {
+  previewLayer.clearLayers();
+  if (opt && opt.route) {
+    L.polyline(opt.route.path, { color: '#fff', weight: 4, opacity: 0.9, dashArray: '8 6', interactive: false }).addTo(previewLayer);
+  }
+}
+
+function renderOptions() {
+  genListEl.innerHTML = '';
+  genOptions.forEach((opt, i) => {
+    const row = document.createElement('div');
+    row.className = 'gen-opt' + (i === genIndex ? ' on' : '') + (opt.route ? '' : ' failed');
+    const heading = COMPASS[Math.round(opt.dir / 45) % 8];
+    row.innerHTML = opt.route
+      ? `<div class="gen-head"><span class="gen-num">${i + 1}</span>${heading[0].toUpperCase() + heading.slice(1)}` +
+        `<span class="gen-time">${fmtDuration(opt.route.seconds)}</span></div>` +
+        `<div class="gen-stats">${miles(opt.route.meters)} mi · <b>${miles(opt.curvy)} mi curvy</b> ` +
+        `(${Math.round(100 * opt.curvy / opt.route.meters)}%)` +
+        (opt.blind ? ` · <span style="white-space:nowrap"><span class="blind-icon"></span> ${opt.blind}</span>` : '') + '</div>' +
+        `<small>${escapeHtml(opt.items.slice(1).map(it => it.label).join(', '))}</small>`
+      : `<div class="gen-head"><span class="gen-num">${i + 1}</span>${heading}: couldn’t route right now</div>`;
+    if (opt.route) {
+      row.onmouseenter = () => previewOption(opt);
+      row.onmouseleave = () => previewOption(null);
+      row.onclick = () => selectOption(i);
+    }
+    genListEl.appendChild(row);
+  });
+}
+
+function selectOption(i) {
   const opt = genOptions[i];
-  const heading = COMPASS[Math.round(opt.dir / 45) % 8];
-  trip.items = [trip.items[0], ...opt.stops.map(s => ({ ...s, pts: s.pts.map(p => [...p]) }))];
+  genIndex = i;
+  trip.items = opt.items.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
   trip.loop = loopEl.checked = true;
+  routeSeq++;  // drop any route still being fetched for the old stops
+  clearTimeout(routeTimer);
   renderTrip();
   saveTrip();
-  genStatusEl.textContent = `Heading ${heading}… routing.`;
-  await computeRoute();
-  // The real route came out too long: drop the weakest road and try again.
-  for (let tries = 0; route && route.seconds > hours * 3600 * 1.15 && trip.items.length > 2 && tries < 3; tries++) {
-    const weakest = trip.items.slice(1).reduce((a, b) => (b.score ?? Infinity) < (a.score ?? Infinity) ? b : a);
-    trip.items.splice(trip.items.indexOf(weakest), 1);
-    renderTrip();
-    saveTrip();
-    await computeRoute();
-  }
-  const names = trip.items.slice(1).map(it => it.label).join(', ');
-  genStatusEl.textContent = route
-    ? `Option ${i + 1} of ${genOptions.length}, heading ${heading}: ${names}. About ${fmtDuration(route.seconds)} of riding.`
-    : `Heading ${heading}: ${names}. Couldn’t route it right now; try again in a minute.`;
-  anotherEl.disabled = genOptions.length < 2;
-  const pts = trip.items.flatMap(it => it.pts);
-  map.fitBounds(L.latLngBounds(route ? route.path : pts), { padding: [40, 40] });
+  showRoute(opt.route);
+  previewOption(null);
+  renderOptions();
+  map.fitBounds(L.latLngBounds(opt.route.path), { padding: [40, 40] });
 }
 
 function currentStart() {
@@ -1325,19 +1394,23 @@ document.getElementById('generate').onclick = async () => {
   genStatusEl.textContent = 'Loading roads around your start…';
   loadTiles(L.latLngBounds([s[0] - dLat, s[1] - dLon], [s[0] + dLat, s[1] + dLon]));
   await tilesSettled();
-  genOptions = buildOptions(s, hours, maxKm);
-  genIndex = 0;
+  genOptions = buildOptions(s, hours, maxKm).slice(0, GEN_MAX_OPTIONS);
+  genListEl.innerHTML = '';
   if (!genOptions.length) {
     genStatusEl.textContent = 'No good roads within reach. Try a longer ride, or loosen the speed/hills filters in Find roads.';
-    anotherEl.disabled = true;
     return;
   }
-  await applyOption(0, hours);
-};
-
-anotherEl.onclick = () => {
-  genIndex = (genIndex + 1) % genOptions.length;
-  applyOption(genIndex, +genHoursEl.value);
+  for (let i = 0; i < genOptions.length; i++) {
+    genStatusEl.textContent = `Routing option ${i + 1} of ${genOptions.length}…`;
+    await routeOption(genOptions[i], start, hours);
+  }
+  // Best first, by the same measure used to pick them: curvy miles, scaled by the share of the ride.
+  const worth = o => o.route ? o.curvy * o.curvy / o.route.meters : -1;
+  genOptions.sort((a, b) => worth(b) - worth(a));
+  genIndex = 0;
+  genStatusEl.textContent = `${genOptions.length} loops for about ${genHoursEl.selectedOptions[0].text} of riding. Hover to preview, click to use.`;
+  if (genOptions[0].route) selectOption(0);
+  else renderOptions();
 };
 
 // ---------- export & sharing ----------
