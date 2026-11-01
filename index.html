@@ -449,7 +449,8 @@ function render() {
     let line = lines.get(i);
     if (!style) { if (line) roadLayer.removeLayer(line); return; }
     if (!line) {
-      line = L.polyline(r.geom, { renderer, ...style }).bindPopup(() => popupFor(r), popupPadding());
+      line = L.polyline(r.geom, { renderer, ...style });
+      line.on('click', e => L.popup(popupPadding()).setLatLng(e.latlng).setContent(popupFor(r, e.latlng)).openOn(map));
       // Hovering a piece outlines its whole stretch, same as hovering it in the list.
       line.on('mouseover', () => showHighlight(groupFor(r)));
       line.on('mouseout', () => showHighlight(selected));
@@ -485,12 +486,26 @@ function escapeHtml(s) {
 }
 const miles = m => (m / 1609).toFixed(m < 1609 ? 2 : 1);
 
-function popupFor(r) {
+// The point on the road nearest a click, and the direction the road runs there.
+function spotOnRoad(r, at) {
+  const k = Math.cos(at.lat * Math.PI / 180);
+  let best = null, bd = Infinity;
+  for (let i = 1; i < r.geom.length; i++) {
+    const [a0, a1] = r.geom[i - 1], [b0, b1] = r.geom[i];
+    const dx = (b1 - a1) * k, dy = b0 - a0, len = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, (((at.lng - a1) * k) * dx + (at.lat - a0) * dy) / len));
+    const p = [a0 + (b0 - a0) * t, a1 + (b1 - a1) * t];
+    const d = ((p[1] - at.lng) * k) ** 2 + (p[0] - at.lat) ** 2;
+    if (d < bd) { bd = d; best = { p, heading: (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360 }; }
+  }
+  return best;
+}
+
+function popupFor(r, at) {
   const bin = curvyBin(r);
-  // Middle of the road, and the direction it runs there so Street View faces down the road.
-  const i = Math.max(1, Math.floor(r.geom.length / 2));
-  const [lat, lon] = r.geom[i], [plat, plon] = r.geom[i - 1];
-  const heading = Math.round((Math.atan2((lon - plon) * Math.cos(lat * Math.PI / 180), lat - plat) * 180 / Math.PI + 360) % 360);
+  // Street View from where the road was clicked, facing along the road.
+  const spot = spotOnRoad(r, at);
+  const [lat, lon] = spot.p.map(v => +v.toFixed(6)), heading = Math.round(spot.heading);
   const gmaps = 'https://www.google.com/maps/@?api=1&map_action=';
   const streetView = `${gmaps}pano&viewpoint=${lat},${lon}&heading=${heading}`;
   const satellite = `${gmaps}map&center=${lat},${lon}&zoom=17&basemap=satellite`;
