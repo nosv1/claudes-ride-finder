@@ -148,6 +148,26 @@
     padding: 1px 4px; border: 1px solid #222; border-radius: 3px; background: #f1f3f5;
     color: #111; font: 700 10px/1.3 system-ui, sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,.5);
   }
+  .search { margin-bottom: 10px; }
+  #search {
+    width: 100%; box-sizing: border-box; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: #23262e; color: var(--text); font: inherit; outline: none;
+  }
+  #search:focus { border-color: var(--blue); }
+  #searchResults { margin-top: 4px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .result { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; }
+  .result + .result { border-top: 1px solid var(--border); }
+  .result:hover, .result.active { background: rgba(255,255,255,0.08); }
+  .result .info { flex: 1; min-width: 0; }
+  .result .info div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .result small { display: block; color: var(--muted); font-size: 11px; }
+  .result .kind { flex: none; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .result .start {
+    flex: none; padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: none; color: var(--text); font: inherit; font-size: 11px; cursor: pointer;
+  }
+  .result .start:hover { background: var(--blue); border-color: var(--blue); }
+  #searchResults .empty { padding: 6px 10px; color: var(--muted); font-size: 12px; }
   #elevProfile { margin-top: 10px; }
   #elevProfile svg { display: block; width: 100%; height: 64px; margin-top: 4px; cursor: crosshair; }
   .profile-head { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
@@ -183,6 +203,10 @@
   <button id="toggle">hide</button>
   <h1>Ride Finder</h1>
   <div class="body">
+    <div class="search">
+      <input id="search" type="search" placeholder="Search roads, towns, places…" autocomplete="off" spellcheck="false">
+      <div id="searchResults" hidden></div>
+    </div>
     <div class="tabs" id="viewTabs">
       <button data-view="find" class="on">Find roads</button>
       <button data-view="trip">Plan trip<span id="tripCount"></span></button>
@@ -291,6 +315,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="tiles/index.js"></script>
 <script src="tiles/fuel.js"></script>
+<script src="tiles/search.js"></script>
 <script>
 const HOME = [39.0997, -94.5786];
 const HOME_ZOOM = 9;
@@ -1124,7 +1149,11 @@ const PROFILE_SAMPLES = 600;
 const CLIMB_STEP_M = 3;      // ignore elevation wiggles smaller than this when totalling climb
 const demTiles = new Map();  // "x/y" -> Promise of elevations (metres) or null
 const profileEl = document.getElementById('elevProfile');
-const profileMarker = L.circleMarker([0, 0], { radius: 7, color: '#fff', weight: 2, fillColor: '#1c7ed6', fillOpacity: 1, interactive: false });
+// Every vector layer names its renderer: the default one is a canvas that would land on top of
+// the roads' canvas and swallow their clicks.
+const profileMarker = L.circleMarker([0, 0], {
+  renderer: fuelRenderer, radius: 7, color: '#fff', weight: 2, fillColor: '#1c7ed6', fillOpacity: 1, interactive: false,
+});
 
 function demTile(x, y) {
   const key = `${x}/${y}`;
@@ -1440,7 +1469,9 @@ const previewLayer = L.layerGroup().addTo(map);
 function previewOption(opt) {
   previewLayer.clearLayers();
   if (opt && opt.route) {
-    L.polyline(opt.route.path, { color: '#fff', weight: 4, opacity: 0.9, dashArray: '8 6', interactive: false }).addTo(previewLayer);
+    L.polyline(opt.route.path, {
+      renderer: fuelRenderer, color: '#fff', weight: 4, opacity: 0.9, dashArray: '8 6', interactive: false,
+    }).addTo(previewLayer);
   }
 }
 
@@ -1531,6 +1562,162 @@ document.getElementById('generate').onclick = async () => {
   if (genOptions[0].route) selectOption(0);
   else renderOptions();
 };
+
+// ---------- search ----------
+// Roads and towns come from the built index (instant, offline); addresses and other places
+// from Photon, OSM's free search service, as you type.
+const SEARCH_DATA = window.SEARCH || { places: [], roads: [] };
+const PHOTON = 'https://photon.komoot.io/api/';
+const ROUTE_WORDS = new Set(['highway', 'hwy', 'route', 'rte', 'rt', 'road', 'rd', 'state']);
+const PLACE_RANK = { city: 0, town: 1, village: 2 };
+const searchEl = document.getElementById('search');
+const resultsEl = document.getElementById('searchResults');
+const searchMarker = L.circleMarker([0, 0], {
+  renderer: fuelRenderer, radius: 9, color: '#fff', weight: 3, fillColor: '#e64980', fillOpacity: 1, interactive: false,
+});
+let searchSeq = 0, photonTimer = null, results = [];
+
+// "K-10", "k10" and "K 10" all become "k 10"; "Lee's" matches "lees".
+const normWords = s => s.toLowerCase().replace(/['’]/g, '').replace(/([a-z])(\d)/g, '$1 $2')
+  .replace(/[-,.()]/g, ' ').split(/\s+/).filter(Boolean);
+
+// Every query word must match a word in the text: short ones exactly ("y" shouldn't match "york").
+function matchesAll(qWords, text) {
+  const words = normWords(text);
+  return qWords.every(q => words.some(w => q.length <= 2 ? w === q : w.startsWith(q)));
+}
+
+const TOWN_RADIUS_KM = 30;
+
+function localResults(q) {
+  let qw = normWords(q).filter(w => !ROUTE_WORDS.has(w));
+  if (!qw.length) qw = normWords(q);
+  if (!qw.length) return [];
+  let found = SEARCH_DATA.roads.filter(r => matchesAll(qw, `${r[0]} ${r[1]} ${r[7]}`));
+  // "MO Y camdenton": the last word(s) may be a town, meaning roads near it, not only roads
+  // whose nearest town it happens to be.
+  for (let k = 1; k < qw.length && found.length < 6; k++) {
+    const roadWords = qw.slice(0, -k), townWords = qw.slice(-k);
+    const towns = SEARCH_DATA.places.filter(p => matchesAll(townWords, p[0])).slice(0, 5);
+    towns.forEach(t => SEARCH_DATA.roads.forEach(r => {
+      if (!found.includes(r) && matchesAll(roadWords, `${r[0]} ${r[1]}`) &&
+          km([t[1], t[2]], [(r[2] + r[4]) / 2, (r[3] + r[5]) / 2]) < TOWN_RADIUS_KM) found.push(r);
+    }));
+  }
+  const roads = found
+    .sort((a, b) => b[6] - a[6]).slice(0, 6)
+    .map(([key, name, s, w, n, e, curves, town]) => ({
+      kind: 'road', key, label: key + (name ? ` · ${name}` : ''),
+      sub: `${town ? `near ${town} · ` : ''}${miles(curves)} mi of curves`, bounds: L.latLngBounds([s, w], [n, e]),
+    }));
+  const places = SEARCH_DATA.places
+    .filter(p => matchesAll(qw, p[0]))
+    .sort((a, b) => PLACE_RANK[a[3]] - PLACE_RANK[b[3]] || a[0].length - b[0].length).slice(0, 4)
+    .map(([name, lat, lon, kind]) => ({ kind: 'town', label: name, sub: kind[0].toUpperCase() + kind.slice(1), at: [lat, lon] }));
+  // Route-looking queries ("150", "mo y") list roads first; names list towns first.
+  const routeish = qw.some(w => /\d/.test(w) || w.length <= 2);
+  return routeish ? [...roads, ...places] : [...places, ...roads];
+}
+
+// Only search where the map has road data (plus a margin), so "k10" doesn't find Switzerland.
+const COVERAGE = (() => {
+  const size = window.TILE_INDEX ? TILE_INDEX.size : 0.5, xy = [...AVAILABLE].map(k => k.split('_').map(Number));
+  if (!xy.length) return '';
+  const xs = xy.map(p => p[0]), ys = xy.map(p => p[1]);
+  return [Math.min(...xs) * size - 1, Math.min(...ys) * size - 1, (Math.max(...xs) + 1) * size + 1, (Math.max(...ys) + 1) * size + 1].join(',');
+})();
+
+async function photonResults(q, seq) {
+  const c = map.getCenter();
+  const data = await fetchJson(`${PHOTON}?q=${encodeURIComponent(q)}&limit=5&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}` +
+    (COVERAGE ? `&bbox=${COVERAGE}` : ''), 8000);
+  if (seq !== searchSeq) return null;
+  return data.features.map(f => {
+    const p = f.properties, [lon, lat] = f.geometry.coordinates;
+    const label = p.name || [p.housenumber, p.street].filter(Boolean).join(' ') || 'Place';
+    return { kind: 'place', label, sub: [p.street && p.name ? p.street : '', p.city, p.state].filter(Boolean).join(', '), at: [lat, lon] };
+  });
+}
+
+function renderResults(list, waiting) {
+  results = list;
+  resultsEl.hidden = false;
+  resultsEl.innerHTML = list.length ? '' : `<div class="empty">${waiting ? 'Searching…' : 'No matches.'}</div>`;
+  list.forEach((res, i) => {
+    const row = document.createElement('div');
+    row.className = 'result' + (i === 0 ? ' active' : '');
+    row.innerHTML = `<div class="info"><div>${escapeHtml(res.label)}</div><small>${escapeHtml(res.sub)}</small></div>` +
+      (res.at ? '<button class="start" title="Start a trip here">Start</button>' : `<span class="kind">${res.kind}</span>`);
+    row.onclick = () => goTo(res);
+    const start = row.querySelector('.start');
+    if (start) start.onclick = e => { e.stopPropagation(); startAt(res); };
+    resultsEl.appendChild(row);
+  });
+}
+
+function runSearch() {
+  const q = searchEl.value.trim(), seq = ++searchSeq;
+  clearTimeout(photonTimer);
+  if (!q) { resultsEl.hidden = true; return; }
+  const local = localResults(q);
+  renderResults(local, q.length >= 3);
+  if (q.length < 3) return;
+  photonTimer = setTimeout(async () => {
+    try {
+      const remote = await photonResults(q, seq);
+      if (remote) renderResults([...local, ...remote].slice(0, 12), false);
+    } catch (e) {
+      if (seq === searchSeq && !local.length) renderResults([], false);
+    }
+  }, 350);
+}
+
+function closeSearch() {
+  resultsEl.hidden = true;
+  searchEl.blur();
+}
+
+async function goTo(res) {
+  closeSearch();
+  if (res.at) {
+    map.setView(res.at, res.kind === 'town' ? 12 : 14);
+    searchMarker.setLatLng(res.at).addTo(map);
+    return;
+  }
+  // A road: frame it, and once its tiles are in, outline the matching stretch.
+  map.removeLayer(searchMarker);
+  map.fitBounds(res.bounds, { maxZoom: 13, padding: [40, 40] });
+  loadTiles(res.bounds.pad(0.1));
+  await tilesSettled();
+  const pieces = roads.filter(r => (r.ref || r.name) === res.key && curvyBin(r) && res.bounds.pad(0.05).intersects(r.bounds));
+  if (!pieces.length) return;
+  selected = summarize(clusterRoads(pieces).sort((a, b) => b.roads.length - a.roads.length)[0], res.key);
+  showHighlight(selected);
+  updateRoadList();
+}
+
+function startAt(res) {
+  closeSearch();
+  const first = trip.items[0];
+  if (first && first.type === 'point' && /^Start/.test(first.label)) {
+    first.pts[0] = [+res.at[0].toFixed(5), +res.at[1].toFixed(5)];
+    first.label = `Start: ${res.label}`;
+    tripChanged();
+  } else {
+    addPoint(res.at, `Start: ${res.label}`, true);
+  }
+  map.setView(res.at, Math.max(map.getZoom(), 10));
+  showView('trip');
+  setStatus(`Start set to ${res.label}.`);
+}
+
+searchEl.oninput = runSearch;
+searchEl.onfocus = () => { if (searchEl.value.trim()) runSearch(); };
+searchEl.onkeydown = e => {
+  if (e.key === 'Escape') { searchEl.value = ''; closeSearch(); }
+  if (e.key === 'Enter' && results.length) goTo(results[0]);
+};
+map.on('click', () => { if (!resultsEl.hidden) closeSearch(); });
 
 // ---------- export & sharing ----------
 // Google re-plans between stops, so give it extra stops just past the turns where it might

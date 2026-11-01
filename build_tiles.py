@@ -319,13 +319,18 @@ CELL = 0.01           # degrees, roughly 1 km
 URBAN_STREETS = 40    # residential streets within the surrounding 3x3 cells
 
 
+PLACE_KINDS = ("city", "town", "village")
+
+
 class Roads(osmium.SimpleHandler):
-    def __init__(self, tiles, seen, residential, fuel):
+    def __init__(self, tiles, seen, residential, fuel, places):
         super().__init__()
-        self.tiles, self.seen, self.residential, self.fuel = tiles, seen, residential, fuel
+        self.tiles, self.seen, self.residential, self.fuel, self.places = tiles, seen, residential, fuel, places
         self.count = 0
 
     def node(self, n):
+        if n.tags.get("place") in PLACE_KINDS and "name" in n.tags:
+            self.places[n.id] = [n.tags["name"], round(n.location.lat, 4), round(n.location.lon, 4), n.tags["place"]]
         if is_gas_station(n.tags) and ("n", n.id) not in self.fuel:
             self.fuel[("n", n.id)] = fuel_row(dict(n.tags), n.location.lat, n.location.lon)
 
@@ -391,15 +396,63 @@ def estimate_mph(row, residential):
     return 45 if hw == "unclassified" else 55
 
 
+SEARCH_NEAR = 0.03       # degrees: pieces of the same road this close are one stretch (as in the app)
+SEARCH_MIN_CURVES = 800  # metres of curves before a stretch is worth listing
+
+
+def road_index(tiles, places):
+    """Named curvy stretches for search: [ref/name, name, s, w, n, e, metres of curves, nearest town]."""
+    town_grid = defaultdict(list)
+    for p in places:
+        town_grid[(math.floor(p[1] * 4), math.floor(p[2] * 4))].append(p)
+
+    def nearest_town(lat, lon):
+        cy, cx = math.floor(lat * 4), math.floor(lon * 4)
+        near = [p for dy in (-1, 0, 1) for dx in (-1, 0, 1) for p in town_grid[(cy + dy, cx + dx)]]
+        k = math.cos(math.radians(lat))
+        return min(near, key=lambda p: (p[1] - lat) ** 2 + ((p[2] - lon) * k) ** 2)[0] if near else ""
+
+    by_key = defaultdict(list)
+    for rows in tiles.values():
+        for row in rows:
+            key = row[3] or row[2]
+            if key and (row[7] or row[9]):
+                by_key[key].append(row)
+
+    out = []
+    for key, rows in by_key.items():
+        clusters = []  # [s, w, n, e, metres of curves, names seen]
+        for row in rows:
+            pts = decode(row[11])
+            s, n = min(p[0] for p in pts), max(p[0] for p in pts)
+            w, e = min(p[1] for p in pts), max(p[1] for p in pts)
+            c = next((c for c in clusters if s - SEARCH_NEAR <= c[2] and n + SEARCH_NEAR >= c[0]
+                      and w - SEARCH_NEAR <= c[3] and e + SEARCH_NEAR >= c[1]), None)
+            if c is None:
+                c = [s, w, n, e, 0, defaultdict(int)]
+                clusters.append(c)
+            c[0], c[1], c[2], c[3] = min(c[0], s), min(c[1], w), max(c[2], n), max(c[3], e)
+            c[4] += row[8] + row[9]
+            if row[2] and row[2] != key:
+                c[5][row[2]] += 1
+        for s, w, n, e, curves, names in clusters:
+            if curves < SEARCH_MIN_CURVES:
+                continue
+            name = max(names, key=names.get) if names else ""
+            out.append([key, name, round(s, 4), round(w, 4), round(n, 4), round(e, 4), round(curves),
+                        nearest_town((s + n) / 2, (w + e) / 2)])
+    return out
+
+
 def main(args):
     # cmd.exe doesn't expand wildcards, so do it here
     paths = sorted({p for a in (args or ["raw/*.osm.pbf"]) for p in glob.glob(a)})
     if not paths:
         sys.exit("No .osm.pbf files found in raw/.\n" + __doc__)
-    tiles, seen, residential, fuel = defaultdict(list), set(), defaultdict(int), {}
+    tiles, seen, residential, fuel, places = defaultdict(list), set(), defaultdict(int), {}, {}
     for path in paths:
         print(f"Reading {path} (takes a few minutes)...", flush=True)
-        h = Roads(tiles, seen, residential, fuel)
+        h = Roads(tiles, seen, residential, fuel, places)
         h.apply_file(path, locations=True, idx="flex_mem")
         print(f"  kept {h.count:,} roads", flush=True)
 
@@ -433,6 +486,14 @@ def main(args):
     index = {"size": TILE_SIZE, "built": date.today().isoformat(), "regions": regions, "tiles": sorted(tiles)}
     with open(os.path.join(OUT_DIR, "index.js"), "w", encoding="utf-8") as f:
         f.write("window.TILE_INDEX = " + json.dumps(index) + ";\n")
+    places = list(places.values())
+    search = {"places": places, "roads": road_index(tiles, places)}
+    with open(os.path.join(OUT_DIR, "search.js"), "w", encoding="utf-8") as f:
+        f.write("window.SEARCH = ")
+        json.dump(search, f, separators=(",", ":"), ensure_ascii=False)
+        f.write(";\n")
+    print(f"Search index: {len(places):,} towns, {len(search['roads']):,} road stretches")
+
     with open(os.path.join(OUT_DIR, "fuel.js"), "w", encoding="utf-8") as f:
         f.write("window.FUEL = ")
         json.dump(list(fuel.values()), f, separators=(",", ":"), ensure_ascii=False)
