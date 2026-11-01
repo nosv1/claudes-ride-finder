@@ -5,6 +5,11 @@ Ideas that came up, roughly in order of how much they'd help.
 - **Weather forecast for a ride.** Hourly forecast at points along the planned route, timed
   to when you'll be there: rain chance, temperature, wind gusts. Flag rain or storms on the ride.
   Open-Meteo is free with no key and allows cross-origin requests.
+- **Turn-by-turn "Ride mode"** in the app, so it follows the planned route exactly (Google
+  re-plans between stops). Full-screen map following GPS, big next-turn banner, voice prompts
+  from Valhalla's turn instructions, screen kept awake, re-routing back onto the planned roads,
+  gas and blind-crest callouts. Limits: screen on and app in front (phone mounted on a charger),
+  no CarPlay/Android Auto, re-routing needs signal, iPhone voice can be finicky.
 - **Route fly-through**: a 3D camera flight along a planned ride (inspired by the "god's eye
   view" project). Tilted camera following the route and looking ahead, play/pause and speed,
   a scrubber tied to the elevation chart, blind crests called out as it passes them.
