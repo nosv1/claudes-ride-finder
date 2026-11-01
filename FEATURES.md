@@ -287,8 +287,15 @@ under the tag, and the Hills chip lists ft/mi.
 - Routes the top 6 up front.
 - Roads are turned end for end to make the rides between them shortest over the whole loop (not nearest end first).
 - **Doubling back:** loops are ranked by curvy² / miles × (1 − 3 × share ridden twice), floor 0.1. A loop riding
-  more than 4% twice is tried without the generated road most to blame (the one the doubled-back miles are on,
-  else the nearest), up to twice, keeping the change only if it ranks higher. Loops riding more than 20% twice are
+  more than 4% twice (up to twice):
+  - first tries **another way home**: the best-scoring road with an end or midpoint within 3 km of the stretch
+    ridden twice, not mostly on it, and fitting the time left (estimate × how far the estimate ran off). Short
+    roads count here (800 m+ of curves, not unclassified), though never as the main roads, which need 2 km;
+  - else tries it without the generated road most to blame (the one the doubled-back miles are on, else the
+    nearest);
+  - keeping a change only if it ranks higher and stays in 80–120%. From Lee's Summit at 1.5 h on back roads, the
+    out-and-back "MO TT" loop (48% twice) became Buckner Tarsney → MO TT → Litchford (12%).
+- The same loop reached from two directions is shown once. Loops riding more than 20% twice are
   left out when at least 3 others remain. Measured on Oct-31 data: the top loop from south KC went from 29% to 13%,
   from the Lake of the Ozarks from 28% to 1%.
 - Option cards show time, miles, curvy miles and %, blind crests, miles ridden twice, and the roads, with the

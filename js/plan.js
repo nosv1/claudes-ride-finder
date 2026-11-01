@@ -105,7 +105,9 @@ export function candidateGroups(roads, start, maxKm, isWorthy) {
   const groups = [];
   byKey.forEach((list, key) => clusterRoads(list).forEach(c => {
     const g = summarize(c, key);
-    if (g.curvy < GEN.minCurveM) return;
+    if (g.curvy < GEN.wayHomeM) return;
+    if (g.curvy < GEN.minCurveM && g.roads.every(r => r.hw === 'unclassified')) return;
+    if (g.curvy < GEN.minCurveM) g.small = true;  // only as another way home (see routeOption)
     g.stop = roadStop(g);
     g.center = center(boundsOf([g.stop.pts[0], g.stop.pts[g.stop.pts.length - 1]]));
     groups.push(g);
@@ -168,7 +170,7 @@ export function fillLoop(start, pool, dir, hours, chosen, maxRoads) {
     const share = (hours - est.hours) / (maxRoads - chosen.length);
     let best = null;
     for (const g of pool) {
-      if (chosen.includes(g)) continue;
+      if (chosen.includes(g) || g.small) continue;
       const trial = orderLoop(start, [...chosen, g], dir);
       const e = estimate(start, trial);
       if (e.hours > hours) continue;
@@ -211,9 +213,25 @@ export function buildOptions(groups, start, hours, required = []) {
     const fun = chosen.reduce((s, g) => s + g.score, 0);
     // Loops short of the time rank lower: one filling 3/4 of it counts about half.
     const fit = Math.min(1, est.hours / hours) ** 2;
-    options.push({ dir, pool, chosen, stops, maxRoads, value: fun * est.roadHours / (est.hours || 1) * fit, required: req.length });
+    options.push({ dir, pool, free, chosen, stops, maxRoads, value: fun * est.roadHours / (est.hours || 1) * fit, required: req.length });
   }
   return options.sort((a, b) => b.value - a.value).slice(0, GEN.maxOptions);
+}
+
+// Roads that could give a loop another way home where it rides the same road twice: an end or a
+// midpoint within wayHomeKm of the doubled-back stretch, not already in the loop, and not mostly
+// on that stretch itself. Best first.
+export function wayHomeRoads(groups, items, lines) {
+  const spots = lines.flat().filter((_, i) => i % 10 === 0);
+  if (!spots.length) return [];
+  const used = new Set(items.flatMap(it => it.ids || []));
+  const near = p => spots.some(q => km(p, q) < GEN.wayHomeKm);
+  const onIt = g => {
+    const pts = g.roads.flatMap(r => r.geom.filter((_, i) => i % 5 === 0));
+    return pts.filter(p => spots.some(q => km(p, q) < 0.2)).length > pts.length / 2;
+  };
+  return groups.filter(g => !g.ids.some(id => used.has(id)) && g.stop.pts.some(near) && !onIt(g))
+    .sort((a, b) => b.score - a.score);
 }
 
 export { COMPASS, heading } from './geo.js';

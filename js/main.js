@@ -354,6 +354,9 @@ async function generate() {
     shown = options.filter(o => o.route).sort((a, b) => off(a) - off(b)).slice(0, 3);
     status = `Couldn’t fit a loop close to ${hours === 1.5 ? '1½' : hours} h here, so these are the nearest. Try another time or loosen the filters.`;
   }
+  // The same loop can come out of two directions once fixed: keep one.
+  const sigs = new Set(), sig = o => o.items.slice(1).map(it => (it.ids || [it.label]).join(',')).sort().join('|');
+  shown = shown.filter(o => !o.route || !sigs.has(sig(o)) && sigs.add(sig(o)));
   // Leave out loops that ride a fifth of the way twice, when there are enough without.
   const clean = shown.filter(o => !twice(o));
   if (clean.length >= 3) shown = clean;
@@ -373,8 +376,10 @@ function rate(r) {
 
 // Route a loop for real. Under 80% of the time, fill it again aiming that much longer (the
 // estimate ran fast), up to twice; over 120%, drop its weakest road, up to twice. While it
-// then doubles back, try it without the generated road most to blame (up to twice): the one the
-// doubled-back miles are on, like a lake road that dead-ends, or else the one nearest them.
+// then doubles back (up to twice), try another way home first: a road near the stretch ridden
+// twice, short ones too, if the time allows. Else try it without the generated road most to
+// blame: the one the doubled-back miles are on, like a lake road that dead-ends, or else the
+// one nearest them. Changes are kept only if the loop ranks higher and stays in 80–120%.
 async function routeOption(opt, start, hours) {
   let items = [start, ...opt.stops];
   const routeOf = list => {
@@ -398,19 +403,34 @@ async function routeOption(opt, start, hours) {
   }
   let best = rate(r);
   for (let tries = 0; tries < 2 && best && best.back > GEN.maxBack * best.route.meters; tries++) {
+    const lines = P.retrace(best.route.path).lines, spots = lines.flat(), attempts = [];
+    // Another way home: the best road near the stretch ridden twice that fits the time left.
+    const estOf = list => P.estimate(start.pts[0], list.slice(1)).hours;
+    const scale = best.route.seconds / 3600 / estOf(items), room = hours * GEN.overrun - best.route.seconds / 3600;
+    for (const g of P.wayHomeRoads(opt.free, items, lines)) {
+      const more = { items: items.map(it => ({ ...it, pts: it.pts.map(p => [...p]) })), loop: true };
+      more.items[T.insertRoad(more, g)].gen = true;
+      if ((estOf(more.items) - estOf(items)) * scale <= room) { attempts.push(more.items); break; }
+    }
+    // Or without the generated road most to blame.
     const added = items.filter(it => it.gen);
-    if (!added.length || items.length <= 2) break;
-    const spots = P.retrace(best.route.path).lines.flat();
-    const geoms = it => (it.ids || []).map(id => store.byId.get(id)).filter(Boolean).map(x => x.geom);
-    const onIt = it => spots.filter(q => geoms(it).some(g => g.some(p => km(p, q) < 0.15))).length;
-    const near = it => Math.min(...it.pts.flatMap(p => spots.map(q => km(p, q))));
-    const blame = added.map(it => ({ it, on: onIt(it), near: near(it) }))
-      .sort((a, b) => b.on - a.on || a.near - b.near)[0].it;
-    const fewer = items.filter(it => it !== blame).map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
-    const other = rate(await routeOf(fewer));
-    if (!other || other.worth <= best.worth || other.route.seconds < hours * 3600 * GEN.under) break;
-    items = fewer;
-    best = other;
+    if (added.length && items.length > 2) {
+      const geoms = it => (it.ids || []).map(id => store.byId.get(id)).filter(Boolean).map(x => x.geom);
+      const onIt = it => spots.filter(q => geoms(it).some(g => g.some(p => km(p, q) < 0.15))).length;
+      const near = it => Math.min(...it.pts.flatMap(p => spots.map(q => km(p, q))));
+      const blame = added.map(it => ({ it, on: onIt(it), near: near(it) }))
+        .sort((a, b) => b.on - a.on || a.near - b.near)[0].it;
+      attempts.push(items.filter(it => it !== blame).map(it => ({ ...it, pts: it.pts.map(p => [...p]) })));
+    }
+    let better = null;
+    for (const list of attempts) {
+      const other = rate(await routeOf(list));
+      const hrs = other && other.route.seconds / 3600;
+      if (other && other.worth > best.worth && hrs >= hours * GEN.under && hrs <= hours * GEN.overrun) { better = { list, other }; break; }
+    }
+    if (!better) break;
+    items = better.list;
+    best = better.other;
   }
   Object.assign(opt, { items, route: best && best.route }, best ? { curvy: best.curvy, blind: best.blind, back: best.back, worth: best.worth } : {});
 }

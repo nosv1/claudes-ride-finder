@@ -66,6 +66,9 @@ export const ROUTING = {
 export const GEN = {
   roadKmh: 60, linkKmh: 80, roadFactor: 1.3, maxRoads: 4, maxRoadsCap: 9, spread: 60, maxOptions: 6,
   minCurveM: 2000,
+  // Shorter curvy roads (down to wayHomeM of curves, not farm lanes) only join a loop that
+  // doubles back, as another way home: one within wayHomeKm of the stretch ridden twice.
+  wayHomeM: 800, wayHomeKm: 3,
   under: 0.8, overrun: 1.2,   // loops must route to 80–120% of the chosen time
   maxBack: 0.04,     // share of a loop ridden twice before it tries dropping a road
   hideBack: 0.2,     // loops riding more than this share twice are left out (if 3 others remain)

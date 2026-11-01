@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, nearestIndex } from '../../js/geo.js';
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel } from '../../js/roads.js';
 import { newTrip, addRoad, insertRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { planFuel, googlePoints, googleLinks, buildOptions, estimate, gpx, orientStops, retrace } from '../../js/plan.js';
+import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 
 const TILES = new URL('../../tiles/', import.meta.url);
@@ -268,6 +268,30 @@ test('generator builds every loop through the rider’s own road', () => {
   // The rider's road is used even when nothing else fits the time.
   const tight = buildOptions(groups, start, 0.1, [mine]);
   assert.ok(tight.every(o => o.stops.length === 1 && o.stops[0].label === 'MO 150'));
+});
+
+test('short curvy roads are kept only as another way home, never as the main roads', () => {
+  const start = [38.5, -94];
+  const roads = [
+    row({ id: 1, ref: 'MO F', score: 900, curvy: 1100, pts: east(38.6, -93.9) }),
+    row({ id: 2, hw: 'unclassified', name: 'Farm Lane', score: 900, curvy: 1100, pts: east(38.6, -93.8) }),
+    row({ id: 3, ref: 'MO TT', score: 4000, curvy: 3500, pts: east(38.7, -93.9) }),
+  ];
+  const groups = candidateGroups(roads, start, 100, () => true);
+  assert.deepEqual(groups.map(g => [g.key, !!g.small]).sort(), [['MO F', true], ['MO TT', false]]);
+  const opts = buildOptions(groups, start, 1.5);
+  assert.ok(opts.length && opts.every(o => o.stops.every(s => s.label === 'MO TT')), 'loops are built from the main roads');
+  assert.equal(buildOptions(groups.filter(g => g.small), start, 1.5).length, 0);
+});
+
+test('another way home: roads near the stretch ridden twice, not on it, not already in the loop', () => {
+  const line = Array.from({ length: 1000 }, (_, i) => [38.5, -94 + i * 0.0002]);  // ridden twice, 15–20 m apart like retrace's
+  const g = (id, score, pts) => ({ key: `R${id}`, ids: [id], score, roads: [{ geom: pts }], stop: { pts: [pts[0], pts[pts.length - 1]] } });
+  const beside = g(1, 500, east(38.515, -93.95, 30)), better = g(2, 900, east(38.52, -93.9, 30));
+  const on = g(3, 2000, east(38.5, -93.95, 30)), far = g(4, 3000, east(38.8, -93.95, 30)), used = g(5, 4000, east(38.51, -93.95, 30));
+  const picks = wayHomeRoads([beside, better, on, far, used], [{ ids: [5] }], [line]);
+  assert.deepEqual(picks.map(p => p.key), ['R2', 'R1']);
+  assert.deepEqual(wayHomeRoads([beside], [], []), []);
 });
 
 test('GPX has waypoints, a route and the track', () => {
