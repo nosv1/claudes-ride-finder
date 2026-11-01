@@ -2,3 +2,4 @@
 raw/
 .vscode/
 __pycache__/
+_browser_test.html

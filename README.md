@@ -8,6 +8,8 @@ A map for finding good motorcycle roads: curvy roads you can ride at a decent sp
 
 Click a road for its curves, speed limit, and surface, plus Street View and satellite links.
 
+See [FEATURES.md](FEATURES.md) for the full feature list and requirements, and [tests/README.md](tests/README.md) for the tests.
+
 ## Data
 
 Road data comes from [OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL). Most rural roads have no posted limit in OSM, so those are estimated: 55 mph for state routes, 45 for county roads, 30 in town.
