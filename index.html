@@ -105,6 +105,7 @@
     }
   }
 
+  .leaflet-fuel-pane > svg { pointer-events: none; }  /* only the station dots take clicks */
   .leaflet-popup-content { font: 13px/1.5 system-ui, sans-serif; }
   .leaflet-popup-content b { font-size: 14px; }
   .leaflet-popup-content .meta { color: #777; }
@@ -205,6 +206,22 @@
     </div>
 
     <div id="tripView" hidden>
+      <h2 style="margin-top:4px">Generate a ride</h2>
+      <label class="row" style="margin-top:4px">Ride time
+        <select id="genHours">
+          <option value="1">1 h</option><option value="1.5">1½ h</option><option value="2">2 h</option>
+          <option value="3" selected>3 h</option><option value="4">4 h</option><option value="5">5 h</option>
+          <option value="6">6 h</option><option value="8">8 h</option>
+        </select>
+        <span class="note" style="margin:0">riding, not counting stops</span>
+      </label>
+      <div class="btns">
+        <button id="generate" class="primary">Generate a loop</button>
+        <button id="another" disabled>Try another</button>
+      </div>
+      <div id="genStatus" class="note">Builds a loop from your start through the best roads in reach, using the filters from Find roads.</div>
+
+      <h2>Stops</h2>
       <div class="btns" style="margin-top:0">
         <button id="startHere">Start from my location</button>
         <button id="pinMode">＋ Pin a stop</button>
@@ -670,9 +687,10 @@ const FUEL_STATUS = {
 const FUEL_ZOOM = 9;
 const stations = (window.FUEL || []).map(([lat, lon, name, city, status, hours]) => ({ lat, lon, name, city, status, hours }));
 
+// SVG, not canvas: a canvas above the roads would swallow every click and hover meant for them.
 map.createPane('fuel');
 map.getPane('fuel').style.zIndex = 460;
-const fuelRenderer = L.canvas({ pane: 'fuel', padding: 0.5, tolerance: 4 });
+const fuelRenderer = L.svg({ pane: 'fuel', padding: 0.5 });
 const fuelLayer = L.layerGroup();       // every station, when "Show gas stations" is on
 const routeFuelLayer = L.layerGroup().addTo(map);  // stations along the planned route
 
@@ -718,7 +736,8 @@ function setVisible(layer, visible) {
 // that road instead of cutting across, and an exit point.
 const VALHALLA = 'https://valhalla1.openstreetmap.de/route';
 const OSRM = 'https://router.project-osrm.org/route/v1/driving';
-const MAX_LOCATIONS = 20;   // the public Valhalla server's limit
+const MAX_LOCATIONS = 25;   // keeps routing requests (and Google Maps parts) manageable
+const VALHALLA_MAX = 10;    // the public Valhalla server's per-request limit
 const STORAGE_KEY = 'ride-finder-trip';
 
 let trip = { items: [], loop: true };
@@ -881,19 +900,25 @@ function decodePolyline(str, precision = 6) {
 }
 
 // Valhalla's motorcycle profile, with a dial for how much to avoid highways between roads.
+// The public server takes 10 points per request, so longer trips go in overlapping chunks.
 async function valhallaRoute(pts) {
-  const req = {
-    locations: pts.map(({ p, via }) => ({ lat: p[0], lon: p[1], type: via ? 'through' : 'break' })),
-    costing: 'motorcycle',
-    costing_options: { motorcycle: { use_highways: +prefEl.value, use_trails: 0 } },
-    units: 'miles',
-  };
-  const data = await fetchJson(`${VALHALLA}?json=${encodeURIComponent(JSON.stringify(req))}`, 30000);
-  return {
-    path: data.trip.legs.flatMap(l => decodePolyline(l.shape)),
-    meters: data.trip.summary.length * 1609.34,
-    seconds: data.trip.summary.time,
-  };
+  const result = { path: [], meters: 0, seconds: 0 };
+  for (let i = 0; i < pts.length - 1; i += VALHALLA_MAX - 1) {
+    const chunk = pts.slice(i, i + VALHALLA_MAX);
+    const req = {
+      locations: chunk.map(({ p, via }, j) => ({
+        lat: p[0], lon: p[1], type: via && j > 0 && j < chunk.length - 1 ? 'through' : 'break',
+      })),
+      costing: 'motorcycle',
+      costing_options: { motorcycle: { use_highways: +prefEl.value, use_trails: 0 } },
+      units: 'miles',
+    };
+    const data = await fetchJson(`${VALHALLA}?json=${encodeURIComponent(JSON.stringify(req))}`, 30000);
+    result.path.push(...data.trip.legs.flatMap(l => decodePolyline(l.shape)));
+    result.meters += data.trip.summary.length * 1609.34;
+    result.seconds += data.trip.summary.time;
+  }
+  return result;
 }
 
 // Backup router: plain fastest route, no back-roads preference.
@@ -1089,6 +1114,172 @@ function addFuelStop(s) {
   setStatus(`Added ${s.name} as stop ${at + 1}.`);
   tripChanged();
 }
+
+// ---------- ride generator ----------
+// Picks a direction, takes the best roads within reach that way, and orders them so the loop
+// goes out along one side and back along the other. Rough speeds size the loop up front;
+// the router's real time then decides whether a road has to go.
+const GEN_ROAD_KMH = 60;    // riding the curvy road itself
+const GEN_LINK_KMH = 80;    // getting between roads
+const ROAD_FACTOR = 1.3;    // road distance vs straight line
+const MAX_GEN_ROADS = 4;    // keeps the route a sensible number of stops
+const GEN_SPREAD = 60;      // degrees either side of a direction to look for roads
+const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+
+const genHoursEl = document.getElementById('genHours');
+const genStatusEl = document.getElementById('genStatus');
+const anotherEl = document.getElementById('another');
+let genOptions = [], genIndex = 0;
+
+const rideWorthy = r => curvyBin(r) && !(hideUnpaved.checked && r.surface === 1) &&
+  (r.mph ?? r.estMph) >= +minSpeed.value && hillLevel(r.hill) >= +minHills.value;
+const km = (a, b) => map.distance(a, b) / 1000;
+const bearing = (a, b) => (Math.atan2((b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), b[0] - a[0]) * 180 / Math.PI + 360) % 360;
+const relAngle = (b, dir) => ((b - dir + 540) % 360) - 180;  // -180..180 around dir
+
+function tilesSettled(timeout = 20000) {
+  const t0 = Date.now();
+  return new Promise(resolve => {
+    const check = () => [...tileState.values()].includes('loading') && Date.now() - t0 < timeout
+      ? setTimeout(check, 200) : resolve();
+    check();
+  });
+}
+
+function candidateGroups(start, maxKm) {
+  const byName = new Map();
+  roads.forEach(r => {
+    const key = r.ref || r.name;
+    if (!key || !rideWorthy(r) || km(start, r.geom[0]) > maxKm) return;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(r);
+  });
+  const groups = [];
+  byName.forEach((list, key) => clusterRoads(list).forEach(c => {
+    const g = summarize(c, key);
+    if (g.curvy < 1500) return;  // a corner or two isn't worth routing for
+    g.stop = roadStop(g);
+    const a = g.stop.pts[0], b = g.stop.pts[g.stop.pts.length - 1];
+    g.center = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    groups.push(g);
+  }));
+  return groups;
+}
+
+// Order roads by angle across the direction of travel, each ridden from its nearer end.
+function orderLoop(start, gs, dir) {
+  let prev = start;
+  return [...gs]
+    .sort((a, b) => relAngle(bearing(start, a.center), dir) - relAngle(bearing(start, b.center), dir))
+    .map(g => {
+      const s = { ...g.stop, pts: g.stop.pts.map(p => [...p]), score: g.score };
+      if (d2(prev, s.pts[s.pts.length - 1]) < d2(prev, s.pts[0])) s.pts.reverse();
+      prev = s.pts[s.pts.length - 1];
+      return s;
+    });
+}
+
+function estHours(start, stops) {
+  let h = 0, prev = start;
+  stops.forEach(s => {
+    h += km(prev, s.pts[0]) * ROAD_FACTOR / GEN_LINK_KMH;
+    for (let i = 1; i < s.pts.length; i++) h += km(s.pts[i - 1], s.pts[i]) * ROAD_FACTOR / GEN_ROAD_KMH;
+    prev = s.pts[s.pts.length - 1];
+  });
+  return h + km(prev, start) * ROAD_FACTOR / GEN_LINK_KMH;
+}
+
+function buildOptions(start, hours, maxKm) {
+  const groups = candidateGroups(start, maxKm);
+  const options = [], seen = new Set();
+  for (let dir = 0; dir < 360; dir += 30) {
+    const pool = groups.filter(g => Math.abs(relAngle(bearing(start, g.center), dir)) <= GEN_SPREAD)
+      .sort((a, b) => b.score - a.score);
+    let chosen = [], stops = [];
+    for (const g of pool) {
+      if (chosen.length >= MAX_GEN_ROADS) break;
+      const trial = orderLoop(start, [...chosen, g], dir);
+      if (estHours(start, trial) <= hours) { chosen = [...chosen, g]; stops = trial; }
+    }
+    const sig = chosen.map(g => g.key + g.center).sort().join('|');
+    if (!chosen.length || seen.has(sig)) continue;
+    seen.add(sig);
+    options.push({ dir, stops, value: chosen.reduce((s, g) => s + g.score, 0) });
+  }
+  return options.sort((a, b) => b.value - a.value);
+}
+
+async function applyOption(i, hours) {
+  const opt = genOptions[i];
+  const heading = COMPASS[Math.round(opt.dir / 45) % 8];
+  trip.items = [trip.items[0], ...opt.stops.map(s => ({ ...s, pts: s.pts.map(p => [...p]) }))];
+  trip.loop = loopEl.checked = true;
+  renderTrip();
+  saveTrip();
+  genStatusEl.textContent = `Heading ${heading}… routing.`;
+  await computeRoute();
+  // The real route came out too long: drop the weakest road and try again.
+  for (let tries = 0; route && route.seconds > hours * 3600 * 1.15 && trip.items.length > 2 && tries < 3; tries++) {
+    const weakest = trip.items.slice(1).reduce((a, b) => (b.score ?? Infinity) < (a.score ?? Infinity) ? b : a);
+    trip.items.splice(trip.items.indexOf(weakest), 1);
+    renderTrip();
+    saveTrip();
+    await computeRoute();
+  }
+  const names = trip.items.slice(1).map(it => it.label).join(', ');
+  genStatusEl.textContent = route
+    ? `Option ${i + 1} of ${genOptions.length}, heading ${heading}: ${names}. About ${fmtDuration(route.seconds)} of riding.`
+    : `Heading ${heading}: ${names}. Couldn’t route it right now; try again in a minute.`;
+  anotherEl.disabled = genOptions.length < 2;
+  const pts = trip.items.flatMap(it => it.pts);
+  map.fitBounds(L.latLngBounds(route ? route.path : pts), { padding: [40, 40] });
+}
+
+function currentStart() {
+  const first = trip.items[0];
+  if (first && first.type === 'point') return Promise.resolve(first);
+  // No start yet: use the rider's location.
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject();
+    genStatusEl.textContent = 'Finding your location for the start…';
+    navigator.geolocation.getCurrentPosition(pos => {
+      addPoint([pos.coords.latitude, pos.coords.longitude], 'Start (my location)', true);
+      resolve(trip.items[0]);
+    }, reject, { timeout: 15000 });
+  });
+}
+
+document.getElementById('generate').onclick = async () => {
+  const hours = +genHoursEl.value;
+  if (trip.items.length > 1 && !confirm('Replace your current stops with a generated loop? Your start stays.')) return;
+  let start;
+  try {
+    start = await currentStart();
+  } catch (e) {
+    genStatusEl.textContent = 'Set a start first: "Start from my location" or "Pin a stop".';
+    return;
+  }
+  const s = start.pts[0];
+  // Far enough out that going there and back fits the time, with some road to ride.
+  const maxKm = hours * GEN_LINK_KMH / (2 * ROAD_FACTOR);
+  const dLat = maxKm / 111, dLon = maxKm / (111 * Math.cos(s[0] * Math.PI / 180));
+  genStatusEl.textContent = 'Loading roads around your start…';
+  loadTiles(L.latLngBounds([s[0] - dLat, s[1] - dLon], [s[0] + dLat, s[1] + dLon]));
+  await tilesSettled();
+  genOptions = buildOptions(s, hours, maxKm);
+  genIndex = 0;
+  if (!genOptions.length) {
+    genStatusEl.textContent = 'No good roads within reach. Try a longer ride, or loosen the speed/hills filters in Find roads.';
+    anotherEl.disabled = true;
+    return;
+  }
+  await applyOption(0, hours);
+};
+
+anotherEl.onclick = () => {
+  genIndex = (genIndex + 1) % genOptions.length;
+  applyOption(genIndex, +genHoursEl.value);
+};
 
 // ---------- export & sharing ----------
 // Google Maps links take up to 9 stops between start and end, so long trips become several parts.
