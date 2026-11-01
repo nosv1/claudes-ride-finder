@@ -131,6 +131,7 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 **Layout**
 - A floating search bar with filter chips under it: mode, speed floor (Best rides), hills, Paved, ⚠ Blind crests, Gas.
 - Chip menus close on a second tap of the chip, a tap anywhere else, Esc, or the map moving.
+- Pop-ups (toasts) last 2 s + 40 ms a letter, at most 5 s (at least 4.5 s with a button like Undo); a tap closes one.
 - **Phones:** a bottom sheet with peek, half and full heights. Drag its handle, or tap the handle to step through.
   Swiping the content moves the sheet too, like a map app: down when the list is at its top, up until the sheet is
   full; otherwise the swipe scrolls the list. A swipe of 50 px moves at least one height. (Stop grips and the

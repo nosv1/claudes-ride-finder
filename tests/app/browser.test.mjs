@@ -232,6 +232,15 @@ test('the ride page can generate loops through its stops', async () => {
   await page.waitFor('!RF.gen.running', 180000);
 });
 
+test('pop-ups go away on their own in a few seconds, or at a tap', async () => {
+  await page.eval("import('./js/ui.js').then(u => u.toast('Short note'))");
+  assert.equal(await page.eval("document.getElementById('toast').hidden"), false);
+  await page.waitFor("document.getElementById('toast').hidden", 3000);
+  await page.eval("import('./js/ui.js').then(u => u.toast('With a button', { label: 'Undo', run: () => {} }))");
+  await page.eval("document.getElementById('toast').click()");
+  assert.equal(await page.eval("document.getElementById('toast').hidden"), true);
+});
+
 test('the map key explains what each class means', async () => {
   await page.eval("RF.go('home')");
   await page.eval("document.querySelector('.key-btn').click()");

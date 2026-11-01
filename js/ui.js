@@ -171,10 +171,13 @@ export class Sheet {
 let toastTimer = null;
 export function toast(msg, action) {
   const el = document.getElementById('toast'), actions = [action || []].flat();
-  el.replaceChildren(h('span', {}, msg), ...actions.map(a => h('button', { onclick: () => { el.hidden = true; a.run(); } }, a.label)));
+  el.replaceChildren(h('span', {}, msg), ...actions.map(a => h('button', { onclick: e => { e.stopPropagation(); el.hidden = true; a.run(); } }, a.label)));
   el.hidden = false;
+  el.onclick = () => { el.hidden = true; };  // tap it to close it early
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, actions.length || msg.length > 80 ? 9000 : 3200);
+  // Long enough to read (2 s + 40 ms a letter, at most 5 s), a little longer when it has a button.
+  const ms = Math.min(5000, 2000 + 40 * msg.length);
+  toastTimer = setTimeout(() => { el.hidden = true; }, actions.length ? Math.max(ms, 4500) : ms);
 }
 
 // A small popover menu under an anchor element or at a screen point. Tapping the same anchor
