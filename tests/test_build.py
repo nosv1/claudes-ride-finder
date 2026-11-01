@@ -89,6 +89,30 @@ class TestRamps(unittest.TestCase):
         self.assertGreater(tight, 0.5 * bt.ramp_sweep(to_latlon(loop)), "the app's rule: mostly tight means not a fast ramp")
 
 
+    def joined(self, signals=(), crossing=None):
+        """Two ramp pieces meeting at node 11; the ids of the rows they become."""
+        h = bt.Roads(defaultdict(list), set(), defaultdict(int), {}, {}, {10, 11, 12})
+        tags = {"highway": "motorway_link"}
+        h.ramp_ways = {1: (10, 11, to_latlon(line(0, 0, 0, 200)), tags, 45),
+                       2: (11, 12, to_latlon(line(0, 200, 0, 400)), tags, 45)}
+        h.signals = set(signals)
+        h.crossing.update(crossing or {})
+        h.finish_ramps()
+        return sorted(row[0] for rows in h.tiles.values() for row in rows)
+
+    def test_pieces_join_where_nothing_else_meets(self):
+        self.assertEqual(self.joined(), [1])
+
+    def test_not_joined_across_a_stop_light_or_a_crossroad(self):
+        # MO-291 at MO-150: the off-ramp and on-ramp met at the signalled crossroad and became one "fast ramp".
+        self.assertEqual(self.joined(signals={11}), [1, 2])
+        self.assertEqual(self.joined(crossing={11: 2}), [1, 2])
+
+    def test_joined_past_a_road_that_only_forks_off(self):
+        # US 63 at MO 763 (Columbia): MO 763 starts where the ramp carries on.
+        self.assertEqual(self.joined(crossing={11: 1}), [1])
+
+
 class TestSpeedAndSurface(unittest.TestCase):
     def test_parse_mph(self):
         self.assertEqual(bt.parse_mph("45 mph"), 45)

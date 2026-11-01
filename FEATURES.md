@@ -68,6 +68,12 @@ committed as `tiles/`. The app needs no OSM server at runtime.
 **Fast ramps** (`motorway_link`, `trunk_link`)
 - OSM splits ramps into short pieces, so pieces are joined end to end where nothing merges or splits, then
   scored as one ramp, stored under the first piece's id and named from `destination:ref` ("Ramp to I 435 North").
+- **Never joined across a junction:** not at a node tagged `traffic_signals` or `stop`, nor where another road
+  passes through or crosses (a way through the node, or two ending there). A road that only starts there is a
+  fork the ramp carries on past, so that still joins (US 63 at MO 763). A ramp piece with a light or stop sign
+  partway along is dropped. Regression cases: MO-291 at MO-150 (Lee's Summit), I-35 at Princeton St (Ottawa) were
+  off-ramp + on-ramp joined across the crossroad into one "flyover". A first pass over each `.pbf` collects ramp
+  nodes so the main pass can see which other roads touch them.
 - Sweep for ramps counts radii of 150–1,500 m (highway-speed ramps curve wider than back roads).
 - Kept if they sweep ≥ 300 m or have a posted limit. No elevation (bare-earth data is meaningless on a flyover),
   not in the search index. Lane counts go on every row (index 14).

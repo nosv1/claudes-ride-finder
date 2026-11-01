@@ -31,6 +31,9 @@ OUT_DIR = "tiles"
 CURVY_TYPES = {"primary", "secondary", "tertiary", "unclassified"}
 # Interstate/expressway ramps: scored on their own for long, fast sweeps (flyovers), not tight loops.
 RAMP_TYPES = {"motorway_link", "trunk_link"}
+# Highways that aren't for traffic: a footpath touching a ramp doesn't make it a junction.
+NOT_ROADS = {"footway", "path", "cycleway", "steps", "pedestrian", "bridleway", "corridor", "platform",
+             "proposed", "construction", "elevator"}
 SPEED_TYPES = CURVY_TYPES | {"motorway", "trunk", "residential", "motorway_link", "trunk_link",
                              "primary_link", "secondary_link", "tertiary_link"}
 
@@ -336,15 +339,33 @@ URBAN_STREETS = 40    # residential streets within the surrounding 3x3 cells
 PLACE_KINDS = ("city", "town", "village")
 
 
+class RampNodes(osmium.SimpleHandler):
+    """First pass: every node on a ramp, so the main pass can tell which ones other roads meet."""
+    def __init__(self):
+        super().__init__()
+        self.nodes = set()
+
+    def way(self, w):
+        if w.tags.get("highway") in RAMP_TYPES:
+            self.nodes.update(n.ref for n in w.nodes)
+
+
 class Roads(osmium.SimpleHandler):
-    def __init__(self, tiles, seen, residential, fuel, places):
+    def __init__(self, tiles, seen, residential, fuel, places, ramp_nodes):
         super().__init__()
         self.tiles, self.seen, self.residential, self.fuel, self.places = tiles, seen, residential, fuel, places
         self.lanes = {}
         self.ramp_ways = {}   # id -> (first node, last node, coords, tags, mph)
+        self.ramp_nodes = ramp_nodes
+        self.signals = set()  # ramp nodes with a traffic light or stop sign
+        # Ramp nodes another (non-ramp) road passes through or crosses: ways through the node count
+        # 2, ways ending there 1. A road only starting there (1) is a fork the ramp carries on past.
+        self.crossing = defaultdict(int)
         self.count = 0
 
     def node(self, n):
+        if n.tags.get("highway") in ("traffic_signals", "stop") and n.id in self.ramp_nodes:
+            self.signals.add(n.id)
         if n.tags.get("place") in PLACE_KINDS and "name" in n.tags:
             self.places[n.id] = [n.tags["name"], round(n.location.lat, 4), round(n.location.lon, 4), n.tags["place"]]
         if is_gas_station(n.tags) and ("n", n.id) not in self.fuel:
@@ -359,6 +380,11 @@ class Roads(osmium.SimpleHandler):
             except (osmium.InvalidLocationError, ZeroDivisionError):
                 pass
         hw = w.tags.get("highway")
+        if hw and hw not in RAMP_TYPES and hw not in NOT_ROADS:
+            refs = [n.ref for n in w.nodes]
+            for i, r in enumerate(refs):
+                if r in self.ramp_nodes:
+                    self.crossing[r] += 1 if i in (0, len(refs) - 1) else 2
         if hw == "residential":
             try:
                 loc = w.nodes[0].location
@@ -380,8 +406,12 @@ class Roads(osmium.SimpleHandler):
             return
 
         # Ramps are split into short pieces in OSM; they're joined and scored in finish_ramps().
+        # One with a traffic light or stop sign partway along isn't a free-flowing ramp. (Nodes come before
+        # ways in a .pbf, so the lights are known by now.)
         if hw in RAMP_TYPES:
-            self.ramp_ways[w.id] = (w.nodes[0].ref, w.nodes[-1].ref, coords, tags, mph)
+            refs = [n.ref for n in w.nodes]
+            if not any(r in self.signals for r in refs[1:-1]):
+                self.ramp_ways[w.id] = (w.nodes[0].ref, w.nodes[-1].ref, coords, tags, mph)
             return
 
         length, score, curvy, sweep = analyze(coords)
@@ -408,12 +438,15 @@ class Roads(osmium.SimpleHandler):
         self.count += 1
 
     def finish_ramps(self):
-        """Join ramp pieces end to end (where nothing merges or splits) and score each whole ramp."""
+        """Join ramp pieces end to end (where nothing merges or splits) and score each whole ramp.
+        Never across a traffic light, a stop sign or a road crossing: an off-ramp that ends at a
+        crossroad and the on-ramp that starts there are two ramps, not one."""
         starts, ends = defaultdict(list), defaultdict(list)
         for wid, (a, b, *_rest) in self.ramp_ways.items():
             starts[a].append(wid)
             ends[b].append(wid)
-        joins = lambda node: len(starts[node]) == 1 and len(ends[node]) == 1
+        joins = lambda node: (len(starts[node]) == 1 and len(ends[node]) == 1
+                              and node not in self.signals and self.crossing[node] < 2)
         done = set()
 
         def walk(first):
@@ -517,7 +550,9 @@ def main(args):
     tiles, seen, residential, fuel, places, lanes = defaultdict(list), set(), defaultdict(int), {}, {}, {}
     for path in paths:
         print(f"Reading {path} (takes a few minutes)...", flush=True)
-        h = Roads(tiles, seen, residential, fuel, places)
+        ramps = RampNodes()
+        ramps.apply_file(path)
+        h = Roads(tiles, seen, residential, fuel, places, ramps.nodes)
         h.apply_file(path, locations=True, idx="flex_mem")
         h.finish_ramps()
         lanes.update(h.lanes)
