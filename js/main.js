@@ -754,9 +754,12 @@ function tripView() {
         h('button.btn', { onclick: () => startPicking('start') }, iconEl(icon.pin), 'Pick a start')),
     ];
   }
+  // Stops first: nothing above them changes height as the route is worked out again, so after
+  // removing one, the next ✕ is under the same finger.
   return [
     backBar('Your ride', P.tripName(trip).replace(/^Ride: /, '')),
-    routeSummary(),
+    h('div.section-head', {}, h('h3', {}, `Stops (${trip.items.length})`),
+      h('button.btn.small', { onclick: clearRide }, iconEl(icon.trash), 'Clear all')),
     stopList(),
     h('div.btn-row', {},
       h('button.btn', { onclick: () => startPicking('road') }, iconEl(icon.route), 'Add road'),
@@ -764,6 +767,7 @@ function tripView() {
       h('button.btn', { onclick: async () => {
         try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'Start from me')),
+    h('div.section', {}, routeSummary()),
     h('div.field', {}, h('label.switch', {},
       h('input', { type: 'checkbox', checked: trip.loop, onchange: e => { trip.loop = e.target.checked; tripChanged(); } }),
       h('span', {}, 'Return to start'))),
@@ -772,13 +776,16 @@ function tripView() {
         h(`button${trip.pref === v ? '.on' : ''}`, { onclick: () => { trip.pref = v; tripChanged(); } }, l)))),
     fuelSection(),
     exportSection(),
-    h('button.btn.subtle.wide', { onclick: () => {
-      if (!confirm('Clear all stops from this ride?')) return;
-      trip.items = [];
-      gen.index = -1;
-      tripChanged();
-    } }, iconEl(icon.trash), 'Clear ride'),
   ];
+}
+
+// No "are you sure": an Undo in the toast instead.
+function clearRide() {
+  const was = trip.items;
+  trip.items = [];
+  gen.index = -1;
+  tripChanged();
+  toast('Ride cleared', { label: 'Undo', run: () => { trip.items = was; tripChanged(); } });
 }
 
 function routeSummary() {

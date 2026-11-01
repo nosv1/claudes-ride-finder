@@ -222,6 +222,10 @@ under the tag, and the Hills chip lists ft/mi.
     where it adds the least straight-line distance (counting the ride home on a loop, never before the start),
     entered from whichever end does that. The toast says which end ("in at the north end") with **Switch ends**.
   - Road rows say which end they're entered and left at ("South end → north end").
+- **Your ride** lists the stops first, right under the title, so nothing above them changes height while the
+  route is worked out again: after removing one, the next ✕ is under the same finger. The ride's name stays on one
+  line for the same reason. **Clear all** sits by the "Stops (n)" heading, with Undo in the toast instead of a
+  confirm. Then Add road / Add stop / Start from me, then the route summary, options, fuel and export.
 - Rows can be reordered by dragging their grip (touch too), flipped (⇄) and removed (✕).
   - The drag is followed on the whole window: moving the row in the list drops the grip's pointer capture.
     Re-renders wait until the row is dropped.

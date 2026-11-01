@@ -163,6 +163,27 @@ test('stops can be dragged into a new order', async () => {
   assert.deepEqual(await page.eval('RF.trip.items.map(i => i.label)'), ['Start', 'A', 'B', 'C']);
 });
 
+test('removing stops one after another: the next ✕ stays under the finger; Clear all can be undone', async () => {
+  await page.eval(pointTrip);
+  await page.eval(`(async () => { const T = await import('./js/trip.js'); T.addPoint(RF.trip, [38.9, -94.28], 'D'); RF.go('trip'); })()`);
+  await page.waitFor("document.querySelectorAll('.stops li').length === 5");
+  const xAt = () => page.eval(`(() => { const b = document.querySelectorAll('.stops li')[1].querySelector('button[title=Remove]').getBoundingClientRect();
+    return [b.left + b.width / 2, b.top + b.height / 2]; })()`);
+  const [x, y] = await xAt();
+  for (const left of [4, 3, 2]) {
+    await page.mouse('mousePressed', x, y);
+    await page.mouse('mouseReleased', x, y);
+    await sleep(700);   // the route is being worked out again meanwhile
+    assert.equal(await page.eval('RF.trip.items.length'), left);
+    if (left > 2) assert.deepEqual(await xAt(), [x, y], 'next stop’s ✕ in the same place');
+  }
+  assert.deepEqual(await page.eval('RF.trip.items.map(i => i.label)'), ['Start', 'D']);
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Clear all/.test(b.textContent)).click()");
+  assert.equal(await page.eval('RF.trip.items.length'), 0);
+  await page.eval("[...document.querySelectorAll('#toast button')].find(b => /Undo/.test(b.textContent)).click()");
+  assert.deepEqual(await page.eval('RF.trip.items.map(i => i.label)'), ['Start', 'D']);
+});
+
 test('stops can be dragged on a phone too', async () => {
   const phone = await launch({ mobile: true });
   try {
