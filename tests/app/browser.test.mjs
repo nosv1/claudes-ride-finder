@@ -71,6 +71,9 @@ test('tapping a road opens its card at that spot, and Add to ride adds it', asyn
   const sv = await page.eval("new URL([...document.querySelectorAll('#sheetBody a')].find(a => /Street View/.test(a.textContent)).href).searchParams.get('viewpoint')");
   const [lat, lon] = sv.split(',').map(Number);
   assert.ok(Math.abs(lat - at[0]) < 0.001 && Math.abs(lon - at[1]) < 0.001, `Street View at the tap, got ${sv}`);
+  const headings = await page.eval("[...document.querySelectorAll('#sheetBody a')].filter(a => /pano/.test(a.href)).map(a => +new URL(a.href).searchParams.get('heading'))");
+  assert.equal(headings.length, 2, 'Street View and the other way');
+  assert.equal((headings[1] - headings[0] + 360) % 360, 180);
   const before = await page.eval('RF.trip.items.length');
   await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Add to ride/.test(b.textContent)).click()");
   assert.equal(await page.eval('RF.trip.items.length'), before + 1);

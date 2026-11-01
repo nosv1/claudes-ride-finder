@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 
-import { distance, decodePolyline, spotOnLine, alongRoute, nearestIndex } from '../../js/geo.js';
+import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, nearestIndex } from '../../js/geo.js';
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel } from '../../js/roads.js';
 import { newTrip, addRoad, insertRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
 import { planFuel, googlePoints, googleLinks, buildOptions, estimate, gpx, orientStops, retrace } from '../../js/plan.js';
@@ -36,6 +36,14 @@ function row({ id = 1, hw = 'secondary', name = '', ref = '', mph = null, est = 
 const east = (lat, lon0, n = 10, step = 0.001) => Array.from({ length: n }, (_, i) => [lat, lon0 + i * step]);
 
 // ---------- geometry ----------
+
+test('Street View faces the way the route goes', () => {
+  const north = Array.from({ length: 20 }, (_, i) => [38 + i * 0.001, -94]);
+  assert.ok(Math.abs(headingOnPath(north, [38.005, -94.0001])) < 1, 'heading north');
+  const south = [...north].reverse();
+  assert.ok(Math.abs(headingOnPath(south, [38.005, -94.0001]) - 180) < 1, 'heading south');
+  assert.equal(headingOnPath(north, [38.005, -93.9]), null, 'not on the route');
+});
 
 test('distance and polyline decoding', () => {
   assert.ok(Math.abs(distance([38, -94], [39, -94]) - 111195) < 200);

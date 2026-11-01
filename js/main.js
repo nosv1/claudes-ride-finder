@@ -1,6 +1,6 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
 import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT } from './config.js';
-import { miles, fmtDuration, spotOnLine, pad, boundsOf, intersects, km } from './geo.js';
+import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
 import { visible, stretchOf, bestInView, clusterRoads, summarize } from './roads.js';
 import * as T from './trip.js';
 import * as P from './plan.js';
@@ -646,8 +646,16 @@ function roadView() {
   const { group: g, piece: r, at } = selected;
   const spot = spotOnLine(r.geom, at), [lat, lon] = spot.p.map(v => +v.toFixed(6));
   const gm = 'https://www.google.com/maps/@?api=1&map_action=';
+  // Street View faces the way the ride goes here when the route uses this road; otherwise the way
+  // the road is drawn in OSM (the direction of travel on a ramp, arbitrary on a two-way road),
+  // with a button for the other way.
+  const heading = (route && headingOnPath(route.path, spot.p)) ?? spot.heading;
+  const sv = hd => `${gm}pano&viewpoint=${lat},${lon}&heading=${Math.round((hd + 360) % 360)}`;
   const links = [
-    h('a.btn', { href: `${gm}pano&viewpoint=${lat},${lon}&heading=${Math.round(spot.heading)}`, target: '_blank', rel: 'noopener' }, iconEl(icon.person), 'Street View'),
+    h('div.sv-pair', {},
+      h('a.btn.grow', { href: sv(heading), target: '_blank', rel: 'noopener' }, iconEl(icon.person), 'Street View'),
+      g.oneway ? '' : h('a.btn', { href: sv(heading + 180), target: '_blank', rel: 'noopener', title: 'Street View facing the other way',
+        'aria-label': 'Street View facing the other way', html: icon.swap })),
     h('a.btn', { href: `${gm}map&center=${lat},${lon}&zoom=17&basemap=satellite`, target: '_blank', rel: 'noopener' }, iconEl(icon.globe), 'Satellite'),
   ];
   if (g.oneway) return rampView(g, r, links);

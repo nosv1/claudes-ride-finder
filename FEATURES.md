@@ -189,8 +189,10 @@ under the tag, and the Hills chip lists ft/mi.
 - For the whole stretch: curve class, curve miles, hills (word and ft/mi), speed (posted, or "~55 mph" when
   estimated) and blind crests.
 - For this piece: surface, and an elevation chart. Scrubbing the chart marks the spot on the map.
-- Buttons: **Add to ride**, **Plan a loop with this road**, **Street View** at the tapped spot facing along the
-  road, and **Satellite**.
+- Buttons: **Add to ride**, **Plan a loop with this road**, **Street View** at the tapped spot, and **Satellite**.
+  - Street View faces the way the planned route travels there, when the route uses this road (within 40 m).
+    Otherwise it faces the way the road is drawn in OSM: the direction of travel on a ramp, but arbitrary on a
+    two-way road (it looked backwards half the time), so two-way roads get a ⇄ button for the other way.
 - Hovering a road on the map (desktop) outlines its whole stretch.
 
 **Long-press the map** (right-click on desktop): Start a ride here, Add a stop here, Street View here.

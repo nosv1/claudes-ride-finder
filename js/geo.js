@@ -85,6 +85,15 @@ export function spotOnLine(geom, at) {
   return best;
 }
 
+// The direction a route travels where it passes p, or null if it doesn't come within maxM.
+export function headingOnPath(path, p, maxM = 40) {
+  if (path.length < 2) return null;
+  const i = nearestIndex(path, p);
+  if (distance(path[i], p) > maxM) return null;
+  const [a, b] = i < path.length - 1 ? [path[i], path[i + 1]] : [path[i - 1], path[i]];
+  return bearing(a, b);
+}
+
 export function cumulative(path) {
   const cum = [0];
   for (let i = 1; i < path.length; i++) cum.push(cum[i - 1] + distance(path[i - 1], path[i]));
