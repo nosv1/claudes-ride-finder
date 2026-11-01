@@ -88,8 +88,8 @@ svg { width: 20px; height: 20px; display: block; }
 .sheet[data-snap="half"] { --h: calc(var(--app-h, 100dvh) * 0.5); }
 .sheet[data-snap="peek"] { --h: 132px; }
 .sheet.dragging { transition: none; }
-.grab { flex: none; height: 26px; display: grid; place-items: center; cursor: grab; touch-action: none; }
-.grab span { width: 40px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.25); }
+.grab { flex: none; height: 34px; display: grid; place-items: center; cursor: grab; touch-action: none; }
+.grab span { width: 48px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.3); }
 .sheet-body { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.2) transparent; padding: 0 16px calc(24px + env(safe-area-inset-bottom, 0px)); overscroll-behavior: contain; }
 
 @media (min-width: 900px) {

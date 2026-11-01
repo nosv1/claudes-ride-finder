@@ -72,40 +72,81 @@ export function elevationChart(prof, onScrub) {
   return wrap;
 }
 
-// The sheet: a bottom sheet with three heights on phones (dragged by its handle), a fixed side
-// panel on wide screens. Its height is always the visible part, so its content never runs off-screen.
+// The sheet: a bottom sheet with three heights on phones, a fixed side panel on wide screens.
+// Its height is always the visible part, so its content never runs off-screen. It's dragged by
+// its handle, or by swiping the content like a map app: down when the list is at its top, up
+// until it's fully open; otherwise a swipe scrolls the list.
+const SNAPS = ['peek', 'half', 'full'];
 export class Sheet {
   constructor(el, grab, onChange) {
     this.el = el;
     this.onChange = onChange;
     this.snap = el.dataset.snap || 'half';
+    const body = el.querySelector('.sheet-body');
     let startY = null, startH = 0;
-    const setH = hgt => {
-      this.el.style.height = `${hgt}px`;
-      this.el.style.top = `${innerHeight - hgt}px`;
-    };
-    grab.addEventListener('pointerdown', e => {
-      if (Sheet.wide()) return;
-      startY = e.clientY;
+    const begin = y => {
+      startY = y;
       startH = el.getBoundingClientRect().height;
       el.classList.add('dragging');
-      grab.setPointerCapture(e.pointerId);
-    });
-    grab.addEventListener('pointermove', e => {
-      if (startY == null) return;
-      setH(Math.max(90, Math.min(this.heightFor('full'), startH - (e.clientY - startY))));
-    });
-    grab.addEventListener('pointerup', e => {
-      if (startY == null) return;
-      const moved = e.clientY - startY, hgt = el.getBoundingClientRect().height;
+    };
+    const move = y => {
+      const hgt = Math.max(90, Math.min(this.heightFor('full'), startH - (y - startY)));
+      el.style.height = `${hgt}px`;
+      el.style.top = `${innerHeight - hgt}px`;
+    };
+    const end = y => {
+      const moved = y - startY, hgt = el.getBoundingClientRect().height;
       startY = null;
       el.classList.remove('dragging');
       el.style.height = el.style.top = '';
-      if (Math.abs(moved) < 6) return this.set(this.snap === 'peek' ? 'half' : this.snap === 'half' ? 'full' : 'peek');
-      // Snap to whichever height is nearest where it was let go.
-      const snaps = ['full', 'half', 'peek'];
-      this.set(snaps.sort((a, b) => Math.abs(this.heightFor(a) - hgt) - Math.abs(this.heightFor(b) - hgt))[0]);
+      if (Math.abs(moved) < 6) return this.set(SNAPS[(SNAPS.indexOf(this.snap) + 1) % 3]);  // a tap steps up, full wraps to peek
+      // The height nearest where it was let go; a swipe of 50 px moves at least one step.
+      let to = [...SNAPS].sort((a, b) => Math.abs(this.heightFor(a) - hgt) - Math.abs(this.heightFor(b) - hgt))[0];
+      const at = SNAPS.indexOf(this.snap);
+      if (to === this.snap && Math.abs(moved) > 50) to = SNAPS[Math.max(0, Math.min(2, at + (moved > 0 ? -1 : 1)))];
+      this.set(to);
+    };
+
+    grab.addEventListener('pointerdown', e => {
+      if (Sheet.wide()) return;
+      begin(e.clientY);
+      grab.setPointerCapture(e.pointerId);
     });
+    grab.addEventListener('pointermove', e => { if (startY != null) move(e.clientY); });
+    grab.addEventListener('pointerup', e => { if (startY != null) end(e.clientY); });
+
+    // Swipes on the content. Touch events, not pointer events: once the browser starts scrolling
+    // it cancels the pointer, and only a touchmove listener can stop the scroll from starting.
+    // They're followed on the element touched, which still gets them if the content re-renders
+    // under the finger (new roads loading) and takes it out of the page.
+    body.addEventListener('touchstart', e => {
+      if (Sheet.wide() || e.touches.length !== 1) return;
+      // Things with their own drag: the stop grips and the elevation chart.
+      if (e.target.closest('.grip, .chart')) return;
+      const target = e.target, x0 = e.touches[0].clientX, y0 = e.touches[0].clientY;
+      let mode = null;   // null until it moves: then 'sheet' or 'scroll'
+      const onMove = ev => {
+        const t = ev.touches[0], dy = t.clientY - y0, dx = t.clientX - x0;
+        if (!mode) {
+          if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+          const down = dy > 0, vertical = Math.abs(dy) > Math.abs(dx);
+          mode = vertical && ((down && body.scrollTop <= 0) || (!down && this.snap !== 'full')) ? 'sheet' : 'scroll';
+          if (mode === 'sheet') begin(y0);
+        }
+        if (mode !== 'sheet') return;
+        ev.preventDefault();
+        move(t.clientY);
+      };
+      const onEnd = ev => {
+        target.removeEventListener('touchmove', onMove);
+        target.removeEventListener('touchend', onEnd);
+        target.removeEventListener('touchcancel', onEnd);
+        if (mode === 'sheet') end(ev.changedTouches[0].clientY);
+      };
+      target.addEventListener('touchmove', onMove, { passive: false });
+      target.addEventListener('touchend', onEnd);
+      target.addEventListener('touchcancel', onEnd);
+    }, { passive: true });
   }
   static wide() { return matchMedia('(min-width: 900px)').matches; }
   heightFor(snap) {

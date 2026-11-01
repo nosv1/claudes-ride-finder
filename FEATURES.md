@@ -126,6 +126,10 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 - A floating search bar with filter chips under it: mode, speed floor (Best rides), hills, Paved, ⚠ Blind crests, Gas.
 - Chip menus close on a second tap of the chip, a tap anywhere else, Esc, or the map moving.
 - **Phones:** a bottom sheet with peek, half and full heights. Drag its handle, or tap the handle to step through.
+  Swiping the content moves the sheet too, like a map app: down when the list is at its top, up until the sheet is
+  full; otherwise the swipe scrolls the list. A swipe of 50 px moves at least one height. (Stop grips and the
+  elevation chart keep their own drags.) The swipe is followed on the touched element, which keeps getting the
+  touch even if the list re-renders under the finger as roads load.
   - Its height is always the visible part, placed from `window.innerHeight`, so nothing runs under the browser's
     bottom toolbar (Edge).
   - At full height it stops just below the chips.

@@ -229,6 +229,38 @@ test('phone layout: search on top, chips scroll, sheet at the bottom', async () 
   }
 });
 
+test('phone: swiping the panel moves it, unless the list is scrolled down', async () => {
+  const phone = await launch({ mobile: true });
+  const snap = () => phone.eval("document.getElementById('sheet').dataset.snap");
+  const swipe = async (fromY, toY) => {
+    await phone.touch('touchStart', 200, fromY);
+    for (let k = 1; k <= 6; k++) { await phone.touch('touchMove', 200, fromY + (toY - fromY) * k / 6); await sleep(25); }
+    await phone.touch('touchEnd', 200, toY);
+    await sleep(450);
+  };
+  try {
+    await phone.goto(base);
+    await phone.waitFor("window.RF && document.querySelectorAll('.road-card').length > 2", 60000);
+    assert.equal(await snap(), 'half');
+    const top = await phone.eval("document.getElementById('sheetBody').getBoundingClientRect().top");
+    await swipe(top + 120, top + 260);
+    assert.equal(await snap(), 'peek', 'swipe down on the list hides the panel');
+    await swipe(await phone.eval("document.getElementById('sheetBody').getBoundingClientRect().top") + 40, 200);
+    assert.notEqual(await snap(), 'peek', 'swipe up opens it again');
+    await swipe(await phone.eval("document.getElementById('sheetBody').getBoundingClientRect().top") + 60, 60);
+    assert.equal(await snap(), 'full');
+    // Fully open and scrolled down: a swipe down scrolls the list back, it doesn't close the panel.
+    await phone.eval("document.getElementById('sheetBody').scrollTop = 200");
+    const scrolled = await phone.eval("document.getElementById('sheetBody').scrollTop");
+    assert.ok(scrolled > 0, 'list can scroll');
+    await swipe(400, 520);
+    assert.equal(await snap(), 'full');
+    assert.ok(await phone.eval("document.getElementById('sheetBody').scrollTop") < scrolled, 'the list scrolled up');
+  } finally {
+    phone.close();
+  }
+});
+
 test('generator routes loops and loads the best one as the ride', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {
   await page.eval(`(async () => {
     const T = await import('./js/trip.js');
