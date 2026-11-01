@@ -6,6 +6,8 @@ lists what each feature must do, the numbers it relies on, and the lessons that 
 so a rewrite can keep the behavior without rediscovering them.
 
 Live site: https://nosv1.github.io/claudes-ride-finder/ (GitHub Pages, `main` branch, repo root).
+v2, the new map-first interface (MapLibre, 3D terrain, bottom sheet, offline), is at `/v2/` and implements the same
+features; its logic lives in `v2/js/` as plain modules tested in Node.
 
 ---
 
