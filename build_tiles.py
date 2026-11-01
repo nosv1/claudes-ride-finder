@@ -48,32 +48,48 @@ def radius_weight(r):
     return 0.0
 
 
+# Sweepers: wide, fast curves (150–600 m radius) that the tight-curve score ignores.
+# Measured over 100 m so the small wobbles in mapped "straight" roads don't register.
+SWEEP_STEP = 100
+SWEEP_RADIUS = (150, 600)
+MIN_SWEEP = 300  # metres of sweeping curve before a road counts as a sweeper
+
+
+def resample(pts, step):
+    samples, carry, length = [pts[0]], 0.0, 0.0
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        seg = math.hypot(bx - ax, by - ay)
+        length += seg
+        d = step - carry
+        while d <= seg:
+            samples.append((ax + (bx - ax) * d / seg, ay + (by - ay) * d / seg))
+            d += step
+        carry = seg - (d - step)
+    return samples, length
+
+
+def radii(samples):
+    for a, b, c in zip(samples, samples[1:], samples[2:]):
+        cross = abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]))
+        yield math.dist(a, b) * math.dist(b, c) * math.dist(c, a) / (2 * cross) if cross > 1e-9 else math.inf
+
+
 def analyze(coords):
     lat0 = math.radians(coords[0][0])
     kx, ky = 111320 * math.cos(lat0), 110540
     pts = [(lon * kx, lat * ky) for lat, lon in coords]
 
-    samples, carry, length = [pts[0]], 0.0, 0.0
-    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
-        seg = math.hypot(bx - ax, by - ay)
-        length += seg
-        d = STEP - carry
-        while d <= seg:
-            samples.append((ax + (bx - ax) * d / seg, ay + (by - ay) * d / seg))
-            d += STEP
-        carry = seg - (d - STEP)
-
+    samples, length = resample(pts, STEP)
     score = curvy = 0.0
-    for a, b, c in zip(samples, samples[1:], samples[2:]):
-        cross = abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]))
-        if cross < 1e-9:
-            continue
-        r = math.dist(a, b) * math.dist(b, c) * math.dist(c, a) / (2 * cross)
+    for r in radii(samples):
         w = radius_weight(r)
         score += w * STEP
         if w:
             curvy += STEP
-    return length, score, curvy
+
+    lo, hi = SWEEP_RADIUS
+    sweep = sum(SWEEP_STEP for r in radii(resample(pts, SWEEP_STEP)[0]) if lo <= r < hi)
+    return length, score, curvy, sweep
 
 
 # US mappers almost always write "45 mph"; bare numbers are treated as mph too.
@@ -118,6 +134,44 @@ def encode(coords):
     return out
 
 
+# Gas stations: does it sell 90+ octane? Few stations have their grades mapped, so
+# fall back to the brand — these chains sell premium at nearly every location.
+PREMIUM_BRANDS = re.compile(
+    r"\b(phillips 66|casey'?s|quiktrip|qt|bp|conoco|shell|cenex|sinclair|kwik shop|love'?s|mobil|exxon|"
+    r"murphy|circle k|kum & go|hy-?vee|valero|break ?time|sam'?s club|maverik|amoco|7-eleven|pilot|"
+    r"flying j|sunoco|dillons|mfa|costco|gulf|walmart|chevron|texaco|citgo|marathon|speedway|76|zx)\b", re.I)
+FUEL_YES, FUEL_LIKELY, FUEL_UNKNOWN, FUEL_NO = 2, 1, 0, -1
+
+
+def octane_status(tags):
+    grades = {int(m.group(1)): v for k, v in tags.items() if (m := re.fullmatch(r"fuel:octane_(\d+)", k))}
+    if tags.get("fuel:premium") == "yes" or any(n >= 90 and v == "yes" for n, v in grades.items()):
+        return FUEL_YES
+    # Ignore "no" for European grades (95/98/100) that US mappers copy from presets.
+    if any(90 <= n <= 94 and v == "no" for n, v in grades.items()):
+        return FUEL_NO
+    if PREMIUM_BRANDS.search(f"{tags.get('brand', '')} {tags.get('name', '')}"):
+        return FUEL_LIKELY
+    return FUEL_UNKNOWN
+
+
+def is_gas_station(tags):
+    # Skip truck-only diesel islands, which show up as separate stations next to the real one.
+    if tags.get("amenity") != "fuel":
+        return False
+    return not (re.search(r"diesel|truck", tags.get("name", ""), re.I) or tags.get("fuel:octane_87") == "no"
+                or tags.get("fuel:gasoline") == "no")
+
+
+def fuel_row(tags, lat, lon):
+    name, brand = tags.get("name") or "", tags.get("brand") or ""
+    label = name or brand or "Gas station"
+    if brand and name and brand.lower() not in name.lower():
+        label = f"{name} ({brand})"
+    return [round(lat, 5), round(lon, 5), label, tags.get("addr:city", ""),
+            octane_status(tags), tags.get("opening_hours", "")]
+
+
 # Roads with no posted limit: rural state routes get Missouri/Kansas's 55 mph default,
 # county roads 45, and anything among lots of residential streets is treated as town (30).
 CELL = 0.01           # degrees, roughly 1 km
@@ -125,12 +179,23 @@ URBAN_STREETS = 40    # residential streets within the surrounding 3x3 cells
 
 
 class Roads(osmium.SimpleHandler):
-    def __init__(self, tiles, seen, residential):
+    def __init__(self, tiles, seen, residential, fuel):
         super().__init__()
-        self.tiles, self.seen, self.residential = tiles, seen, residential
+        self.tiles, self.seen, self.residential, self.fuel = tiles, seen, residential, fuel
         self.count = 0
 
+    def node(self, n):
+        if is_gas_station(n.tags) and ("n", n.id) not in self.fuel:
+            self.fuel[("n", n.id)] = fuel_row(dict(n.tags), n.location.lat, n.location.lon)
+
     def way(self, w):
+        if is_gas_station(w.tags) and ("w", w.id) not in self.fuel:
+            try:
+                pts = [(n.location.lat, n.location.lon) for n in w.nodes]
+                self.fuel[("w", w.id)] = fuel_row(dict(w.tags), sum(p[0] for p in pts) / len(pts),
+                                                  sum(p[1] for p in pts) / len(pts))
+            except (osmium.InvalidLocationError, ZeroDivisionError):
+                pass
         hw = w.tags.get("highway")
         if hw == "residential":
             try:
@@ -152,9 +217,10 @@ class Roads(osmium.SimpleHandler):
         if len(coords) < 2:
             return
 
-        length, score, curvy = analyze(coords)
+        length, score, curvy, sweep = analyze(coords)
         is_curvy = hw in CURVY_TYPES and score >= MIN_SCORE
-        if not is_curvy and mph is None:
+        is_sweeper = hw in CURVY_TYPES and sweep >= MIN_SWEEP
+        if not is_curvy and not is_sweeper and mph is None:
             return
 
         self.seen.add(w.id)
@@ -163,10 +229,9 @@ class Roads(osmium.SimpleHandler):
         # The estimated limit (index 5) is filled in by main() once every file has been read;
         # the midpoint on the end is only needed until then.
         self.tiles[key].append([
-            w.id, hw, tags.get("name") or tags.get("ref") or "",
-            tags.get("ref", "") if tags.get("name") else "",
-            mph, None, surface_of(tags), round(score if is_curvy else 0), round(curvy), round(length),
-            encode(coords), mid,
+            w.id, hw, tags.get("name", ""), tags.get("ref", ""),
+            mph, None, surface_of(tags), round(score if is_curvy else 0), round(curvy),
+            round(sweep if is_sweeper else 0), round(length), encode(coords), mid,
         ])
         self.count += 1
 
@@ -190,10 +255,10 @@ def main(args):
     paths = sorted({p for a in (args or ["raw/*.osm.pbf"]) for p in glob.glob(a)})
     if not paths:
         sys.exit("No .osm.pbf files found in raw/.\n" + __doc__)
-    tiles, seen, residential = defaultdict(list), set(), defaultdict(int)
+    tiles, seen, residential, fuel = defaultdict(list), set(), defaultdict(int), {}
     for path in paths:
         print(f"Reading {path} (takes a few minutes)...", flush=True)
-        h = Roads(tiles, seen, residential)
+        h = Roads(tiles, seen, residential, fuel)
         h.apply_file(path, locations=True, idx="flex_mem")
         print(f"  kept {h.count:,} roads", flush=True)
 
@@ -215,7 +280,11 @@ def main(args):
     index = {"size": TILE_SIZE, "built": date.today().isoformat(), "regions": regions, "tiles": sorted(tiles)}
     with open(os.path.join(OUT_DIR, "index.js"), "w", encoding="utf-8") as f:
         f.write("window.TILE_INDEX = " + json.dumps(index) + ";\n")
-    print(f"Wrote {len(tiles)} tiles to {OUT_DIR}/")
+    with open(os.path.join(OUT_DIR, "fuel.js"), "w", encoding="utf-8") as f:
+        f.write("window.FUEL = ")
+        json.dump(list(fuel.values()), f, separators=(",", ":"), ensure_ascii=False)
+        f.write(";\n")
+    print(f"Wrote {len(tiles)} tiles and {len(fuel):,} gas stations to {OUT_DIR}/")
 
 
 if __name__ == "__main__":
