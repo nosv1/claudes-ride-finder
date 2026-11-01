@@ -1,0 +1,4 @@
+# Raw OpenStreetMap state downloads (hundreds of MB); tiles/ is built from these
+raw/
+.vscode/
+__pycache__/

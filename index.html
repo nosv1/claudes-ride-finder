@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ride Finder</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --panel-bg: rgba(20, 22, 28, 0.92);
+    --text: #e8e9ec;
+    --muted: #9aa0aa;
+    --border: rgba(255, 255, 255, 0.12);
+    --accent: rgba(255, 255, 255, 0.14);
+  }
+  html, body { margin: 0; height: 100%; background: #111; }
+  body { font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); }
+  #map { position: absolute; inset: 0; }
+
+  #panel {
+    position: absolute; top: 12px; right: 12px; z-index: 1000;
+    width: 260px; max-height: calc(100vh - 24px); overflow: auto; box-sizing: border-box; padding: 14px 16px;
+    background: var(--panel-bg); border: 1px solid var(--border); border-radius: 10px;
+    backdrop-filter: blur(6px); box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+  #panel h1 { font-size: 16px; margin: 0 0 10px; }
+  #panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 4px; }
+
+  .tabs { display: flex; gap: 4px; padding: 3px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 8px; }
+  .tabs button {
+    flex: 1; padding: 5px 0; border: 0; border-radius: 6px; background: none;
+    color: var(--muted); font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .tabs button.on { background: var(--accent); color: var(--text); }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+
+  .bin, .road {
+    display: flex; align-items: center; gap: 10px; width: calc(100% + 12px);
+    padding: 4px 6px; margin: 0 -6px; border: 0; border-radius: 6px;
+    background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  }
+  .bin:hover, .road:hover { background: rgba(255,255,255,0.06); }
+  .road.selected { background: var(--accent); box-shadow: inset 2px 0 0 #fff; }
+  .bin.off { opacity: 0.35; }
+  .bin .swatch { width: 26px; height: 5px; border-radius: 3px; flex: none; }
+  .road .miles { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .road .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .road .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #roads .empty { color: var(--muted); font-size: 12px; }
+
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; }
+  select {
+    padding: 3px 4px; border: 1px solid var(--border); border-radius: 6px;
+    background: #23262e; color: var(--text); font: inherit;
+  }
+  .btns { display: flex; gap: 6px; margin-top: 10px; }
+  .btns button {
+    flex: 1; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: rgba(255,255,255,0.06); color: var(--text); font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .btns button:hover { background: rgba(255,255,255,0.12); }
+
+  #status { margin-top: 10px; min-height: 18px; font-size: 12px; color: var(--muted); }
+  #status.err { color: #ff8a80; }
+  .note { margin-top: 8px; font-size: 11px; color: var(--muted); }
+
+  #toggle { display: none; }
+
+  @media (max-width: 600px) {
+    #panel { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: 55vh; }
+    #panel.collapsed .body { display: none; }
+    #toggle {
+      display: block; position: absolute; top: 10px; right: 12px;
+      background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer;
+    }
+  }
+
+  .leaflet-popup-content { font: 13px/1.5 system-ui, sans-serif; }
+  .leaflet-popup-content b { font-size: 14px; }
+  .leaflet-popup-content .meta { color: #777; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="panel">
+  <button id="toggle">hide</button>
+  <h1>Ride Finder</h1>
+  <div class="body">
+    <div class="tabs">
+      <button data-mode="ride" class="on">Best rides</button>
+      <button data-mode="curvy">Curvy</button>
+      <button data-mode="speed">Speed limits</button>
+    </div>
+    <div id="rideOptions">
+      <label class="row" style="margin-top:4px">Speed limit at least
+        <select id="minSpeed">
+          <option>35</option><option>40</option><option selected>45</option><option>50</option><option>55</option>
+        </select> mph
+      </label>
+      <div class="note">Curvy roads you can actually ride at speed. Most rural roads have no posted limit in the data, so those are estimated (55 state routes, 45 county roads, 30 in town).</div>
+    </div>
+    <div class="sub" style="margin-top:8px">Click a color to show or hide it</div>
+    <div id="legend"></div>
+    <label class="row"><input type="checkbox" id="hideUnpaved" checked> Hide gravel &amp; dirt roads</label>
+    <div class="note">Dashed = county road with no surface on record (could be gravel).</div>
+
+    <div id="roadsSection">
+      <h2>Best roads in view</h2>
+      <div id="roads"></div>
+    </div>
+
+    <div class="btns">
+      <button id="locate">My location</button>
+      <button id="home">Kansas City</button>
+    </div>
+    <div id="status"></div>
+    <div class="note">Road data from OpenStreetMap volunteers. Always check conditions before you ride.</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="tiles/index.js"></script>
+<script>
+const HOME = [39.0997, -94.5786];
+const HOME_ZOOM = 9;
+const LOAD_ZOOM = 7;    // below this, don't pull in more tiles
+const MINOR_ZOOM = 11;  // speed mode hides county roads & side streets when zoomed out
+
+// Curviness = weighted metres of curve per metre of road (see build_tiles.py).
+const CURVY_BINS = [
+  { label: 'Some curves', min: 0.15, color: '#e6d52a', weight: 3 },
+  { label: 'Curvy',       min: 0.35, color: '#f59f1b', weight: 3.5 },
+  { label: 'Very curvy',  min: 0.6,  color: '#f2542d', weight: 4 },
+  { label: 'Twisty',      min: 0.9,  color: '#e040fb', weight: 4.5 },
+];
+const SPEED_BINS = [
+  { label: '20 mph or less', max: 20,       color: '#9b59d0' },
+  { label: '25 mph',         max: 25,       color: '#4c6ef5' },
+  { label: '30 mph',         max: 30,       color: '#1e9bd7' },
+  { label: '35 mph',         max: 35,       color: '#14b8a6' },
+  { label: '40 mph',         max: 40,       color: '#5cc940' },
+  { label: '45 mph',         max: 45,       color: '#e6d52a' },
+  { label: '50–55 mph',      max: 55,       color: '#f59f1b' },
+  { label: '60–65 mph',      max: 65,       color: '#f2542d' },
+  { label: '70+ mph',        max: Infinity, color: '#e0245e' },
+];
+[...CURVY_BINS, ...SPEED_BINS].forEach(b => b.on = true);
+
+const SPEED_WEIGHTS = { motorway: 4, trunk: 4, primary: 3.5, secondary: 3, tertiary: 2.5 };
+const MINOR = new Set(['unclassified', 'residential']);
+const SURFACE = ['paved', 'gravel or dirt', 'not recorded'];
+
+let mode = 'ride';
+
+// ---------- map ----------
+const map = L.map('map', { preferCanvas: true }).setView(HOME, HOME_ZOOM);
+
+// Esri's dark gray canvas needs no API key; labels go on a separate layer above the roads.
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
+L.tileLayer(ESRI + 'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 19, maxNativeZoom: 16,
+  attribution: 'Basemap &copy; Esri · Roads &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+}).addTo(map);
+map.createPane('labels');
+map.getPane('labels').style.zIndex = 450;
+map.getPane('labels').style.pointerEvents = 'none';
+L.tileLayer(ESRI + 'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 19, maxNativeZoom: 16, pane: 'labels',
+}).addTo(map);
+
+const renderer = L.canvas({ padding: 0.5, tolerance: 6 });
+const roadLayer = L.layerGroup().addTo(map);
+const roads = [];          // every road from every loaded tile
+const lines = new Map();   // road index -> polyline, created on first display
+
+// ---------- tiles ----------
+// Each tile is a script that calls addTile(); script tags work when opening the page as a file.
+const tileState = new Map();
+const statusEl = document.getElementById('status');
+
+function setStatus(msg, isErr) {
+  statusEl.textContent = msg;
+  statusEl.className = isErr ? 'err' : '';
+}
+
+function decode(deltas) {
+  const pts = [];
+  let lat = 0, lon = 0;
+  for (let i = 0; i < deltas.length; i += 2) {
+    lat += deltas[i]; lon += deltas[i + 1];
+    pts.push([lat / 1e5, lon / 1e5]);
+  }
+  return pts;
+}
+
+window.addTile = (key, rows) => {
+  rows.forEach(([id, hw, name, ref, mph, estMph, surface, score, curvy, length, coords]) => {
+    const geom = decode(coords);
+    roads.push({ id, hw, name, ref, mph, estMph, surface, score, curvy, length, geom, bounds: L.latLngBounds(geom) });
+  });
+  tileState.set(key, 'done');
+  scheduleRender();
+};
+
+function loadTilesInView() {
+  if (!window.TILE_INDEX) {
+    setStatus('No road data yet. Run "python build_tiles.py" in this folder, then refresh.', true);
+    return;
+  }
+  if (map.getZoom() < LOAD_ZOOM) { updateStatus(); return; }
+  const size = TILE_INDEX.size, b = map.getBounds().pad(0.2);
+  for (let x = Math.floor(b.getWest() / size); x <= Math.floor(b.getEast() / size); x++) {
+    for (let y = Math.floor(b.getSouth() / size); y <= Math.floor(b.getNorth() / size); y++) {
+      const key = `${x}_${y}`;
+      if (tileState.has(key) || !AVAILABLE.has(key)) continue;
+      tileState.set(key, 'loading');
+      const s = document.createElement('script');
+      s.src = `tiles/${key}.js`;
+      s.onerror = () => tileState.set(key, 'failed');
+      document.body.appendChild(s);
+    }
+  }
+  updateStatus();
+}
+const AVAILABLE = new Set(window.TILE_INDEX ? TILE_INDEX.tiles : []);
+
+function updateStatus() {
+  if (!window.TILE_INDEX) return;
+  const loading = [...tileState.values()].filter(s => s === 'loading').length;
+  if (loading) return setStatus(`Loading ${loading} area${loading > 1 ? 's' : ''}…`);
+  const regions = TILE_INDEX.regions.map(r => r[0].toUpperCase() + r.slice(1).replace(/-/g, ' ')).join(', ');
+  let msg = `Covers ${regions} (data from ${TILE_INDEX.built}).`;
+  if (map.getZoom() < LOAD_ZOOM) msg = 'Zoom in to load more roads. ' + msg;
+  setStatus(msg);
+}
+
+// ---------- styling ----------
+function curvyBin(r) {
+  let bin = null;
+  CURVY_BINS.forEach(b => { if (r.score && r.score / r.length >= b.min) bin = b; });
+  return bin;
+}
+function speedBin(mph) {
+  return SPEED_BINS.find(b => mph <= b.max);
+}
+
+function styleFor(r) {
+  if (hideUnpaved.checked && r.surface === 1) return null;
+  const base = r.hw.replace('_link', '');
+  let bin, weight;
+  if (mode === 'ride' && (r.mph ?? r.estMph) < minSpeed.value) return null;
+  if (mode !== 'speed') {
+    bin = curvyBin(r);
+    weight = bin && bin.weight;
+  } else {
+    if (r.mph == null || (MINOR.has(base) && map.getZoom() < MINOR_ZOOM)) return null;
+    bin = speedBin(r.mph);
+    weight = SPEED_WEIGHTS[base] || 2;
+  }
+  if (!bin || !bin.on) return null;
+  return { color: bin.color, weight, opacity: 0.95, dashArray: r.surface === 2 ? '6 5' : null };
+}
+
+function render() {
+  roads.forEach((r, i) => {
+    const style = styleFor(r);
+    let line = lines.get(i);
+    if (!style) { if (line) roadLayer.removeLayer(line); return; }
+    if (!line) {
+      line = L.polyline(r.geom, { renderer, ...style }).bindPopup(() => popupFor(r));
+      lines.set(i, line);
+    } else {
+      line.setStyle(style);
+    }
+    roadLayer.addLayer(line);
+  });
+  updateRoadList();
+  updateStatus();
+}
+
+let renderTimer = null;
+function scheduleRender() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(render, 150);
+}
+
+// ---------- popups & list ----------
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+const miles = m => (m / 1609).toFixed(m < 1609 ? 2 : 1);
+
+function popupFor(r) {
+  const bin = curvyBin(r);
+  // Middle of the road, and the direction it runs there so Street View faces down the road.
+  const i = Math.max(1, Math.floor(r.geom.length / 2));
+  const [lat, lon] = r.geom[i], [plat, plon] = r.geom[i - 1];
+  const heading = Math.round((Math.atan2((lon - plon) * Math.cos(lat * Math.PI / 180), lat - plat) * 180 / Math.PI + 360) % 360);
+  const gmaps = 'https://www.google.com/maps/@?api=1&map_action=';
+  const streetView = `${gmaps}pano&viewpoint=${lat},${lon}&heading=${heading}`;
+  const satellite = `${gmaps}map&center=${lat},${lon}&zoom=17&basemap=satellite`;
+  return `<b>${escapeHtml(r.name || 'Unnamed road')}</b>` +
+    (r.ref ? ` <span class="meta">(${escapeHtml(r.ref)})</span>` : '') + '<br>' +
+    `Curviness: <b>${bin ? bin.label : 'mostly straight'}</b>` +
+    (r.curvy ? ` <span class="meta">· ${miles(r.curvy)} mi of curves in ${miles(r.length)} mi</span>` : '') + '<br>' +
+    `Speed limit: ${r.mph != null ? `<b>${r.mph} mph</b>` :
+      `~${r.estMph} mph <span class="meta">(estimate, not posted in data)</span>`}<br>` +
+    `Surface: ${SURFACE[r.surface]}<br>` +
+    `<span class="meta">${escapeHtml(r.hw.replace('_', ' '))} road · ` +
+    `<a href="${streetView}" target="_blank" rel="noopener">Street View</a> · ` +
+    `<a href="${satellite}" target="_blank" rel="noopener">Satellite</a> · ` +
+    `<a href="https://www.openstreetmap.org/way/${r.id}" target="_blank" rel="noopener">OSM</a></span>`;
+}
+
+// ---------- highlight ----------
+// A white glow drawn on its own canvas beneath the colored roads.
+map.createPane('highlight');
+map.getPane('highlight').style.zIndex = 390;
+const glowRenderer = L.canvas({ pane: 'highlight', padding: 0.5 });
+const highlightLayer = L.layerGroup().addTo(map);
+let selected = null;   // the road group picked from the list
+
+function showHighlight(group) {
+  highlightLayer.clearLayers();
+  if (!group) return;
+  group.roads.forEach(r => L.polyline(r.geom, {
+    renderer: glowRenderer, color: '#fff', weight: 12, opacity: 0.8, interactive: false,
+  }).addTo(highlightLayer));
+}
+
+// Missouri reuses lettered routes in every county, so "MO Y" in two places is two roads:
+// split each name into clusters of pieces within ~3 km of each other.
+const NEAR = 0.03;
+function clusterRoads(list) {
+  const clusters = [];
+  list.forEach(r => {
+    const reach = L.latLngBounds(
+      [r.bounds.getSouth() - NEAR, r.bounds.getWest() - NEAR],
+      [r.bounds.getNorth() + NEAR, r.bounds.getEast() + NEAR]);
+    const near = clusters.filter(c => reach.intersects(c.bounds));
+    const c = near[0] || { roads: [], bounds: L.latLngBounds(r.bounds.getSouthWest(), r.bounds.getNorthEast()) };
+    if (!near.length) clusters.push(c);
+    near.slice(1).forEach(o => {
+      c.roads.push(...o.roads);
+      c.bounds.extend(o.bounds);
+      clusters.splice(clusters.indexOf(o), 1);
+    });
+    c.roads.push(r);
+    c.bounds.extend(r.bounds);
+  });
+  return clusters;
+}
+
+const roadsEl = document.getElementById('roads');
+function updateRoadList() {
+  document.getElementById('roadsSection').hidden = mode === 'speed';
+  document.getElementById('rideOptions').hidden = mode !== 'ride';
+  if (mode === 'speed') return;
+  const view = map.getBounds(), byName = new Map();
+  roads.forEach((r, i) => {
+    const key = r.ref || r.name;
+    const line = lines.get(i);
+    if (!key || !line || !roadLayer.hasLayer(line) || !view.intersects(r.bounds)) return;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(r);
+  });
+
+  const groups = [];
+  byName.forEach((list, key) => clusterRoads(list).forEach(c => {
+    c.key = key;
+    c.score = c.roads.reduce((s, r) => s + r.score, 0);
+    c.curvy = c.roads.reduce((s, r) => s + r.curvy, 0);
+    c.best = c.roads.map(curvyBin).reduce((a, b) => CURVY_BINS.indexOf(b) > CURVY_BINS.indexOf(a) ? b : a);
+    groups.push(c);
+  }));
+  const top = groups.sort((a, b) => b.score - a.score).slice(0, 8);
+
+  roadsEl.innerHTML = top.length ? '' : '<div class="empty">No curvy roads in view. Try panning or zooming out.</div>';
+  top.forEach(g => {
+    const isSelected = selected && g.roads.includes(selected.roads[0]);
+    if (isSelected) selected = g;  // keep the selection in step as the list rebuilds
+    const btn = document.createElement('button');
+    btn.className = 'road' + (isSelected ? ' selected' : '');
+    btn.innerHTML = `<span class="dot" style="background:${g.best.color}"></span><span class="name">${escapeHtml(g.key)}</span>` +
+      `<span class="miles">${miles(g.curvy)} mi curvy</span>`;
+    btn.onmouseenter = () => showHighlight(g);
+    btn.onmouseleave = () => showHighlight(selected);
+    btn.onclick = () => {
+      selected = isSelected ? null : g;
+      showHighlight(selected);
+      if (selected) map.fitBounds(g.bounds, { maxZoom: 13, padding: [40, 40] });
+      else updateRoadList();
+    };
+    roadsEl.appendChild(btn);
+  });
+}
+
+// ---------- legend & controls ----------
+const legendEl = document.getElementById('legend');
+function buildLegend() {
+  legendEl.innerHTML = '';
+  (mode === 'speed' ? SPEED_BINS : CURVY_BINS).forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'bin' + (b.on ? '' : ' off');
+    btn.innerHTML = `<span class="swatch" style="background:${b.color}"></span>${b.label}`;
+    btn.onclick = () => { b.on = !b.on; btn.classList.toggle('off', !b.on); render(); };
+    legendEl.appendChild(btn);
+  });
+}
+
+document.querySelectorAll('.tabs button').forEach(tab => tab.onclick = () => {
+  mode = tab.dataset.mode;
+  document.querySelectorAll('.tabs button').forEach(t => t.classList.toggle('on', t === tab));
+  buildLegend();
+  render();
+});
+
+const hideUnpaved = document.getElementById('hideUnpaved');
+hideUnpaved.onchange = render;
+const minSpeed = document.getElementById('minSpeed');
+minSpeed.onchange = render;
+document.getElementById('home').onclick = () => map.setView(HOME, HOME_ZOOM);
+document.getElementById('locate').onclick = () => map.locate({ setView: true, maxZoom: 10 });
+map.on('locationerror', () => setStatus('Couldn’t get your location (the browser may have blocked it).', true));
+document.getElementById('toggle').onclick = () => {
+  const p = document.getElementById('panel');
+  p.classList.toggle('collapsed');
+  document.getElementById('toggle').textContent = p.classList.contains('collapsed') ? 'show' : 'hide';
+};
+
+let lastZoom = map.getZoom();
+map.on('moveend', () => {
+  loadTilesInView();
+  // speed mode's minor-road cutoff depends on zoom; otherwise only the list needs updating
+  const crossed = (lastZoom < MINOR_ZOOM) !== (map.getZoom() < MINOR_ZOOM);
+  lastZoom = map.getZoom();
+  crossed && mode === 'speed' ? render() : updateRoadList();
+});
+
+buildLegend();
+loadTilesInView();
+</script>
+</body>
+</html>
