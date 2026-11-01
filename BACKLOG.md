@@ -17,6 +17,10 @@ Ideas that came up, roughly in order of how much they'd help.
   Next: roundabouts (`junction=roundabout`, like the double roundabouts on 87th St), and a
   generator for short interchange loops, e.g. west on I-470, US-71 north, I-435 north, the
   87th St roundabouts, and back through the Grandview Triangle.
+- **Bug: ramps joined through a stop light.** On MO-291 at MO-150 (Lee's Summit), the off-ramp
+  and on-ramp got joined into one "fast ramp" across the signalized intersection. Don't join ramp
+  pieces at nodes that are `highway=traffic_signals` or shared with a non-ramp road, and drop
+  ramps that contain a traffic signal.
 - **Hide maybe-gravel roads**: an option to hide county roads whose surface isn't recorded
   (drawn dashed today). Many are gravel in the Ozarks.
 - **Generator avoids city traffic**: today loops through town only rank lower. Penalize
