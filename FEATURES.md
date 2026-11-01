@@ -284,7 +284,11 @@ under the tag, and the Hills chip lists ft/mi.
   1.5 h loop: the old limit of 4 roads and pure score-per-hour stacked short roads near the start.) Measured live
   from Lee's Summit: 6 h loops 6.1–6.8 h, 3 h loops 2.9–3.5 h.
 - Trimming a loop only drops generated roads.
-- Routes the top 6 up front.
+- Routes the top 6 up front, but each side of the start (N, E, S, W) gets its best loop in when it's at least 15%
+  as good as the best, so the list isn't all one way.
+- When no loop is shown to a side, the status says so ("No loops to the south or west: not enough good roads that
+  way with your filters"). From Greenwood at 1.5 h: west is the KC metro, and south's only other curvy road
+  (South Amarugia Lane) is gravel, so with Paved on there's no south loop.
 - Roads are turned end for end to make the rides between them shortest over the whole loop (not nearest end first).
 - **Doubling back:** loops are ranked by curvy² / miles × (1 − 3 × share ridden twice), floor 0.1. A loop riding
   more than 4% twice (up to twice):

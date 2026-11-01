@@ -65,6 +65,7 @@ export const ROUTING = {
 
 export const GEN = {
   roadKmh: 60, linkKmh: 80, roadFactor: 1.3, maxRoads: 4, maxRoadsCap: 9, spread: 60, maxOptions: 6,
+  sideMin: 0.15,     // each side of the start gets its best loop routed if it's this good next to the best
   minCurveM: 2000,
   // Shorter curvy roads (down to wayHomeM of curves, not farm lanes) only join a loop that
   // doubles back, as another way home: one within wayHomeKm of the stretch ridden twice.

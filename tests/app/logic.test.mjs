@@ -270,6 +270,18 @@ test('generator builds every loop through the rider’s own road', () => {
   assert.ok(tight.every(o => o.stops.length === 1 && o.stops[0].label === 'MO 150'));
 });
 
+test('a decent loop to one side makes the list even when the other side has more', () => {
+  const start = [38.5, -94];
+  const road = (i, ang, score) => {
+    const a = [38.5 + 0.25 * Math.cos(ang * Math.PI / 180), -94 + 0.32 * Math.sin(ang * Math.PI / 180)], b = [a[0] + 0.03, a[1] + 0.03];
+    return { key: `R${i}`, score, curvy: 5000, ids: [i], stop: { type: 'road', label: `R${i}`, pts: [a, b] }, center: a };
+  };
+  const groups = [...Array.from({ length: 36 }, (_, i) => road(i, -90 + i * 5, 5000 + (i * 37) % 500)), road(97, 170, 3000), road(98, 180, 3000), road(99, 190, 3000)];
+  const opts = buildOptions(groups, start, 1.5);
+  assert.ok(opts.some(o => o.stops.some(s => s.label === 'R98')), 'the south loop is among the options');
+  assert.ok(opts[0].stops.every(s => s.label !== 'R98'), 'but still ranked by value');
+});
+
 test('short curvy roads are kept only as another way home, never as the main roads', () => {
   const start = [38.5, -94];
   const roads = [

@@ -215,7 +215,16 @@ export function buildOptions(groups, start, hours, required = []) {
     const fit = Math.min(1, est.hours / hours) ** 2;
     options.push({ dir, pool, free, chosen, stops, maxRoads, value: fun * est.roadHours / (est.hours || 1) * fit, required: req.length });
   }
-  return options.sort((a, b) => b.value - a.value).slice(0, GEN.maxOptions);
+  // The best few, but each side of the start (N, E, S, W) gets its best loop in when that's at
+  // least sideMin as good as the best, so the choice isn't all one way.
+  options.sort((a, b) => b.value - a.value);
+  const side = o => Math.floor(((o.dir + 45) % 360) / 90), picked = [];
+  for (const q of [0, 1, 2, 3]) {
+    const o = options.find(o => side(o) === q);
+    if (o && o.value >= GEN.sideMin * options[0].value) picked.push(o);
+  }
+  for (const o of options) if (!picked.includes(o)) picked.push(o);
+  return picked.slice(0, GEN.maxOptions).sort((a, b) => b.value - a.value);
 }
 
 // Roads that could give a loop another way home where it rides the same road twice: an end or a

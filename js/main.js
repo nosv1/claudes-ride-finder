@@ -360,6 +360,12 @@ async function generate() {
   // Leave out loops that ride a fifth of the way twice, when there are enough without.
   const clean = shown.filter(o => !twice(o));
   if (clean.length >= 3) shown = clean;
+  // Say which ways have nothing, so an all-north list doesn't look like a bug.
+  const sides = ['north', 'east', 'south', 'west'], has = new Set(shown.filter(o => o.route).map(o => Math.floor(((o.dir + 45) % 360) / 90)));
+  const none = sides.filter((_, q) => !has.has(q));
+  if (!required.length && shown.length && none.length && none.length < 4) {
+    status = `${status ? status + ' ' : ''}No loops to the ${none.join(none.length > 2 ? ', ' : ' or ').replace(/, (\w+)$/, ', or $1')}: not enough good roads that way with your filters.`;
+  }
   gen = { options: (shown.length ? shown : options).sort((a, b) => worth(b) - worth(a)), index: -1, running: false, status };
   if (gen.options[0].route) selectOption(0);
   else renderSoon();
