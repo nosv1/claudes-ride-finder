@@ -223,6 +223,25 @@ test('generator builds loops that fit the time', () => {
   options.forEach(o => assert.ok(estimate(start, o.stops).hours <= 2));
 });
 
+test('a long ride fills its time instead of stopping at a few roads by the start', () => {
+  // Good roads all around, from 10 to 150 km out; nearby ones score as well as far ones.
+  const start = [38.5, -94];
+  const groups = [];
+  for (let ring = 1; ring <= 10; ring++) {
+    for (let k = 0; k < 12; k++) {
+      const ang = (k * 30 + ring * 7) * Math.PI / 180, d = ring * 0.135;
+      const a = [38.5 + d * Math.cos(ang), -94 + d * Math.sin(ang) / 0.78], b = [a[0] + 0.05, a[1] + 0.05];
+      groups.push({ key: `R${ring}-${k}`, score: 3000 + (k * 37 + ring * 53) % 400, curvy: 8000, ids: [ring * 100 + k], stop: { type: 'road', label: `R${ring}-${k}`, pts: [a, b] }, center: a });
+    }
+  }
+  for (const hours of [3, 6, 8]) {
+    const est = buildOptions(groups, start, hours).map(o => estimate(start, o.stops).hours);
+    assert.ok(est.length > 0);
+    assert.ok(est[0] >= 0.8 * hours, `best ${hours} h loop estimated at ${est[0].toFixed(2)} h`);
+    est.forEach(h => assert.ok(h >= 0.7 * hours && h <= hours, `${hours} h loop estimated at ${h.toFixed(2)} h`));
+  }
+});
+
 test('generator builds every loop through the rider’s own road', () => {
   const start = [38.5, -94];
   const groups = [0, 1, 2, 3, 4, 5].map(i => {

@@ -60,12 +60,13 @@ export const ROUTING = {
   valhalla: 'https://valhalla1.openstreetmap.de/route',
   osrm: 'https://router.project-osrm.org/route/v1/driving',
   valhallaMax: 10,     // the public server's per-request location limit
-  maxLocations: 25,
+  maxLocations: 40,    // more than this and the through points on roads are dropped
 };
 
 export const GEN = {
-  roadKmh: 60, linkKmh: 80, roadFactor: 1.3, maxRoads: 4, spread: 60, maxOptions: 6,
-  minCurveM: 2000, overrun: 1.15,
+  roadKmh: 60, linkKmh: 80, roadFactor: 1.3, maxRoads: 4, maxRoadsCap: 9, spread: 60, maxOptions: 6,
+  minCurveM: 2000,
+  under: 0.8, overrun: 1.2,   // loops must route to 80–120% of the chosen time
   maxBack: 0.04,     // share of a loop ridden twice before it tries dropping a road
   hideBack: 0.2,     // loops riding more than this share twice are left out (if 3 others remain)
 };

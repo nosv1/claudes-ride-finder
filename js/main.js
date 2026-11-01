@@ -335,10 +335,19 @@ async function generate() {
     renderSoon();
     await routeOption(options[i], start, hours);
   }
+  // Only loops within 80–120% of the chosen time; if none came out that close, the nearest.
   const worth = o => o.route ? o.worth : -1, twice = o => o.route && o.back > GEN.hideBack * o.route.meters;
+  const target = hours * 3600, fits = o => o.route && o.route.seconds >= GEN.under * target && o.route.seconds <= GEN.overrun * target;
+  let shown = options.filter(fits), status = '';
+  if (!shown.length && options.some(o => o.route)) {
+    const off = o => Math.abs(Math.log(o.route.seconds / target));
+    shown = options.filter(o => o.route).sort((a, b) => off(a) - off(b)).slice(0, 3);
+    status = `Couldn’t fit a loop close to ${hours === 1.5 ? '1½' : hours} h here, so these are the nearest. Try another time or loosen the filters.`;
+  }
   // Leave out loops that ride a fifth of the way twice, when there are enough without.
-  const clean = options.filter(o => o.route && !twice(o));
-  gen = { options: (clean.length >= 3 ? clean : options).sort((a, b) => worth(b) - worth(a)), index: -1, running: false, status: '' };
+  const clean = shown.filter(o => !twice(o));
+  if (clean.length >= 3) shown = clean;
+  gen = { options: (shown.length ? shown : options).sort((a, b) => worth(b) - worth(a)), index: -1, running: false, status };
   if (gen.options[0].route) selectOption(0);
   else renderSoon();
 }
@@ -352,7 +361,8 @@ function rate(r) {
     worth: curvy * curvy / r.meters * Math.max(0.1, 1 - 3 * back / r.meters) };
 }
 
-// Route a loop for real, dropping its weakest road while it runs more than 15% over. While it
+// Route a loop for real. Under 80% of the time, fill it again aiming that much longer (the
+// estimate ran fast), up to twice; over 120%, drop its weakest road, up to twice. While it
 // then doubles back, try it without the generated road most to blame (up to twice): the one the
 // doubled-back miles are on, like a lake road that dead-ends, or else the one nearest them.
 async function routeOption(opt, start, hours) {
@@ -362,6 +372,14 @@ async function routeOption(opt, start, hours) {
     return fetchRoute(T.routablePoints({ ...trip, items: list, loop: true }), +trip.pref);
   };
   let r = await routeOf(items);
+  for (let tries = 0; r && r.seconds < hours * 3600 * GEN.under && tries < 2; tries++) {
+    const estHours = P.estimate(start.pts[0], items.slice(1)).hours;
+    const more = P.fillLoop(start.pts[0], opt.pool, opt.dir, hours * estHours / (r.seconds / 3600), opt.chosen, opt.maxRoads + 2);
+    if (more.chosen.length === opt.chosen.length) break;  // nothing more fits this way
+    opt.chosen = more.chosen;
+    items = [start, ...more.stops];
+    r = await routeOf(items);
+  }
   for (let tries = 0; r && r.seconds > hours * 3600 * GEN.overrun && tries < 2; tries++) {
     const added = items.filter(it => it.gen);
     if (!added.length) break;  // only the rider's own stops left: keep them even if it runs long
@@ -380,7 +398,7 @@ async function routeOption(opt, start, hours) {
       .sort((a, b) => b.on - a.on || a.near - b.near)[0].it;
     const fewer = items.filter(it => it !== blame).map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
     const other = rate(await routeOf(fewer));
-    if (!other || other.worth <= best.worth) break;
+    if (!other || other.worth <= best.worth || other.route.seconds < hours * 3600 * GEN.under) break;
     items = fewer;
     best = other;
   }

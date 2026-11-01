@@ -244,10 +244,20 @@ under the tag, and the Hills chip lists ft/mi.
   - Without any, all 12 directions are tried.
 - Looks at roads within `hours × 80 / 2.6` km.
 - For each direction (60° either side):
-  - adds roads one at a time, taking the most score per extra hour of estimated riding (60 km/h on roads, 80 km/h between, ×1.3 road factor);
-  - up to 4 roads, ordered by angle so the loop goes out one side and back the other.
+  - adds roads one at a time, taking the most score per extra hour of estimated riding (60 km/h on roads, 80 km/h
+    between, ×1.3 road factor), up to the chosen time;
+  - each road is charged at least its share of the time still to fill (time left ÷ road slots left), and near ties
+    go to the road using more time, so long rides reach out instead of stacking short roads by the start;
+  - up to max(4, 1.5 × hours) roads, at most 9 (a 6 h loop needs about 9), ordered by angle so the loop goes out
+    one side and back the other;
+  - ranked by score × share of time on the roads × (estimated hours ÷ chosen hours)², so loops that fill the time win.
 - Generated stops are marked `gen`. Generating again swaps them but keeps the rider's.
-- Trimming a loop that runs more than 15% over time only drops generated roads.
+- **Loops must route to 80–120% of the chosen time.** Under 80%, the loop is filled again aiming longer by the
+  ratio the estimate was off (up to twice, 2 more roads allowed); over 120%, its weakest generated road is dropped
+  (up to twice). Only loops in range are shown; if none are, the 3 nearest with a note. (A 6 h request once gave a
+  1.5 h loop: the old limit of 4 roads and pure score-per-hour stacked short roads near the start.) Measured live
+  from Lee's Summit: 6 h loops 6.1–6.8 h, 3 h loops 2.9–3.5 h.
+- Trimming a loop only drops generated roads.
 - Routes the top 6 up front.
 - Roads are turned end for end to make the rides between them shortest over the whole loop (not nearest end first).
 - **Doubling back:** loops are ranked by curvy² / miles × (1 − 3 × share ridden twice), floor 0.1. A loop riding

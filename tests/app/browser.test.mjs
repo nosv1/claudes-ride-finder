@@ -240,7 +240,7 @@ test('generator routes loops and loads the best one as the ride', { skip: !NETWO
   await page.waitFor('RF.gen.options.length > 0 && !RF.gen.running', 180000);
   const opts = await page.eval('RF.gen.options.map(o => o.route && o.route.seconds)');
   assert.ok(opts.filter(Boolean).length >= 3, `routed loops: ${opts}`);
-  assert.ok(opts.every(s => !s || s <= 3 * 3600 * 1.15));
+  assert.ok(opts.every(s => s >= 3 * 3600 * 0.8 && s <= 3 * 3600 * 1.2), `loops within 80–120% of 3 h: ${opts.map(s => (s / 3600).toFixed(2))}`);
   await page.waitFor('RF.route && RF.info && RF.info.curvy != null', 30000);
   assert.ok(await page.eval('RF.trip.items.length') >= 2);
 });
