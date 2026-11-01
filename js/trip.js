@@ -30,6 +30,12 @@ export function routablePoints(trip) {
 // A stretch as a stop: entry and exit are its two farthest-apart ends, plus up to two pieces'
 // midpoints about a third and two thirds along, so the router follows it.
 export function roadStop(g) {
+  if (g.oneway) {
+    // A ramp only goes one way: ride its longest piece in its own direction.
+    const r = g.roads.reduce((a, b) => b.length > a.length ? b : a);
+    return { type: 'road', oneway: true, label: g.key, curvy: g.curvy, score: g.score, ids: g.ids,
+      pts: [r.geom[0], r.geom[Math.floor(r.geom.length / 2)], r.geom[r.geom.length - 1]].map(round5) };
+  }
   const ends = g.roads.flatMap(r => [r.geom[0], r.geom[r.geom.length - 1]]);
   let a = ends[0], b = ends[1], far = -1;
   ends.forEach((p, i) => ends.slice(i + 1).forEach(q => {
@@ -50,6 +56,7 @@ export function roadStop(g) {
 
 // Ride a road stop starting from whichever end is nearer `from`.
 export function orientFrom(stop, from) {
+  if (stop.oneway) return stop;
   if (from && d2(from, stop.pts[stop.pts.length - 1]) < d2(from, stop.pts[0])) stop.pts.reverse();
   return stop;
 }
@@ -93,7 +100,7 @@ export function moveStop(trip, from, to) {
   return trip;
 }
 
-export const flipStop = (trip, i) => { trip.items[i].pts.reverse(); return trip; };
+export const flipStop = (trip, i) => { if (!trip.items[i].oneway) trip.items[i].pts.reverse(); return trip; };
 export const removeStop = (trip, i) => { trip.items.splice(i, 1); return trip; };
 
 // Where a new stop at point p belongs: before the first stop the route reaches after it.
@@ -108,7 +115,7 @@ export function indexAlongRoute(trip, p, path) {
 export function encodeTrip(trip) {
   const data = {
     l: trip.loop ? 1 : 0, p: trip.pref, r: trip.range, n: trip.need90 ? 1 : 0,
-    s: trip.items.map(it => [it.type === 'road' ? 'r' : 'p', it.label, Math.round(it.curvy || 0), it.pts.map(round5), it.ids || 0, it.gen ? 1 : 0]),
+    s: trip.items.map(it => [it.type === 'road' ? 'r' : 'p', it.label, Math.round(it.curvy || 0), it.pts.map(round5), it.ids || 0, it.gen ? 1 : 0, it.oneway ? 1 : 0]),
   };
   const bytes = new TextEncoder().encode(JSON.stringify(data));
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -119,8 +126,9 @@ export function decodeTrip(s) {
   const d = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
   return {
     loop: !!d.l, pref: d.p ?? '0.5', range: +(d.r ?? 120), need90: !!d.n,
-    items: d.s.map(([t, label, curvy, pts, ids, gen], i) => ({
+    items: d.s.map(([t, label, curvy, pts, ids, gen, oneway], i) => ({
       type: t === 'r' ? 'road' : 'point', label, curvy, pts, ...(ids ? { ids } : {}), ...(gen ? { gen: true } : {}),
+      ...(oneway ? { oneway: true } : {}),
       ...(t !== 'r' && i === 0 && /^Start/.test(label) ? { start: true } : {}),
     })),
   };

@@ -30,8 +30,8 @@ committed as `tiles/`. The app needs no OSM server at runtime.
 | `tiles/fuel.js` | `window.FUEL = [[lat, lon, label, city, status90, hours], …]` |
 | `tiles/search.js` | `window.SEARCH = {places: [[name, lat, lon, kind]], roads: [[key, name, s, w, n, e, curveMetres, nearestTown]]}` |
 
-**Road row format** (one OSM way):
-`[id, highway, name, ref, mph|null, estMph|null, surface, score, curvy, sweep, length, coords, hill|null, blind]`
+**Road row format** (one OSM way, or one joined ramp):
+`[id, highway, name, ref, mph|null, estMph|null, surface, score, curvy, sweep, length, coords, hill|null, blind, lanes|null]`
 - `coords`: 1e-5° integers, delta-encoded `[dlat, dlon, …]`. `blind`: absolute 1e-5° pairs.
 - `surface`: 0 paved, 1 gravel/dirt, 2 unknown (only `unclassified` roads with no tag; state routes assumed paved).
 
@@ -64,6 +64,15 @@ committed as `tiles/`. The app needs no OSM server at runtime.
   - Calibrated on real roads: western Kansas ≈11, around KC ≈18, Ozarks ≈30.
 - **Blind crest corner:** a point ≥ 3 m above the average of the points 75 m before and after it, a local maximum, with a turn of radius < 120 m within 25 m before to 75 m after it.
   - One flag per crest.
+
+**Fast ramps** (`motorway_link`, `trunk_link`)
+- OSM splits ramps into short pieces, so pieces are joined end to end where nothing merges or splits, then
+  scored as one ramp, stored under the first piece's id and named from `destination:ref` ("Ramp to I 435 North").
+- Sweep for ramps counts radii of 150–1,500 m (highway-speed ramps curve wider than back roads).
+- Kept if they sweep ≥ 300 m or have a posted limit. No elevation (bare-earth data is meaningless on a flyover),
+  not in the search index. Lane counts go on every row (index 14).
+- The app's rule for a **fast ramp**: sweep ≥ 300 m and no more than half as much tight curve, which drops
+  cloverleaf loops. Tiers: Sweeping ramp ≥ 300 m, Long sweep ≥ 600 m, Flyover ≥ 1,000 m.
 
 **Gas stations**
 - `amenity=fuel` nodes and ways (centroid). Diesel or truck-only pumps are skipped.
@@ -123,7 +132,11 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 |---|---|---|
 | Best rides (default) | curvy and sweeper roads with a limit (posted or estimated) ≥ the chosen 35/40/45/50/55 mph | curviness |
 | All curvy roads | all curvy and sweeper roads | curviness |
+| Interchanges | fast interchange ramps only (a different kind of riding) | 3 ramp tiers |
 | Speed limits | roads with a posted limit only; county and residential roads hidden below zoom 11 | 9 speed bins (≤20 … 70+) |
+
+Ramps never appear in the curvy modes or the generator's candidates; they're one-way, so a ramp stop is ridden
+in its own direction (no ⇄). Ramp cards show sweep, lanes, posted limit (never the town estimate) and length.
 
 **Curve classes**, by score per metre:
 - Some curves ≥ 0.15

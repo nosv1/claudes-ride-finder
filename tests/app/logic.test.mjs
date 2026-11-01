@@ -66,6 +66,22 @@ test('curve classes, sweepers and the Best rides filter', () => {
   assert.equal(hillLevel(22), 2);
 });
 
+test('fast ramps: sweeping ones count, cloverleaf loops don’t, and they stay out of the curvy modes', () => {
+  const flyover = row({ hw: 'motorway_link', name: 'Ramp to I 435 North', sweep: 700, curvy: 50, length: 800 });
+  const loop = row({ hw: 'motorway_link', name: 'Ramp', sweep: 300, curvy: 400, length: 450 });
+  assert.equal(flyover.rampTier, 1);
+  assert.equal(flyover.cls, -1, 'not a curvy-road class');
+  assert.equal(loop.rampTier, -1);
+  const f = { ...FILTERS, mode: 'ramps', rampTiers: new Set([0, 1, 2]) };
+  assert.ok(visible(flyover, f) && !visible(loop, f));
+  assert.ok(!visible(flyover, FILTERS), 'hidden in Best rides');
+  // One-way: ridden in its own direction even when the trip ends near its far end.
+  const g = stretchOf([flyover], flyover), trip = newTrip();
+  addPoint(trip, flyover.geom.at(-1), 'Near the exit end');
+  addRoad(trip, g);
+  assert.deepEqual(trip.items[1].pts[0], flyover.geom[0].map(v => +v.toFixed(5)));
+});
+
 test('same-named pieces form stretches only when close', () => {
   const a = row({ id: 1, ref: 'MO Y', score: 600, pts: east(38, -93) });
   const b = row({ id: 2, ref: 'MO Y', score: 600, pts: east(38, -92.985) });

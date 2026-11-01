@@ -1,5 +1,5 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN } from './config.js';
+import { CURVE_CLASSES, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS } from './config.js';
 import { miles, fmtDuration, spotOnLine, pad, boundsOf, intersects } from './geo.js';
 import { visible, stretchOf, bestInView, clusterRoads, summarize } from './roads.js';
 import * as T from './trip.js';
@@ -21,7 +21,8 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 
 const settings = Object.assign({
   mode: 'ride', minSpeed: 45, minHills: 0, hideUnpaved: true, showBlind: true, showFuel: false,
-  classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), basemap: 'dark', hillshade: true, genHours: 3,
+  classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
+  basemap: 'dark', hillshade: true, genHours: 3,
 }, load(SETTINGS_KEY));
 
 let trip = T.newTrip();
@@ -34,10 +35,11 @@ let gen = { options: [], index: -1, running: false, status: '' };
 let showGoogleParts = false;
 let tilted = false;
 
-const MODES = { ride: 'Best rides', curvy: 'All curvy roads', speed: 'Speed limits' };
+const MODES = { ride: 'Best rides', curvy: 'All curvy roads', ramps: 'Interchanges', speed: 'Speed limits' };
 
 function filters() {
-  return { ...settings, classes: new Set(settings.classes), speedBins: new Set(settings.speedBins), zoom: mapView.zoom() };
+  return { ...settings, classes: new Set(settings.classes), speedBins: new Set(settings.speedBins),
+    rampTiers: new Set(settings.rampTiers || RAMP_TIERS.map((_, i) => i)), zoom: mapView.zoom() };
 }
 function saveSettings() { save(SETTINGS_KEY, settings); }
 
@@ -264,7 +266,7 @@ async function generate() {
   renderSoon();
   loadTiles([s[0] - dLat, s[1] - dLon, s[0] + dLat, s[1] + dLon]);
   await tilesSettled();
-  const f = filters(), worthy = r => visible(r, { ...f, mode: f.mode === 'speed' ? 'ride' : f.mode });
+  const f = filters(), worthy = r => visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' });
   const options = P.buildOptions(P.candidateGroups(store.roads, s, reach, worthy), s, hours, required);
   if (!options.length) {
     gen = { options: [], index: -1, running: false, status: 'No good roads within reach. Try a longer ride, or loosen the filters.' };
@@ -409,14 +411,15 @@ function homeView() {
   const groups = speedMode || !store.roads.length ? [] : bestInView(store.roads, mapView.view(), filters());
   return [
     route ? rideBar() : null,
-    h('div.section-head', {}, h('h2', {}, speedMode ? 'Posted speed limits' : 'Best roads in view'),
+    h('div.section-head', {}, h('h2', {}, speedMode ? 'Posted speed limits' : settings.mode === 'ramps' ? 'Fast ramps in view' : 'Best roads in view'),
       loadingCount() ? h('span.muted', {}, 'Loading…') : ''),
     legend(),
     speedMode
       ? h('p.muted', {}, 'From OpenStreetMap. County roads and side streets appear as you zoom in.')
       : groups.length
         ? h('div.cards', {}, groups.map(roadCard))
-        : h('p.empty', {}, !store.roads.length || mapView.zoom() < 7 ? 'Zoom in to see roads.' : 'Nothing matches here. Pan around or loosen the filters.'),
+        : h('p.empty', {}, !store.roads.length || mapView.zoom() < 7 ? 'Zoom in to see roads.'
+          : settings.mode === 'ramps' ? 'No fast ramps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
     h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
   ];
@@ -426,12 +429,17 @@ function legend() {
   if (settings.mode === 'speed') {
     return h('div.legend', {}, SPEED_BINS.map((b, i) => legendChip(b.label, b.color, settings.speedBins.includes(i), () => toggleIn('speedBins', i))));
   }
+  if (settings.mode === 'ramps') {
+    const on = settings.rampTiers || RAMP_TIERS.map((_, i) => i);
+    return h('div.legend', {}, RAMP_TIERS.map((t, i) => legendChip(t.label, t.color, on.includes(i), () => toggleIn('rampTiers', i))));
+  }
   return h('div.legend', {}, CURVE_CLASSES.map((c, i) => legendChip(c.label, c.color, settings.classes.includes(i), () => toggleIn('classes', i))));
 }
+const groupColor = g => g.rampTier >= 0 ? RAMP_TIERS[g.rampTier].color : CURVE_CLASSES[Math.max(0, g.cls)].color;
 const legendChip = (label, color, on, onclick) => h(`button.legend-chip${on ? '' : '.off'}`, { onclick, title: on ? 'Hide these' : 'Show these' },
   h('span.swatch', { style: `background:${color}` }), label);
 function toggleIn(key, v) {
-  const list = settings[key];
+  const list = settings[key] || RAMP_TIERS.map((_, i) => i);
   setSetting({ [key]: list.includes(v) ? list.filter(x => x !== v) : [...list, v] });
 }
 
@@ -442,10 +450,10 @@ function roadCard(g) {
     onmouseenter: () => mapView.highlight(g.ids),
     onmouseleave: () => mapView.highlight(selected && selected.group.ids),
   },
-  h('span.bar', { style: `background:${CURVE_CLASSES[Math.max(0, g.cls)].color}` }),
+  h('span.bar', { style: `background:${groupColor(g)}` }),
   h('div.card-main', {},
     h('div.card-title', {}, g.key),
-    h('div.card-sub', {}, `${miles(g.curvy)} mi of curves`, hill && hill !== 'Flat' ? ` · ${hill.toLowerCase()}` : '',
+    g.oneway ? h('div.card-sub', {}, rampFacts(g).join(' · ')) : h('div.card-sub', {}, `${miles(g.curvy)} mi of curves`, hill && hill !== 'Flat' ? ` · ${hill.toLowerCase()}` : '',
       g.blind ? h('span.warn', {}, ` · ⚠ ${g.blind}`) : '')),
   h('button.icon-btn.add', { title: 'Add to ride', onclick: e => { e.stopPropagation(); addRoad(g); }, html: icon.plus }));
 }
@@ -459,17 +467,48 @@ function rideBar() {
     h('button.btn.primary', { onclick: openGoogle }, iconEl(icon.go), 'Go'));
 }
 
+// Sweep, lanes and speed for a ramp (posted only: the town estimate means nothing on a ramp).
+function rampFacts(g) {
+  const lanes = Math.max(0, ...g.roads.map(r => r.lanes || 0)), mph = g.roads.map(r => r.mph).find(v => v != null);
+  return [`${miles(g.roads.reduce((s, r) => s + r.sweep, 0))} mi of sweep`, lanes ? `${lanes} lane${lanes > 1 ? 's' : ''}` : '',
+    mph ? `${mph} mph` : ''].filter(Boolean);
+}
+
+function rampView(g, r, links) {
+  const tier = RAMP_TIERS[Math.max(0, g.rampTier)], lanes = Math.max(0, ...g.roads.map(x => x.lanes || 0));
+  const mph = g.roads.map(x => x.mph).find(v => v != null);
+  return [
+    backBar(g.key, 'One-way interchange ramp'),
+    h('div.tag', { style: `--c:${tier.color}` }, tier.label),
+    h('div.stats', {},
+      stat(`${miles(g.roads.reduce((s, x) => s + x.sweep, 0))} mi`, 'of sweeping curve'),
+      stat(lanes ? `${lanes}` : '—', lanes === 1 ? 'lane' : 'lanes'),
+      stat(mph ? `${mph} mph` : '—', mph ? 'posted limit' : 'no posted limit'),
+      stat(`${miles(g.roads.reduce((s, x) => s + x.length, 0))} mi`, 'long')),
+    h('div.actions', {},
+      h('button.btn.primary.wide', { onclick: () => addRoad(g) }, iconEl(icon.plus), 'Add to ride'),
+      h('button.btn.wide', { onclick: () => planAround(g) }, iconEl(icon.route), 'Plan a loop with this ramp'),
+      ...links),
+    h('p.fineprint', {}, `OSM way ${r.id} · ${r.hw.replace('_', ' ')}. Rides are routed the legal way round.`),
+  ];
+}
+
 function roadView() {
   if (!selected) return homeView();
   const { group: g, piece: r, at } = selected;
   const spot = spotOnLine(r.geom, at), [lat, lon] = spot.p.map(v => +v.toFixed(6));
+  const gm = 'https://www.google.com/maps/@?api=1&map_action=';
+  const links = [
+    h('a.btn', { href: `${gm}pano&viewpoint=${lat},${lon}&heading=${Math.round(spot.heading)}`, target: '_blank', rel: 'noopener' }, iconEl(icon.person), 'Street View'),
+    h('a.btn', { href: `${gm}map&center=${lat},${lon}&zoom=17&basemap=satellite`, target: '_blank', rel: 'noopener' }, iconEl(icon.globe), 'Satellite'),
+  ];
+  if (g.oneway) return rampView(g, r, links);
   const cls = CURVE_CLASSES[Math.max(0, g.cls)];
   const prof = h('div.profile-slot', {}, h('div.muted.small', {}, 'Loading elevation…'));
   profile(r.geom, 160).then(p => prof.replaceChildren(p
     ? h('div', {}, h('div.chart-head', {}, h('span', {}, 'Elevation · this section'), h('span', {}, `${Math.round(p.lo).toLocaleString()}–${Math.round(p.hi).toLocaleString()} ft`)),
       elevationChart(p, s => mapView.setDot(s && s.p)))
     : h('div.muted.small', {}, 'Elevation unavailable right now.')));
-  const gm = 'https://www.google.com/maps/@?api=1&map_action=';
   return [
     backBar(g.key, r.name && r.name !== g.key ? r.name : (r.ref && r.ref !== g.key ? r.ref : null)),
     h('div.tag', { style: `--c:${cls.color}` }, g.cls >= 0 ? cls.label : 'Mostly straight'),
@@ -483,8 +522,7 @@ function roadView() {
     h('div.actions', {},
       h('button.btn.primary.wide', { onclick: () => addRoad(g) }, iconEl(icon.plus), 'Add to ride'),
       h('button.btn.wide', { onclick: () => planAround(g) }, iconEl(icon.route), 'Plan a loop with this road'),
-      h('a.btn', { href: `${gm}pano&viewpoint=${lat},${lon}&heading=${Math.round(spot.heading)}`, target: '_blank', rel: 'noopener' }, iconEl(icon.person), 'Street View'),
-      h('a.btn', { href: `${gm}map&center=${lat},${lon}&zoom=17&basemap=satellite`, target: '_blank', rel: 'noopener' }, iconEl(icon.globe), 'Satellite')),
+      ...links),
     h('p.fineprint', {}, `OSM way ${r.id} · ${r.hw.replace('_', ' ')} road`),
   ];
 }
@@ -618,7 +656,7 @@ function stopList() {
     h('div.grow', { onclick: () => mapView.fit(boundsOf(it.pts), 13) },
       h('div', {}, it.label),
       h('div.muted.small', {}, it.type === 'road' ? `${miles(it.curvy || 0)} mi of curves` : 'Stop · drag its pin to move')),
-    it.type === 'road' ? h('button.icon-btn', { title: 'Ride it the other way', html: icon.swap,
+    it.type === 'road' && !it.oneway ? h('button.icon-btn', { title: 'Ride it the other way', html: icon.swap,
       onclick: () => { T.flipStop(trip, i); tripChanged(); } }) : '',
     h('button.icon-btn', { title: 'Remove', html: icon.x, onclick: () => { T.removeStop(trip, i); tripChanged(); } }))));
   sortable(list, (from, to) => { T.moveStop(trip, from, to); tripChanged(); });
@@ -723,7 +761,7 @@ function renderChips() {
     chips.push(chip(`${s.minSpeed}+ mph`, { menuItems: [{ heading: 'Speed limit at least' },
       ...[35, 40, 45, 50, 55].map(v => ({ label: `${v} mph`, on: s.minSpeed === v, run: () => setSetting({ minSpeed: v }) }))] }));
   }
-  if (s.mode !== 'speed') {
+  if (s.mode === 'ride' || s.mode === 'curvy') {
     chips.push(chip(s.minHills ? `${HILLS[s.minHills].label}+` : 'Any hills', { on: s.minHills > 0, menuItems: [{ heading: 'Hills' },
       ...['Any', 'Rolling or more', 'Hilly or more', 'Very hilly'].map((l, v) => ({ label: l, on: s.minHills === v, run: () => setSetting({ minHills: v }) }))] }));
   }

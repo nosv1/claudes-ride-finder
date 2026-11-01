@@ -1,17 +1,19 @@
 // Roads: decoding tile rows, classifying them, filtering, and grouping pieces into stretches.
 // Pure: no DOM, no map library.
-import { CURVE_CLASSES, SPEED_BINS, HILLS, MINOR_TYPES } from './config.js';
+import { CURVE_CLASSES, SPEED_BINS, HILLS, MINOR_TYPES, RAMP_TIERS, RAMP_TYPES } from './config.js';
 import { decodeDeltas, boundsOf, extend, pad, intersects } from './geo.js';
 
-// Row: [id, highway, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords, hill, blind]
+// Row: [id, highway, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords, hill, blind, lanes]
 export function decodeRow(row) {
-  const [id, hw, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords, hill, blind] = row;
+  const [id, hw, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords, hill, blind, lanes] = row;
   const geom = decodeDeltas(coords);
   const blindPts = [];
   for (let i = 0; i < blind.length; i += 2) blindPts.push([blind[i] / 1e5, blind[i + 1] / 1e5]);
-  const r = { id, hw, name, ref, mph, estMph, surface, score, curvy, sweep, length, hill, blind: blindPts, geom, bounds: boundsOf(geom) };
+  const r = { id, hw, name, ref, mph, estMph, surface, score, curvy, sweep, length, hill, lanes, blind: blindPts, geom, bounds: boundsOf(geom) };
   r.key = ref || name || '';
-  r.cls = curveClass(r);
+  r.oneway = RAMP_TYPES.has(hw);
+  r.rampTier = rampTier(r);
+  r.cls = r.oneway ? -1 : curveClass(r);  // ramps are their own thing (Interchanges mode)
   r.speed = mph ?? estMph;
   r.hillLevel = hillLevel(hill);
   return r;
@@ -19,6 +21,13 @@ export function decodeRow(row) {
 
 // Sweepers: a good run of wide curves, or a short road that's mostly curve.
 export const isSweeper = r => r.sweep >= 800 || (r.sweep >= 400 && r.sweep / r.length >= 0.5);
+
+// Fast ramps sweep for a few hundred metres and aren't mostly tight curve (cloverleaf loops are).
+// -1 not a fast ramp, else the RAMP_TIERS index.
+export function rampTier(r) {
+  if (!RAMP_TYPES.has(r.hw) || r.sweep < RAMP_TIERS[0].min || r.curvy > 0.5 * r.sweep) return -1;
+  return RAMP_TIERS.reduce((t, tier, i) => r.sweep >= tier.min ? i : t, 0);
+}
 
 // -1 not curvy, 0 sweeper, 1..4 tight-curve bins (see CURVE_CLASSES).
 export function curveClass(r) {
@@ -34,8 +43,9 @@ export const curveMeters = r => r.curvy + r.sweep;
 export const isMinor = r => MINOR_TYPES.has(r.hw.replace('_link', ''));
 
 // Whether a road shows under the current filters (the map's layer filters mirror this).
-// f: { mode: 'ride'|'curvy'|'speed', minSpeed, minHills, hideUnpaved, classes: Set, speedBins: Set, zoom }
+// f: { mode: 'ride'|'curvy'|'speed'|'ramps', minSpeed, minHills, hideUnpaved, classes: Set, speedBins: Set, rampTiers: Set, zoom }
 export function visible(r, f) {
+  if (f.mode === 'ramps') return r.rampTier >= 0 && f.rampTiers.has(r.rampTier);
   if (f.hideUnpaved && r.surface === 1) return false;
   if (f.mode === 'speed') {
     return r.mph != null && f.speedBins.has(speedBin(r.mph)) && (!isMinor(r) || f.zoom >= 11);
@@ -73,6 +83,8 @@ export function summarize(c, key) {
   const measured = c.roads.filter(r => r.hill != null), len = measured.reduce((s, r) => s + r.length, 0);
   g.hill = len ? measured.reduce((s, r) => s + r.hill * r.length, 0) / len : null;
   g.cls = Math.max(...c.roads.map(r => r.cls));  // sweepers (0) rank below the tight-curve bins
+  g.rampTier = Math.max(...c.roads.map(r => r.rampTier));
+  g.oneway = c.roads.every(r => r.oneway);
   g.blind = c.roads.reduce((s, r) => s + r.blind.length, 0);
   g.ids = c.roads.map(r => r.id);
   return g;
@@ -81,7 +93,7 @@ export function summarize(c, key) {
 // The stretch a piece belongs to (just the piece if it has no name).
 export function stretchOf(roads, r) {
   if (!r.key) return summarize({ roads: [r], bounds: r.bounds }, 'Unnamed road');
-  const same = roads.filter(x => x === r || (x.key === r.key && x.cls >= 0));
+  const same = roads.filter(x => x === r || (x.key === r.key && (x.cls >= 0 || x.rampTier >= 0) && x.oneway === r.oneway));
   return summarize(clusterRoads(same).find(c => c.roads.includes(r)), r.key);
 }
 

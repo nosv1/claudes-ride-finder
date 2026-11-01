@@ -88,6 +88,20 @@ test('turning off a curve class hides those roads', async () => {
   await page.waitFor(`RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).some(f => f.properties.i === ${MO150})`, 10000);
 });
 
+test('Interchanges mode shows the fast ramps at the Grandview Triangle', async () => {
+  await page.eval("document.querySelector('.view-head .icon-btn') && document.querySelector('.view-head .icon-btn').click()");
+  await page.eval("document.querySelector('#chips .chip').click()");
+  await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Interchanges/.test(b.textContent)).click()");
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.525, 38.93], zoom: 13.5 })");
+  await page.waitFor("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).some(f => f.properties.rt >= 0)", 30000);
+  assert.ok(await page.eval("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).every(f => f.properties.rt >= 0)"), 'only ramps drawn');
+  await page.waitFor("/Fast ramps in view/.test(document.getElementById('sheetBody').innerText) && document.querySelector('.road-card')", 10000);
+  assert.match(await sheetText(), /Ramp to I 4/);
+  // Back to Best rides for the remaining tests.
+  await page.eval("document.querySelector('#chips .chip').click()");
+  await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Best rides/.test(b.textContent)).click()");
+});
+
 test('search finds a route number and opens the road', async () => {
   await page.eval("(() => { const q = document.getElementById('q'); q.value = 'hwy 7'; q.dispatchEvent(new Event('input')); })()");
   await page.waitFor("document.querySelectorAll('#results .result').length > 0", 5000);

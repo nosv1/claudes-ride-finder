@@ -11,6 +11,14 @@ export const CURVE_CLASSES = [
   { label: 'Twisty', min: 0.9, color: '#e040fb', width: 4.5 },
 ];
 
+// Fast interchange ramps (Interchanges mode), by metres of sweeping curve.
+export const RAMP_TIERS = [
+  { label: 'Sweeping ramp', min: 300, color: '#a3e635' },
+  { label: 'Long sweep', min: 600, color: '#38bdf8' },
+  { label: 'Flyover', min: 1000, color: '#f472b6' },
+];
+export const RAMP_TYPES = new Set(['motorway_link', 'trunk_link']);
+
 export const SPEED_BINS = [
   { label: '≤20', max: 20, color: '#9b59d0' },
   { label: '25', max: 25, color: '#4c6ef5' },

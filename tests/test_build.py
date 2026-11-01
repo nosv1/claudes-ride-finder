@@ -79,6 +79,16 @@ class TestCurvature(unittest.TestCase):
         self.assertEqual(bt.radius_weight(500), 0.0)
 
 
+class TestRamps(unittest.TestCase):
+    def test_wide_flyover_counts_but_a_cloverleaf_loop_is_tight(self):
+        flyover = line(0, 0, 0, 300) + arc(800, 300, 800, math.pi, math.pi * 0.75)[1:]  # 800 m radius, ~630 m of curve
+        self.assertGreaterEqual(bt.ramp_sweep(to_latlon(flyover)), bt.MIN_SWEEP)
+        self.assertEqual(bt.analyze(to_latlon(flyover))[3], 0, "too wide for the back-road sweeper range")
+        loop = arc(0, 60, 60, -math.pi / 2, math.pi)  # 270° cloverleaf loop, radius 60 m
+        _, _, tight, _ = bt.analyze(to_latlon(loop))
+        self.assertGreater(tight, 0.5 * bt.ramp_sweep(to_latlon(loop)), "the app's rule: mostly tight means not a fast ramp")
+
+
 class TestSpeedAndSurface(unittest.TestCase):
     def test_parse_mph(self):
         self.assertEqual(bt.parse_mph("45 mph"), 45)
@@ -213,7 +223,7 @@ class TestBuiltData(unittest.TestCase):
     def test_rows_have_the_expected_shape(self):
         rows = self.load_tile("-189_77")
         for r in rows[:200]:
-            self.assertEqual(len(r), 14)
+            self.assertEqual(len(r), 15)
             self.assertIn(r[6], (0, 1, 2))
             self.assertTrue(r[4] is not None or r[5] is not None, "every road has a posted or estimated limit")
 

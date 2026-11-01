@@ -29,6 +29,8 @@ OUT_DIR = "tiles"
 
 # Ramps (_link) are tight loops that would score as "twisty", so they only appear in speed mode.
 CURVY_TYPES = {"primary", "secondary", "tertiary", "unclassified"}
+# Interstate/expressway ramps: scored on their own for long, fast sweeps (flyovers), not tight loops.
+RAMP_TYPES = {"motorway_link", "trunk_link"}
 SPEED_TYPES = CURVY_TYPES | {"motorway", "trunk", "residential", "motorway_link", "trunk_link",
                              "primary_link", "secondary_link", "tertiary_link"}
 
@@ -59,6 +61,18 @@ def radius_weight(r):
 SWEEP_STEP = 100
 SWEEP_RADIUS = (150, 600)
 MIN_SWEEP = 300  # metres of sweeping curve before a road counts as a sweeper
+
+
+# Ramps built for highway speed curve wider than back roads, so their sweeps count up to 1.5 km radius.
+RAMP_SWEEP_RADIUS = (150, 1500)
+
+
+def ramp_sweep(coords):
+    lat0 = math.radians(coords[0][0])
+    kx, ky = 111320 * math.cos(lat0), 110540
+    lo, hi = RAMP_SWEEP_RADIUS
+    samples, _ = resample([(lon * kx, lat * ky) for lat, lon in coords], SWEEP_STEP)
+    return sum(SWEEP_STEP for r in radii(samples) if lo <= r < hi)
 
 
 def resample(pts, step):
@@ -326,6 +340,8 @@ class Roads(osmium.SimpleHandler):
     def __init__(self, tiles, seen, residential, fuel, places):
         super().__init__()
         self.tiles, self.seen, self.residential, self.fuel, self.places = tiles, seen, residential, fuel, places
+        self.lanes = {}
+        self.ramp_ways = {}   # id -> (first node, last node, coords, tags, mph)
         self.count = 0
 
     def node(self, n):
@@ -351,10 +367,10 @@ class Roads(osmium.SimpleHandler):
                 pass
         if hw not in SPEED_TYPES or w.id in self.seen:
             return
-        tags = {k: w.tags.get(k) for k in ("highway", "name", "ref", "maxspeed", "maxspeed:forward",
-                                             "maxspeed:backward", "surface", "tracktype") if k in w.tags}
+        tags = {k: w.tags.get(k) for k in ("highway", "name", "ref", "maxspeed", "maxspeed:forward", "maxspeed:backward",
+                                             "surface", "tracktype", "lanes", "destination", "destination:ref") if k in w.tags}
         mph = speed_of(tags)
-        if mph is None and hw not in CURVY_TYPES:
+        if mph is None and hw not in CURVY_TYPES and hw not in RAMP_TYPES:
             return
         try:
             coords = [(n.location.lat, n.location.lon) for n in w.nodes]
@@ -363,23 +379,72 @@ class Roads(osmium.SimpleHandler):
         if len(coords) < 2:
             return
 
+        # Ramps are split into short pieces in OSM; they're joined and scored in finish_ramps().
+        if hw in RAMP_TYPES:
+            self.ramp_ways[w.id] = (w.nodes[0].ref, w.nodes[-1].ref, coords, tags, mph)
+            return
+
         length, score, curvy, sweep = analyze(coords)
         is_curvy = hw in CURVY_TYPES and score >= MIN_SCORE
         is_sweeper = hw in CURVY_TYPES and sweep >= MIN_SWEEP
         if not is_curvy and not is_sweeper and mph is None:
             return
+        self.add_row(w.id, hw, tags, mph, coords, (length, score if is_curvy else 0, curvy, sweep if is_sweeper else 0))
 
-        self.seen.add(w.id)
+    def add_row(self, wid, hw, tags, mph, coords, scores, name=None, ref=None):
+        length, score, curvy, sweep = scores
+        self.seen.add(wid)
         mid = coords[len(coords) // 2]
         key = f"{math.floor(mid[1] / TILE_SIZE)}_{math.floor(mid[0] / TILE_SIZE)}"
         # The estimated limit (index 5) is filled in by main() once every file has been read;
         # the midpoint on the end is only needed until then.
         self.tiles[key].append([
-            w.id, hw, tags.get("name", ""), tags.get("ref", ""),
-            mph, None, surface_of(tags), round(score if is_curvy else 0), round(curvy),
-            round(sweep if is_sweeper else 0), round(length), encode(coords), mid,
+            wid, hw, tags.get("name", "") if name is None else name, tags.get("ref", "") if ref is None else ref,
+            mph, None, surface_of(tags), round(score), round(curvy), round(sweep), round(length), encode(coords), mid,
         ])
+        lanes = re.match(r"\d+", tags.get("lanes", ""))
+        if lanes:
+            self.lanes[wid] = int(lanes.group())
         self.count += 1
+
+    def finish_ramps(self):
+        """Join ramp pieces end to end (where nothing merges or splits) and score each whole ramp."""
+        starts, ends = defaultdict(list), defaultdict(list)
+        for wid, (a, b, *_rest) in self.ramp_ways.items():
+            starts[a].append(wid)
+            ends[b].append(wid)
+        joins = lambda node: len(starts[node]) == 1 and len(ends[node]) == 1
+        done = set()
+
+        def walk(first):
+            chain = [first]
+            done.add(first)
+            while joins(self.ramp_ways[chain[-1]][1]):
+                nxt = starts[self.ramp_ways[chain[-1]][1]][0]
+                if nxt in done:
+                    break
+                chain.append(nxt)
+                done.add(nxt)
+            return chain
+
+        chains = [walk(w) for w in self.ramp_ways if w not in done and not joins(self.ramp_ways[w][0])]
+        chains += [walk(w) for w in self.ramp_ways if w not in done]  # loops with no clear start
+        for chain in chains:
+            ways = [self.ramp_ways[w] for w in chain]
+            coords = [p for i, way in enumerate(ways) for p in (way[2] if i == 0 else way[2][1:])]
+            mph = next((way[4] for way in ways if way[4] is not None), None)
+            tags = next((way[3] for way in ways if "destination" in way[3] or "destination:ref" in way[3]), ways[0][3])
+            lanes = [int(m.group()) for way in ways if (m := re.match(r"\d+", way[3].get("lanes", "")))]
+            length, score, curvy, _ = analyze(coords)
+            sweep = ramp_sweep(coords)
+            if sweep < MIN_SWEEP and mph is None:
+                continue
+            to = tags.get("destination:ref") or tags.get("destination")
+            name = tags.get("name") or (f"Ramp to {to.replace(';', ' / ')}" if to else "Ramp")
+            self.add_row(chain[0], tags["highway"], {**tags, "lanes": str(max(lanes)) if lanes else ""}, mph, coords,
+                         (length, 0, curvy, sweep if sweep >= MIN_SWEEP else 0), name=name, ref="")
+            self.seen.update(chain)
+        self.ramp_ways = {}
 
 
 def cell_of(lat, lon):
@@ -416,7 +481,7 @@ def road_index(tiles, places):
     for rows in tiles.values():
         for row in rows:
             key = row[3] or row[2]
-            if key and (row[7] or row[9]):
+            if key and (row[7] or row[9]) and row[1] not in RAMP_TYPES:
                 by_key[key].append(row)
 
     out = []
@@ -449,11 +514,13 @@ def main(args):
     paths = sorted({p for a in (args or ["raw/*.osm.pbf"]) for p in glob.glob(a)})
     if not paths:
         sys.exit("No .osm.pbf files found in raw/.\n" + __doc__)
-    tiles, seen, residential, fuel, places = defaultdict(list), set(), defaultdict(int), {}, {}
+    tiles, seen, residential, fuel, places, lanes = defaultdict(list), set(), defaultdict(int), {}, {}, {}
     for path in paths:
         print(f"Reading {path} (takes a few minutes)...", flush=True)
         h = Roads(tiles, seen, residential, fuel, places)
         h.apply_file(path, locations=True, idx="flex_mem")
+        h.finish_ramps()
+        lanes.update(h.lanes)
         print(f"  kept {h.count:,} roads", flush=True)
 
     for rows in tiles.values():
@@ -463,7 +530,7 @@ def main(args):
             row.pop()
 
     # Elevation, only for the curvy roads and sweepers (rows with a curve score or sweep).
-    curvy_rows = [row for rows in tiles.values() for row in rows if row[7] or row[9]]
+    curvy_rows = [row for rows in tiles.values() for row in rows if (row[7] or row[9]) and row[1] not in RAMP_TYPES]
     needed = set()
     for row in curvy_rows:
         needed |= terrain_tiles_for(decode(row[11]))
@@ -472,7 +539,9 @@ def main(args):
     elev = Elevation()
     for rows in tiles.values():
         for row in rows:
-            row += hills_and_blind(decode(row[11]), elev) if (row[7] or row[9]) else (None, [])
+            curvy_road = (row[7] or row[9]) and row[1] not in RAMP_TYPES  # bare-earth elevation means nothing on a flyover
+            row += hills_and_blind(decode(row[11]), elev) if curvy_road else (None, [])
+            row.append(lanes.get(row[0]))
 
     shutil.rmtree(OUT_DIR, ignore_errors=True)
     os.makedirs(OUT_DIR)
