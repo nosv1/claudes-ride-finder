@@ -137,9 +137,14 @@ class TestSpeedAndSurface(unittest.TestCase):
         residential = defaultdict(int)
         town = (39.0, -94.4)
         residential[bt.cell_of(*town)] = bt.URBAN_STREETS
-        self.assertEqual(bt.estimate_mph([0, "tertiary", town], residential), 30)
-        self.assertEqual(bt.estimate_mph([0, "tertiary", (38.0, -92.0)], residential), 55)
-        self.assertEqual(bt.estimate_mph([0, "unclassified", (38.0, -92.0)], residential), 45)
+        self.assertEqual(bt.estimate_mph([0, "tertiary", "", "", town, "missouri"], residential), 30)
+        self.assertEqual(bt.estimate_mph([0, "tertiary", "", "MO Y", (38.0, -92.0), "missouri"], residential), 55)
+        self.assertEqual(bt.estimate_mph([0, "unclassified", "", "", (38.0, -92.0), "missouri"], residential), 45)
+        # Texas defaults: 70 on numbered highways, 60 on the rest, towns still 30.
+        self.assertEqual(bt.estimate_mph([0, "tertiary", "", "RM 337", (30.0, -99.5), "texas"], residential), 70)
+        self.assertEqual(bt.estimate_mph([0, "unclassified", "", "", (30.0, -99.5), "texas"], residential), 60)
+        self.assertEqual(bt.estimate_mph([0, "unclassified", "", "CR 123", (30.0, -99.5), "texas"], residential), 60)
+        self.assertEqual(bt.estimate_mph([0, "tertiary", "", "FM 1431", town, "texas"], residential), 30)
 
 
 class TestFuel(unittest.TestCase):

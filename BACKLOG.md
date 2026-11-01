@@ -23,7 +23,8 @@ Ideas that came up, roughly in order of how much they'd help.
   connecting routes through built-up areas directly.
 - **Straight but hilly "roller coaster" roads**: only curvy roads get elevation data now.
   Scoring hills on every rural road would find them.
-- **More states**: Arkansas (Eureka Springs, the Pig Trail), Oklahoma, Iowa, Nebraska.
+- **More states**: Arkansas (Eureka Springs, the Pig Trail), Oklahoma, Iowa, Nebraska. (Texas is in.)
+  Check each state's default speed limits in `estimate_mph`.
   Download the `.osm.pbf` into `raw/` and rebuild.
 - **Favorites**: star roads you've ridden and liked.
 - **Dead-end roads in the generator**: lake roads in the Ozarks often dead-end at the water, so a

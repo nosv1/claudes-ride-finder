@@ -1,7 +1,7 @@
 # Ride Finder: features and requirements
 
 Ride Finder helps a motorcyclist find and plan rides on curvy, fast, hilly roads, starting
-with Missouri and Kansas. This document is the spec for what the app does today. It
+with Missouri, Kansas and Texas. This document is the spec for what the app does today. It
 lists what each feature must do, the numbers it relies on, and the lessons that shaped it,
 so a rewrite can keep the behavior without rediscovering them.
 
@@ -19,7 +19,9 @@ committed as `tiles/`. The app needs no OSM server at runtime.
 **Inputs**
 - Every `raw/*.osm.pbf` (Geofabrik state extracts). `raw/` is gitignored.
 - AWS Terrain Tiles (Terrarium PNG, zoom 12, ~30 m/px), downloaded once into `raw/terrain/`,
-  only for tiles touching curvy roads (~5,300 tiles / 560 MB for MO+KS).
+  only for tiles touching curvy roads (~5,300 tiles / 560 MB for MO+KS; 1.3 GB with Texas).
+  A full build of all three takes about 11 minutes the first time, 7–8 once the terrain is cached; `tiles/` is ~67 MB
+  (Dallas's tile is the largest, ~5.6 MB, from all its posted residential limits).
 - Run with `python build_tiles.py`. It globs `raw/*.osm.pbf` itself, because cmd.exe doesn't expand `*`.
 
 **Outputs** (all plain `<script>` files, so the page also works opened as a local file)
@@ -57,6 +59,9 @@ committed as `tiles/`. The app needs no OSM server at runtime.
   - **30 mph:** in town, meaning ≥ 40 residential streets in the surrounding 3×3 grid of ~1 km cells.
   - **45 mph:** `unclassified` (county) roads.
   - **55 mph:** everything else.
+  - **Texas** (by state law outside towns): **70 mph** on numbered highways (US, TX, FM/RM, Loop, Spur…),
+    **60 mph** on everything else, county roads (`CR`) included. The region comes from the `.pbf` file name.
+  - Regression case: the Twisted Sisters (RM 335/336/337 by Leakey) top Best roads in the Hill Country.
 
 **Hills and blind crests** (curvy roads and sweepers only)
 - **Hill:** total climbing plus descending in m per km, using a 2 m hysteresis.

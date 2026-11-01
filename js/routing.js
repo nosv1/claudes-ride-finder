@@ -72,8 +72,8 @@ export async function fetchRoute(pts, useHighways) {
   }
 }
 
-// Route numbers the router reports ("I 49 North", "US 50", "K-10", "MO Y") → "I 49", "K 10"...
-const ROUTE_REF = /^(I|US|MO|K|KS)[ -]?(\d+[A-Z]?|[A-Z]{1,2})\b/;
+// Route numbers the router reports ("I 49 North", "US 50", "K-10", "MO Y", "FM 1431") → "I 49", "K 10"...
+const ROUTE_REF = /^(I|US|MO|K|KS|TX|SH|FM|RM|RR)[ -]?(\d+[A-Z]?|[A-Z]{1,2})\b/;
 export function routeRefs(maneuver) {
   return [...new Set(maneuver.names.map(n => (n.match(ROUTE_REF) || [])[0]).filter(Boolean).map(s => s.replace('-', ' ')))];
 }

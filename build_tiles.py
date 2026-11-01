@@ -351,8 +351,9 @@ class RampNodes(osmium.SimpleHandler):
 
 
 class Roads(osmium.SimpleHandler):
-    def __init__(self, tiles, seen, residential, fuel, places, ramp_nodes):
+    def __init__(self, tiles, seen, residential, fuel, places, ramp_nodes, region=""):
         super().__init__()
+        self.region = region  # "missouri", "texas"...: speed defaults differ by state
         self.tiles, self.seen, self.residential, self.fuel, self.places = tiles, seen, residential, fuel, places
         self.lanes = {}
         self.ramp_ways = {}   # id -> (first node, last node, coords, tags, mph)
@@ -430,7 +431,7 @@ class Roads(osmium.SimpleHandler):
         # the midpoint on the end is only needed until then.
         self.tiles[key].append([
             wid, hw, tags.get("name", "") if name is None else name, tags.get("ref", "") if ref is None else ref,
-            mph, None, surface_of(tags), round(score), round(curvy), round(sweep), round(length), encode(coords), mid,
+            mph, None, surface_of(tags), round(score), round(curvy), round(sweep), round(length), encode(coords), mid, self.region,
         ])
         lanes = re.match(r"\d+", tags.get("lanes", ""))
         if lanes:
@@ -485,12 +486,17 @@ def cell_of(lat, lon):
 
 
 def estimate_mph(row, residential):
-    """Guess a limit for roads with none on record, so curvy-and-fast can include them."""
-    hw, (lat, lon) = row[1], row[-1]
+    """Guess a limit for roads with none on record, so curvy-and-fast can include them.
+    row ends with the road's midpoint and region; row[1] is its highway type, row[3] its ref."""
+    hw, ref, (lat, lon), region = row[1], row[3], row[-2], row[-1]
     cy, cx = cell_of(lat, lon)
     nearby = sum(residential[(cy + dy, cx + dx)] for dy in (-1, 0, 1) for dx in (-1, 0, 1))
     if nearby >= URBAN_STREETS:
         return 30
+    if region == "texas":
+        # Texas law outside towns: 70 on numbered highways (US, TX, FM/RM, Loop...), 60 on other
+        # roads, county roads (CR) included.
+        return 70 if ref and not ref.startswith("CR") else 60
     return 45 if hw == "unclassified" else 55
 
 
@@ -552,7 +558,8 @@ def main(args):
         print(f"Reading {path} (takes a few minutes)...", flush=True)
         ramps = RampNodes()
         ramps.apply_file(path)
-        h = Roads(tiles, seen, residential, fuel, places, ramps.nodes)
+        region = os.path.basename(path).replace("-latest.osm.pbf", "")
+        h = Roads(tiles, seen, residential, fuel, places, ramps.nodes, region)
         h.apply_file(path, locations=True, idx="flex_mem")
         h.finish_ramps()
         lanes.update(h.lanes)
@@ -562,7 +569,7 @@ def main(args):
         for row in rows:
             if row[4] is None:
                 row[5] = estimate_mph(row, residential)
-            row.pop()
+            del row[-2:]  # midpoint and region
 
     # Elevation, only for the curvy roads and sweepers (rows with a curve score or sweep).
     curvy_rows = [row for rows in tiles.values() for row in rows if (row[7] or row[9]) and row[1] not in RAMP_TYPES]
