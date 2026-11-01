@@ -255,6 +255,18 @@ under the tag, and the Hills chip lists ft/mi.
   Scrubbing the chart (mouse or finger) marks that point on the map.
 - A ride bar on the main list shows the ride's stats with **Go**.
 
+**Weather** (Your ride, under the route summary)
+- **Leaving** time (default: the next quarter hour; **Now** resets it), up to about a week out.
+- Open-Meteo's hourly forecast (free, no key, one request for all points) at points about every 30 km along
+  the route, both ends included, at most 12. Each is read for the hour you'll pass it: the time comes from
+  Valhalla's maneuver times, or from distance on the OSRM fallback (riding time only, no stops).
+- Warnings, each at its worst point with the mile and time: thunderstorms, rain ≥ 40% ("likely" from 60%),
+  gusts ≥ 35 mph, ≤ 45°F, ≥ 95°F. Otherwise "Looks good:" with the temperature range, top rain chance and gusts.
+- A table per point: time, mile, sky, temperature, rain chance, gusts. Hover or tap a row (or a warning) to put a
+  dot on the map there.
+- Fetched once per route, again after an hour (a minute after a failure); changing the leave time just reads
+  other hours. Points past the forecast say so.
+
 **Fuel**
 - Settings: tank range (80–250 mi, default 120) and "90+ only".
 - Uses stations within 1.2 km of the route.

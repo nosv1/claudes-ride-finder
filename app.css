@@ -251,6 +251,18 @@ select { min-height: 38px; padding: 0 8px; border-radius: 10px; border: 1px soli
 .fuel-stop { display: flex; align-items: center; gap: 10px; padding: 6px 0; cursor: pointer; }
 .dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #111; flex: none; }
 .parts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.leave { min-height: 38px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); color-scheme: dark; }
+.wx-ok { color: #8ce99a; }
+.wx-warn { cursor: pointer; margin: 6px 0; }
+.wx { margin-top: 10px; font-size: 13.5px; }
+.wx-row {
+  display: grid; grid-template-columns: minmax(64px, 1.3fr) 2.6em 1.8em 3em 3em minmax(52px, 1fr); gap: 6px;
+  align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.wx-row:hover { background: var(--raise); }
+.wx-head { color: var(--muted); font-size: 12px; cursor: default; }
+.wx-head:hover { background: none; }
+.wx-none { grid-column: 3 / -1; }
 
 /* ---------- popovers ---------- */
 .menu {

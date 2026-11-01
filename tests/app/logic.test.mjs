@@ -8,6 +8,7 @@ import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel } fr
 import { newTrip, addRoad, insertRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
 import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
+import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 
 const TILES = new URL('../../tiles/', import.meta.url);
 const haveTiles = existsSync(new URL('index.js', TILES));
@@ -304,6 +305,43 @@ test('another way home: roads near the stretch ridden twice, not on it, not alre
   const picks = wayHomeRoads([beside, better, on, far, used], [{ ids: [5] }], [line]);
   assert.deepEqual(picks.map(p => p.key), ['R2', 'R1']);
   assert.deepEqual(wayHomeRoads([beside], [], []), []);
+});
+
+test('weather: points along the ride, timed by the router, read for the hour you pass them', () => {
+  // 100 km due east; the first half takes 1 h (slow), the second half 0.5 h.
+  const path = Array.from({ length: 101 }, (_, i) => [38.5, -94 + i * 0.01148]);
+  const route = { path, meters: 100000, seconds: 5400, maneuvers: [{ at: 0, end: 50, s: 3600 }, { at: 50, end: 100, s: 1800 }] };
+  const t = timesAlong(route);
+  assert.equal(t[0], 0);
+  assert.ok(Math.abs(t[50] - 3600) < 1 && Math.abs(t[100] - 5400) < 1, `${t[50]} ${t[100]}`);
+  assert.ok(Math.abs(timesAlong({ ...route, maneuvers: null })[50] - 2700) < 30, 'by distance without maneuver times');
+  const pts = weatherPoints(route, 25);
+  assert.equal(pts.length, 5);
+  assert.deepEqual(pts[0].p, path[0]);
+  assert.deepEqual(pts.at(-1).p, path[100]);
+  assert.ok(weatherPoints(route, 1, 12).length === 12, 'capped');
+
+  const t0 = 1800000000, hour = k => t0 + k * 3600;
+  const hourly = {
+    time: Array.from({ length: 6 }, (_, k) => hour(k)),
+    temperature_2m: [60, 62, 64, 66, 68, 70], precipitation_probability: [0, 10, 70, 20, 0, 0],
+    wind_gusts_10m: [10, 12, 40, 14, 10, 10], weather_code: [0, 2, 95, 3, 1, 0],
+  };
+  const two = [{ p: [0, 0], m: 0, s: 0 }, { p: [0, 1], m: 50000, s: 3600 }, { p: [0, 2], m: 100000, s: 7200 * 3 }];
+  const rows = atPassing(two, [hourly, hourly, hourly], (t0 + 3600) * 1000);
+  assert.deepEqual(rows.map(r => r.temp), [62, 64, undefined]);
+  assert.ok(rows[2].none, 'past the forecast');
+  const judged = rideWeather(rows);
+  assert.deepEqual(judged.warnings.map(w => w.text), ['Thunderstorms', 'Rain likely (70%)', 'Gusts to 40 mph']);
+  assert.equal(judged.warnings[1].at.m, 50000);
+  assert.ok(judged.partial);
+  const calm = rideWeather(atPassing(two.slice(0, 1), [hourly], (t0 + 4 * 3600) * 1000));
+  assert.deepEqual(calm.warnings, []);
+  assert.equal(calm.summary, '68°F, rain chance up to 0%, gusts to 10 mph');
+  assert.equal(rideWeather([{ none: true }]).summary, null);
+  assert.equal(sky(63)[1], 'Rain');
+  assert.equal(sky(96)[1], 'Thunderstorms');
+  assert.equal(sky(2)[1], 'Partly cloudy');
 });
 
 test('GPX has waypoints, a route and the track', () => {

@@ -232,6 +232,36 @@ test('the ride page can generate loops through its stops', async () => {
   await page.waitFor('!RF.gen.running', 180000);
 });
 
+test('the ride page shows the weather along the route, for the time you leave', async () => {
+  // Open-Meteo stubbed: dry for the next day, then rain.
+  await page.eval(`(() => {
+    const real = window.fetch;
+    window.fetch = (url, opts) => {
+      if (!String(url).includes('open-meteo')) return real(url, opts);
+      const n = new URL(url).searchParams.get('latitude').split(',').length, t0 = Math.floor(Date.now() / 3600000) * 3600 - 3600;
+      const time = Array.from({ length: 168 }, (_, k) => t0 + k * 3600), wet = time.map(t => t > Date.now() / 1000 + 30 * 3600);
+      const one = { hourly: { time, temperature_2m: time.map(() => 71), precipitation_probability: wet.map(w => w ? 80 : 5),
+        wind_gusts_10m: time.map(() => 15), weather_code: wet.map(w => w ? 63 : 1) } };
+      return Promise.resolve(new Response(JSON.stringify(n > 1 ? Array(n).fill(one) : one)));
+    };
+  })()`);
+  await page.eval(pointTrip);
+  await page.eval(`RF.setRoute({ path: Array.from({ length: 200 }, (_, i) => [38.852, -94.343 + i * 0.005]), meters: 86000, seconds: 4000,
+    maneuvers: [{ at: 0, end: 199, s: 4000 }] })`);
+  await page.waitFor("/Looks good: 71°F, rain chance up to 5%, gusts to 15 mph/.test(document.getElementById('sheetBody').innerText)", 10000);
+  assert.ok(await page.eval("document.querySelectorAll('#sheetBody .wx-row:not(.wx-head)').length") >= 3);
+  // Leaving in two days: rain.
+  await page.eval(`(() => {
+    const el = document.querySelector('#sheetBody input.leave'), d = new Date(Date.now() + 48 * 3600000);
+    el.value = new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    el.dispatchEvent(new Event('change'));
+  })()`);
+  await page.waitFor("/Rain likely .80%. around mile 0/.test(document.getElementById('sheetBody').innerText)", 5000);
+  assert.match(await sheetText(), /Now/);
+  // Leave the ride as the other tests expect it.
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => b.textContent === 'Now').click()");
+});
+
 test('pop-ups go away on their own in a few seconds, or at a tap', async () => {
   await page.eval("import('./js/ui.js').then(u => u.toast('Short note'))");
   assert.equal(await page.eval("document.getElementById('toast').hidden"), false);

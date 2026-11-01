@@ -75,6 +75,13 @@ export const GEN = {
   hideBack: 0.2,     // loops riding more than this share twice are left out (if 3 others remain)
 };
 
+// Weather along a ride (Open-Meteo: free, no key). A point about every everyKm, at most maxPoints;
+// warnings at these levels.
+export const WEATHER = {
+  url: 'https://api.open-meteo.com/v1/forecast', days: 7, everyKm: 30, maxPoints: 12,
+  rainPct: 40, likelyPct: 60, gustMph: 35, coldF: 45, hotF: 95,
+};
+
 export const GOOGLE = { perPart: 9, parts: 2, pastTurn: 200, minSpacing: 800, maxGap: 25000 };
 export const DECISION_TURNS = new Set([9, 10, 11, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26]);
 

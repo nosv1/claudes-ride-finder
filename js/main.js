@@ -1,5 +1,5 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT } from './config.js';
+import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
 import { visible, stretchOf, bestInView, clusterRoads, summarize } from './roads.js';
 import * as T from './trip.js';
@@ -7,6 +7,7 @@ import * as P from './plan.js';
 import { localResults, photonResults } from './search.js';
 import { fetchRoute, routeRefs } from './routing.js';
 import { profile } from './elevation.js';
+import * as W from './weather.js';
 import { store, initData, onRoadsChanged, loadTiles, tilesSettled, loadingCount, coverageBox } from './store.js';
 import { MapView } from './mapview.js';
 import { icon, h, elevationChart, Sheet, toast, menu, closeMenu } from './ui.js';
@@ -36,6 +37,8 @@ let showKey = false;         // the map key's explanations are open
 let fixing = '';             // status while trying roads the other way to stop doubling back
 let gen = { options: [], index: -1, running: false, status: '' };
 let showGoogleParts = false;
+let leaveAt = null;          // when the rider leaves (ms), for the weather; null: soon (next quarter hour)
+let weather = null;          // { route, points, hourly, at, loading, error }: the forecast along the route
 let tilted = false;
 
 const MODES = { ride: 'Best rides', curvy: 'All curvy roads', ramps: 'Interchanges', speed: 'Speed limits' };
@@ -56,7 +59,7 @@ const mapView = new MapView('map', {
     return { top: Sheet.wide() ? 0 : $('#topbar').getBoundingClientRect().bottom, right: 0, bottom: c.bottom, left: c.left };
   },
 });
-window.RF = { store, mapView, go: (v, arg) => go(v, arg), get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, settings };
+window.RF = { store, mapView, go: (v, arg) => go(v, arg), get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, setRoute: r => { routeSeq++; clearTimeout(routeTimer); setRoute(r); }, settings };
 
 async function start() {
   // The side panel starts below the top bar, whose height depends on how the chips wrap.
@@ -804,6 +807,7 @@ function tripView() {
         try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'Start from me')),
     h('div.section', {}, routeSummary()),
+    weatherSection(),
     h('div.section', {},
       rideTime('Generate a loop'),
       h('button.btn.primary.wide', { onclick: () => { go('plan'); generate(); }, disabled: gen.running },
@@ -856,6 +860,66 @@ function doubleBack() {
     h('div.grow', {}, h('b', {}, `↩ ${miles(back.meters)} mi doubled back`),
       h('div.muted.small', {}, fixing || 'Roads ridden twice are dashed orange on the map.')),
     canFlip ? h('button.btn.small', { onclick: fixDoubleBack, disabled: !!fixing }, fixing ? 'Working…' : 'Try fixing') : '');
+}
+
+// ---------- weather ----------
+
+const QUARTER = 15 * 60000;
+const leaveTime = () => leaveAt && leaveAt > Date.now() - QUARTER ? leaveAt : Math.ceil(Date.now() / QUARTER) * QUARTER;
+const localInput = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+function clock(ms) {
+  const d = new Date(ms), t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString() ? t : `${d.toLocaleDateString([], { weekday: 'short' })} ${t}`;
+}
+
+// Fetched once per route (again after an hour, or a minute after failing); changing the leave
+// time just reads other hours.
+function loadWeather() {
+  const fresh = w => w.loading || Date.now() - w.at < (w.error ? 60000 : 3600000);
+  if (!route || (weather && weather.route === route && fresh(weather))) return;
+  const r = route, points = W.weatherPoints(r);
+  weather = { route: r, points, loading: true, at: Date.now() };
+  W.fetchForecast(points)
+    .then(hourly => { if (weather.route === r) weather = { ...weather, hourly, loading: false }; })
+    .catch(e => { console.warn(e); if (weather.route === r) weather = { ...weather, loading: false, error: true, at: Date.now() }; })
+    .finally(renderSoon);
+}
+
+function weatherSection() {
+  if (!route) return '';
+  setTimeout(loadWeather, 0);
+  const leave = leaveTime(), w = weather && weather.route === route ? weather : null;
+  const rows = w && w.hourly ? W.atPassing(w.points, w.hourly, leave) : null;
+  const judged = rows && W.rideWeather(rows);
+  const where = r => `mile ${Math.round(r.m / 1609.34)}, ${clock(r.when)}`;
+  const dot = r => ({ onmouseenter: () => mapView.setDot(r.p), onmouseleave: () => mapView.setDot(null), onclick: () => mapView.setDot(r.p) });
+  return h('div.section', {},
+    h('h3', {}, iconEl(icon.cloud), 'Weather'),
+    h('div.btn-row', {},
+      h('label.inline', {}, 'Leaving ',
+        h('input.leave', { type: 'datetime-local', value: localInput(leave), min: localInput(Date.now()), max: localInput(Date.now() + 6.5 * 86400000),
+          onchange: e => { const t = new Date(e.target.value).getTime(); leaveAt = Number.isFinite(t) ? t : null; renderSoon(); } })),
+      leaveAt ? h('button.btn.small', { onclick: () => { leaveAt = null; renderSoon(); } }, 'Now') : ''),
+    !w || w.loading ? h('p.muted.small', {}, 'Getting the forecast…')
+      : w.error ? h('p.muted.small', {}, 'Couldn’t get the forecast right now.')
+      : !judged.summary ? h('p.muted.small', {}, 'That’s past the end of the forecast (about a week out).')
+      : h('div', {},
+          judged.warnings.length
+            ? judged.warnings.map(x => h('p.warn.small.wx-warn', dot(x.at), `⚠ ${x.text} around ${where(x.at)}`))
+            : h('p.small.wx-ok', {}, `Looks good: ${judged.summary}.`),
+          judged.warnings.length ? h('p.muted.small', {}, judged.summary[0].toUpperCase() + judged.summary.slice(1) + '.') : '',
+          h('div.wx', {},
+            h('div.wx-row.wx-head', {}, ['When', 'Mile', '', 'Temp', 'Rain', 'Gusts'].map(t => h('span', {}, t))),
+            rows.map(r => r.none
+              ? h('div.wx-row', dot(r), h('span', {}, clock(r.when)), h('span', {}, Math.round(r.m / 1609.34)), h('span.muted.wx-none', {}, 'past the forecast'))
+              : h('div.wx-row', dot(r),
+                  h('span', {}, clock(r.when)), h('span', {}, Math.round(r.m / 1609.34)),
+                  h('span', { title: W.sky(r.code)[1] }, W.sky(r.code)[2]),
+                  h('b', {}, `${Math.round(r.temp)}°`),
+                  h(`span${r.rain >= WEATHER.rainPct ? '.warn' : ''}`, {}, r.rain == null ? '–' : `${r.rain}%`),
+                  h(`span${r.gust >= WEATHER.gustMph ? '.warn' : ''}`, {}, `${Math.round(r.gust)} mph`)))),
+          judged.partial ? h('p.muted.small', {}, 'The end of the ride is past the forecast.') : ''),
+    h('p.fineprint', {}, 'Forecast from Open-Meteo for when you’ll pass each point (riding time, not counting stops). Tap a row to see where.'));
 }
 
 function stopList() {
