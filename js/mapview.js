@@ -272,6 +272,23 @@ export class MapView {
     for (const id of ['shields', 'route-shields', 'route-arrows']) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
   }
 
+  // A tag standing over a spot on the map (the next turn in a fly-through), on a stem.
+  setTurnTag(p, text, arrow) {
+    if (!p) { if (this.turnTag) this.turnTag.remove(); return; }
+    if (!this.turnTag) {
+      const el = document.createElement('div');
+      el.className = 'turn-tag';
+      const tag = document.createElement('span');
+      tag.append(document.createElement('b'), document.createElement('span'));
+      el.append(tag);
+      this.turnTag = new maplibregl.Marker({ element: el, anchor: 'bottom', pitchAlignment: 'viewport', rotationAlignment: 'viewport' });
+    }
+    const [a, t] = this.turnTag.getElement().firstChild.children;
+    a.textContent = arrow || '';
+    t.textContent = text;
+    this.turnTag.setLngLat(ll(p)).addTo(this.map);
+  }
+
   setPin(p) {
     if (!this.pin) {
       const el = document.createElement('div');

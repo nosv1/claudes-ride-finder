@@ -317,8 +317,7 @@ body.flying #map, body.tilted #map { background: #9db4c8; }
 .fly-play:hover { background: var(--blue); color: #fff; }
 .fly-speed { min-width: 48px; }
 .fly-crest {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 10px); white-space: nowrap;
-  background: var(--warn); color: #111; font-weight: 700; padding: 6px 14px; border-radius: 999px; box-shadow: var(--shadow);
+  white-space: nowrap; background: var(--warn); color: #111; font-weight: 700; padding: 6px 14px; border-radius: 999px; box-shadow: var(--shadow);
 }
 .fly-hud {
   position: fixed; z-index: 30; top: calc(var(--top) + 12px); left: 12px; right: 12px;
@@ -355,3 +354,14 @@ body.flying #map, body.tilted #map { background: #9db4c8; }
 }
 .fly-mini svg { width: 100%; height: 100%; }
 @media (max-width: 600px) { .fly-mini { width: 108px; height: 108px; } }
+.fly-above {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 8px);
+  display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; max-width: 100%;
+}
+.turn-tag { padding-bottom: 34px; pointer-events: none; }
+.turn-tag::after { content: ''; position: absolute; left: 50%; bottom: 0; width: 2px; height: 34px; margin-left: -1px; background: #fff; box-shadow: 0 0 3px rgba(0,0,0,.6); }
+.turn-tag > span {
+  display: flex; align-items: center; gap: 6px; background: #fff; color: #111; font-weight: 800; font-size: 14px; padding: 4px 10px; border-radius: 8px;
+  white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,.5);
+}
+.turn-tag b { color: var(--blue); font-size: 20px; line-height: 1; }

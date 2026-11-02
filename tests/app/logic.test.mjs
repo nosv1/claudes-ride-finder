@@ -9,7 +9,7 @@ import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint
 import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
-import { flight, turn, nextTurn, gradeAt } from '../../js/fly.js';
+import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
 
 const TILES = new URL('../../tiles/', import.meta.url);
 const haveTiles = existsSync(new URL('index.js', TILES));
@@ -437,4 +437,12 @@ test('a short closed loop (a roundabout, a circle drive) is not a curvy road; a 
   const parkLoop = row({ id: 2, hw: 'tertiary', name: 'Park Loop', score: 2000, curvy: 1500, length: 4000, pts: ring(60, 0.005) });
   assert.equal(parkLoop.loop, false);
   assert.ok(parkLoop.cls >= 0);
+});
+
+test('fly-through: the turn tag names the road turned onto, with an arrow the right way', () => {
+  assert.equal(turnOnto({ names: ['MO 350', 'Blue Parkway'], text: 'Turn left onto MO 350/Blue Parkway.' }), 'MO 350 / Blue Parkway');
+  assert.equal(turnOnto({ names: [], text: 'Turn right.' }), 'Turn right.');
+  assert.equal(turnArrow(15), '↰');
+  assert.equal(turnArrow(10), '↱');
+  assert.equal(turnArrow(22), '↑');
 });

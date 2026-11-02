@@ -64,6 +64,18 @@ export function gradeAt(profile, m, halfM = 150) {
   return b.m > a.m ? (b.ft - a.ft) / 3.281 / (b.m - a.m) * 100 : 0;
 }
 
+// The road a turn goes onto: its route numbers and name ("MO 350 / Blue Parkway"), else the
+// router's words.
+export function turnOnto(t) {
+  const names = [...new Set(t.names || [])].slice(0, 2);
+  return names.length ? names.join(' / ') : t.text;
+}
+
+// An arrow for a Valhalla maneuver type.
+const RIGHT = new Set([9, 10, 11, 18, 20, 23, 36]), LEFT = new Set([14, 15, 16, 19, 21, 24, 37]);
+export const turnArrow = type => RIGHT.has(type) ? '↱' : LEFT.has(type) ? '↰' : type === 12 || type === 13 ? '↶'
+  : type === 26 || type === 27 ? '⟲' : '↑';
+
 // A heading turned part of the way (k, 0–1) toward another, the short way around.
 export const turn = (from, to, k) => (from + ((to - from + 540) % 360 - 180) * k + 360) % 360;
 
@@ -139,8 +151,8 @@ export class Fly {
     this.wxEl = h('div.fly-wx', { hidden: true });
     this.mini = this.miniMap();
     // What comes and goes (the turn, the speed limit) sits last in each column, so it never
-    // pushes the steady things (road sign, weather, mini-map) around.
-    this.hud = h('div.fly-hud', {}, h('div.fly-hud-left', {}, this.sign, this.wxEl, this.turnEl),
+    // pushes the steady things (weather, mini-map) around.
+    this.hud = h('div.fly-hud', {}, h('div.fly-hud-left', {}, this.wxEl, this.turnEl),
       h('div.fly-hud-right', {}, this.mini, this.limitEl));
     this.now = h('div.fly-now');
     let down = false;
@@ -154,8 +166,10 @@ export class Fly {
     }
     this.slider = chart ? null : h('input.fly-slider', { type: 'range', min: 0, max: 1000, value: 0,
       oninput: e => this.seek(this.f.seconds * e.target.value / 1000) });
+    // Above the bar: the road you're on, and a blind crest coming up stacked over it (they
+    // grow upward from the bar, so the road sign never moves).
     this.bar = h('div.fly-bar', {},
-      this.callout,
+      h('div.fly-above', {}, this.callout, this.sign),
       h('div.fly-top', {}, this.readout, h('button.icon-btn', { title: 'Close (Esc)', html: icon.x, onclick: () => this.close() })),
       chart || this.slider,
       h('div.fly-controls', {}, this.playBtn, this.speedBtn, this.paceEl,
@@ -303,10 +317,13 @@ export class Fly {
   }
 
   // The next turn, from a mile and a half out.
+  // On the map too: the road you'll turn onto, on a tag standing over the turn.
   showTurn(at, m) {
     const t = nextTurn(this.route.maneuvers, at), d = t ? this.f.metersAtIndex(t.at) - m : Infinity;
     this.turnEl.hidden = d > 2400;
     if (d <= 2400) this.turnEl.replaceChildren(h('b', {}, d < 50 ? 'Now' : `In ${miles(d)} mi`), ` ${t.text}`);
+    const onto = d <= 2400 ? turnOnto(t) : null;
+    this.mapView.setTurnTag(onto && this.route.path[t.at], onto, onto && turnArrow(t.type));
   }
 
   // Tall hills on back roads, where they're the point. On highways and in town the terrain data
@@ -327,6 +344,7 @@ export class Fly {
     if (this.up) removeEventListener('pointerup', this.up);
     this.bar.remove();
     this.hud.remove();
+    this.mapView.setTurnTag(null);
     document.body.classList.remove('flying');
     this.mapView.setRider(null);
     this.mapView.showRoadMarks(true);

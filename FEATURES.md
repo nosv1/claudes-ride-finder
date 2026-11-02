@@ -286,6 +286,10 @@ colored road), Add a stop here, Street View here.
   - It switches to satellite and hides route numbers and arrows (they smear at that angle). The rider is a
     circle layer on the ground, facing the camera: a DOM marker drifted off the line in 3D, and a ground-aligned
     circle flattened to a sliver.
+  - The **road sign** sits centered just above the bottom bar; a blind-crest callout stacks above it (they grow
+    upward from the bar, so the road sign never moves).
+  - **Turn tag:** from 1.5 mi out, the road you'll turn onto ("↰ MO 350 / Blue Parkway", the router's street
+    names, else its words) stands on a stem over the turn on the map (a MapLibre marker, facing the camera).
   - **Heads-up display** (top): the road sign (route number and name) and its **speed limit** sign, from our
     road data under the rider: the nearest road within 25 m running the rider's way (within 35°), so a road
     crossing over or under doesn't count. The flight loads the speed-only tiles along the route (not just the
@@ -294,8 +298,8 @@ colored road), Add a stop here, Street View here.
     there, the router's street names (no limit). Under the sign, the **next turn** from 1.5 mi out, in the
     router's words ("In 0.60 mi Keep right to take I 435 North…"); starts, arrivals at stops, continue/becomes
     and stay-straight aren't turns.
-  - Things that come and go sit last in each column (left: road sign, weather, then the turn; right: mini-map,
-    then the speed limit), so they never push the steady ones around.
+  - Things that come and go sit last in each column (left: weather, then the turn; right: mini-map, then the
+    speed limit), so they never push the steady ones around.
   - **Weather** under the road sign: the clock time you'd be here (the Leaving time under Weather plus the riding time
     so far), sky, temperature and rain chance, gusts when ≥ 20 mph; yellow when it would be a warning in the
     Weather section. From the forecast point nearest the rider, for that hour (the same forecast, no new request).
