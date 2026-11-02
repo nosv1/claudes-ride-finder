@@ -428,3 +428,13 @@ test('fly-through: the road under the rider runs their way; the next real turn; 
   assert.ok(Math.abs(gradeAt(profile, 500) - 5) < 1e-9);
   assert.equal(gradeAt(null, 500), null);
 });
+
+test('a short closed loop (a roundabout, a circle drive) is not a curvy road; a long loop road still is', () => {
+  const ring = (n, rDeg) => Array.from({ length: n + 1 }, (_, i) => [38 + rDeg * Math.sin(i / n * 2 * Math.PI), -94 + rDeg * Math.cos(i / n * 2 * Math.PI)]);
+  const roundabout = row({ id: 1, hw: 'secondary', score: 250, curvy: 125, length: 160, pts: ring(16, 0.0002) });
+  assert.equal(roundabout.loop, true);
+  assert.equal(roundabout.cls, -1);
+  const parkLoop = row({ id: 2, hw: 'tertiary', name: 'Park Loop', score: 2000, curvy: 1500, length: 4000, pts: ring(60, 0.005) });
+  assert.equal(parkLoop.loop, false);
+  assert.ok(parkLoop.cls >= 0);
+});

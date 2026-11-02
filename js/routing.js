@@ -27,7 +27,10 @@ async function valhalla(pts, useHighways, uTurns) {
       return end || uTurns ? 'break' : 'break_through';
     };
     const req = {
-      locations: chunk.map(({ p, via }, j) => ({ lat: p[0], lon: p[1], type: type(via, j) })),
+      // A pin snaps to a street, not the driveway or parking lot nearest it (the route would
+      // turn in and out). Through points are on our roads already.
+      locations: chunk.map(({ p, via }, j) => ({ lat: p[0], lon: p[1], type: type(via, j),
+        ...(via ? {} : { search_filter: { min_road_class: 'residential' } }) })),
       costing: 'motorcycle',
       costing_options: { motorcycle: { use_highways: useHighways, use_trails: 0 } },
       units: 'miles',

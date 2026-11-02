@@ -16,6 +16,8 @@ Ideas that came up, roughly in order of how much they'd help.
   speeds through highways and town; curve callouts ("Tight curves next 2.1 mi", hairpins); gas stops as you
   pass them ("Casey's, 90+ likely, next gas 38 mi"); recording it as a video to share.
 - **Interchange tours and roundabouts**: fast ramps now have their own Interchanges mode.
+  Roundabouts drawn as one closed way are now left off the curvy map; ones split into pieces still show as
+  short Twisty arcs. Keep `junction=roundabout` in `build_tiles.py` to catch them all (and to map them).
   Next: roundabouts (`junction=roundabout`, like the double roundabouts on 87th St), and a
   generator for short interchange loops, e.g. west on I-470, US-71 north, I-435 north, the
   87th St roundabouts, and back through the Grandview Triangle.

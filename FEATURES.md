@@ -171,6 +171,9 @@ in its own direction (no ⇄). Ramp cards show sweep, lanes, posted limit (never
 - Very curvy ≥ 0.6
 - Twisty ≥ 0.9
 - Sweepers (cyan) when no tight-curve class applies
+- **Not a curvy road:** a closed loop under 1 km (first point = last). Roundabouts and circle drives are all
+  curve and showed as Twisty dots (282 of them in KS/MO/TX, e.g. the I-49 / Main St roundabouts in Grandview).
+  Loop roads over 1 km (park loops) stay. Roundabouts stored as several pieces aren't caught; see the backlog.
 
 Tapping a class in the key toggles it. **What's this?** at the end of the key opens plain-words rules for each
 class (from `about` in `config.js`), plus dashed lines, blind crests and hill levels in ft/mi (rolling 60+, hilly 115+,
@@ -244,6 +247,8 @@ colored road), Add a stop here, Street View here.
 
 **Routing**
 - Valhalla motorcycle profile (valhalla1.openstreetmap.de) with `use_highways` 1 / 0.5 / 0.
+- Pinned stops snap to a street (`search_filter: { min_road_class: 'residential' }`), not the nearest driveway
+  or parking lot: a pin by Oldham Road in Swope Park routed in and out of a private drive.
 - **The public server takes at most 10 locations per request.** Longer trips are sent in overlapping chunks and joined.
 - **No U-turns at stops** (Valhalla `break_through`; the start and finish stay `break`), so a route doesn't ride
   back down a road it just finished. If Valhalla answers with no route that way (a dead end), it's asked again
@@ -274,6 +279,9 @@ colored road), Add a stop here, Street View here.
     every frame, so it's changed in place; `setTerrain` would rebuild the terrain.
   - The tilt is asked for every frame. MapLibre lowers it when the camera would be inside a hill, which also
     happens at the start before the terrain there has loaded, and then it would stay low. A tilt by hand is kept.
+  - Zoomed in among hills (Swope Park), MapLibre flattened the view all the way to looking straight down.
+    Instead, while the tilt comes back lower than asked, the camera backs off (zoom −0.1 at a time, up to 4), and
+    once clear it eases back in (0.5 zoom/s) to the zoom asked for. A zoom by hand becomes the zoom asked for.
     More padding also lowers how far MapLibre lets the camera tilt, so only top padding is used.
   - It switches to satellite and hides route numbers and arrows (they smear at that angle). The rider is a
     circle layer on the ground, facing the camera: a DOM marker drifted off the line in 3D, and a ground-aligned

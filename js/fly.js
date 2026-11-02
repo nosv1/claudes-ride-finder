@@ -87,6 +87,7 @@ export class Fly {
     this.s = 0;
     this.heading = null;
     this.pitch = innerHeight > innerWidth ? FLY.pitchTall : FLY.pitch;  // a tall phone screen: less sky
+    this.zoom = FLY.zoom;  // as asked for (a zoom by hand is kept); the camera may back off from hills
     this.playing = false;
     this.raf = null;
     this.saved = { pitch: this.map.getPitch(), bearing: this.map.getBearing(), maxPitch: this.map.getMaxPitch(), terrain: this.map.getTerrain() };
@@ -99,7 +100,9 @@ export class Fly {
     // Asked for every frame: the map lowers the tilt when the camera would be inside a hill (or
     // looks it, before the terrain there has loaded). A tilt by hand is kept.
     this.tilted = e => { if (e.originalEvent) this.pitch = this.map.getPitch(); };
+    this.zoomed = e => { if (e.originalEvent) this.zoom = this.map.getZoom(); };
     this.map.on('pitchend', this.tilted);
+    this.map.on('zoomend', this.zoomed);
     document.addEventListener('keydown', this.key);
     addEventListener('resize', this.resize);
     document.body.classList.add('flying');
@@ -200,6 +203,7 @@ export class Fly {
     const m = this.f.metersAt(this.s), p = this.f.pointAt(m), want = this.f.lookFrom(m, FLY.aheadM);
     this.heading = this.heading == null || !dt ? want : turn(this.heading, want, 1 - Math.exp(-dt / FLY.turnS));
     this.map.jumpTo({ center: [p[1], p[0]], bearing: this.heading, pitch: this.pitch });
+    this.keepTilt(dt);
     this.mapView.setRider(p);
     this.miniDot.setAttribute('cx', this.miniX(p[1]).toFixed(1));
     this.miniDot.setAttribute('cy', this.miniY(p[0]).toFixed(1));
@@ -230,6 +234,19 @@ export class Fly {
     const crest = this.crests.find(c => c - m > -40 && c - m < FLY.crestM);
     this.callout.hidden = crest == null;
     if (crest != null) this.callout.textContent = crest - m > 30 ? `⚠ Blind crest ahead · ${Math.round((crest - m) * 3.281 / 10) * 10} ft` : '⚠ Blind crest';
+  }
+
+  // MapLibre flattens the view when the camera would be inside a hill (zoomed in close among
+  // hills, or before the terrain there has loaded), down to looking straight down. Back the
+  // camera off instead, and ease back in to the zoom asked for once it's clear.
+  keepTilt(dt) {
+    const map = this.map, flat = () => map.getPitch() < this.pitch - 1;
+    for (let k = 0; k < 40 && flat(); k++) map.jumpTo({ zoom: map.getZoom() - 0.1, pitch: this.pitch });
+    if (dt && !map.isZooming() && map.getZoom() < this.zoom - 0.01) {
+      const z = map.getZoom();
+      map.jumpTo({ zoom: Math.min(this.zoom, z + 0.5 * dt), pitch: this.pitch });
+      if (flat()) map.jumpTo({ zoom: z, pitch: this.pitch });  // not clear yet
+    }
   }
 
   // The road sign (route number and name) and its speed limit: from our road data under the
@@ -306,6 +323,7 @@ export class Fly {
     document.removeEventListener('keydown', this.key);
     removeEventListener('resize', this.resize);
     this.map.off('pitchend', this.tilted);
+    this.map.off('zoomend', this.zoomed);
     if (this.up) removeEventListener('pointerup', this.up);
     this.bar.remove();
     this.hud.remove();

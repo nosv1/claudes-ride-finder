@@ -13,7 +13,10 @@ export function decodeRow(row) {
   r.key = ref || name || '';
   r.oneway = RAMP_TYPES.has(hw);
   r.rampTier = rampTier(r);
-  r.cls = r.oneway ? -1 : curveClass(r);  // ramps are their own thing (Interchanges mode)
+  // A short closed loop is a roundabout or a circle drive: all curve, but not a ride.
+  const a = geom[0], b = geom[geom.length - 1];
+  r.loop = length < 1000 && Math.abs(a[0] - b[0]) < 1e-5 && Math.abs(a[1] - b[1]) < 1e-5;
+  r.cls = r.oneway || r.loop ? -1 : curveClass(r);  // ramps are their own thing (Interchanges mode)
   r.speed = mph ?? estMph;
   r.hillLevel = hillLevel(hill);
   return r;
