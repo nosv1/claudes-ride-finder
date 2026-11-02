@@ -2,13 +2,14 @@
 // show up straight away) and from cache when there isn't;
 // map imagery, terrain and fonts are kept as you browse (up to a limit), so areas you've looked
 // at keep working without signal. Routing and place search always need the network.
-const VERSION = 'v3';
+const VERSION = 'v4';
 const APP = `rf-app-${VERSION}`, MAP = `rf-map-${VERSION}`;
 const MAP_LIMIT = 4000;   // map tiles to keep (~150 MB at most)
 const SHELL = [
   './', './index.html', './app.css', './manifest.webmanifest',
   './js/main.js', './js/config.js', './js/geo.js', './js/roads.js', './js/trip.js', './js/plan.js',
   './js/search.js', './js/routing.js', './js/elevation.js', './js/store.js', './js/mapview.js', './js/ui.js',
+  './js/weather.js', './js/fly.js',
   './tiles/index.js', './tiles/fuel.js', './tiles/search.js', './favicon.svg',
   'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.0/maplibre-gl.js',
   'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.0/maplibre-gl.css',

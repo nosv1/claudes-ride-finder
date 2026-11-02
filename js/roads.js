@@ -41,7 +41,6 @@ export function curveClass(r) {
 
 export const hillLevel = h => h == null ? -1 : HILLS.reduce((lvl, c, i) => h >= c.min ? i : lvl, 0);
 export const speedBin = mph => mph == null ? -1 : SPEED_BINS.findIndex(b => mph <= b.max);
-export const roadName = r => r.name || r.ref || 'Unnamed road';
 export const curveMeters = r => r.curvy + r.sweep;
 export const isMinor = r => MINOR_TYPES.has(r.hw.replace('_link', ''));
 

@@ -2,6 +2,14 @@
 
 Ideas that came up, roughly in order of how much they'd help.
 
+- **Ready to share** (before handing the link around): an About page with credits and "check conditions"
+  wording; check Esri's terms for keyless basemap use in a public app (else switch to a keyed free tier);
+  a link preview (title, image) so a shared ride looks good in a text; a friendly message when the free
+  router is busy. Then a small "Install" button in the app (it's already installable from the browser).
+- **A proper app, still on PC**: one codebase for all three. Android: wrap the web app for the Play Store
+  (Trusted Web Activity via Bubblewrap; $25 once). iPhone: Capacitor wrapper ($99/yr developer account,
+  built on a Mac or a cloud build). PC keeps using the website or the installed web app. Worth it mainly for
+  Ride mode: a native app can keep GPS and voice going with the screen off, which a browser can't.
 - **Bottlenecks to fix before going national** (measured 2026-11-01): the site's map files are 68 MB for
   3 states (about 70% is the speed-limit layer), so the whole US would be near GitHub Pages' 1 GB limit,
   and every rebuild adds to git history. Slim the speed-limit layer, then move tiles off git (e.g.
@@ -30,6 +38,12 @@ Ideas that came up, roughly in order of how much they'd help.
 - **More states**: Arkansas (Eureka Springs, the Pig Trail), Oklahoma, Iowa, Nebraska. (Texas is in.)
   Check each state's default speed limits in `estimate_mph`.
   Download the `.osm.pbf` into `raw/` and rebuild.
+- **Sunset and deer hour**: warn when a ride ends after dark (Open-Meteo has sunset), and flag dusk on
+  wooded back roads, when deer are out. Shown with the weather.
+- **Roads you've ridden**: import GPX from a ride (or record one in Ride mode) and mark those roads, so
+  the map shows what's new to you and the generator can prefer it.
+- **Saved rides**: keep rides by name on the device (not just the last one), with the share link.
+- **Group rides**: a share link with the leave time and meeting spot, so everyone sees the same plan.
 - **Favorites**: star roads you've ridden and liked.
 - **Dead-end roads in the generator**: lake roads in the Ozarks often dead-end at the water, so a
   loop rides them out and back. The generator now drops them after routing; marking dead ends in

@@ -7,7 +7,7 @@ so a rewrite can keep the behavior without rediscovering them.
 
 Live site: https://nosv1.github.io/claudes-ride-finder/ (GitHub Pages, `main` branch, repo root).
 The app is static: `index.html`, `app.css` and the modules in `js/` (the logic ones are plain modules tested
-in Node), plus the prebuilt data in `tiles/`. `/v2/` only redirects to the root (the app was previewed there).
+in Node), plus the prebuilt data in `tiles/`.
 
 ---
 
