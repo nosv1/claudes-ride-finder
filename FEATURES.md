@@ -267,7 +267,11 @@ colored road), Add a stop here, Street View here.
   - It plays the ride at 5/10/20/40× its riding time (10× default) using the router's maneuver times, so
     curvy roads go by slower than highways, as they do on the bike.
   - The camera sits low behind the rider: zoom 16.2, pitch 78° (72° on a tall phone screen, else it's mostly
-    sky), terrain at 2.2×, the rider 70% down the screen. It turns toward the route 250 m ahead, eased over ~0.6 s.
+    sky), the rider 70% down the screen. It turns toward the route 250 m ahead, eased over ~0.6 s.
+  - Terrain is 2.2× on curvy roads, 1.2× elsewhere, easing between over ~1.5 s. The terrain data has no bridges
+    (an overpass is the ground under it), so at 2.2× interchanges and road cuts became canyons, and downtown's
+    towers (in the coarse far-off data) became spikes on the horizon. MapLibre reads `map.terrain.exaggeration`
+    every frame, so it's changed in place; `setTerrain` would rebuild the terrain.
   - The tilt is asked for every frame. MapLibre lowers it when the camera would be inside a hill, which also
     happens at the start before the terrain there has loaded, and then it would stay low. A tilt by hand is kept.
     More padding also lowers how far MapLibre lets the camera tilt, so only top padding is used.

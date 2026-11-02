@@ -891,7 +891,7 @@ function flyRide() {
   closeMenu();
   const r = route;
   mapView.setBasemap('satellite');  // the dark map is bleak from the seat
-  const roadAt = p => { const x = roadNear(store.roads, p, x => x.key && (x.cls >= 0 || x.rampTier >= 0), 25); return x && x.key; };
+  const roadAt = p => { const x = roadNear(store.roads, p, x => x.cls >= 0 || x.rampTier >= 0, 25); return x && { name: x.key, curvy: x.cls >= 0 }; };
   fly = new Fly(mapView, { route: r, profile: info && info.profile, crests: P.blindCrestsOn(r.path, store.roads), roadAt,
     onClose: () => { fly = null; mapView.setBasemap(settings.basemap); mapView.updateInsets(); mapView.fit(boundsOf(r.path)); } });
 }

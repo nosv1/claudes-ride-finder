@@ -52,7 +52,7 @@ export const turn = (from, to, k) => (from + ((to - from + 540) % 360 - 180) * k
 
 export class Fly {
   // crests: [{ mile }] along the route; profile: the elevation profile, or null; roadAt: the
-  // name of the road at a point, if known (else the router's street names are used).
+  // road at a point as { name, curvy }, if known (else the router's street names are used).
   constructor(mapView, { route, profile, crests, roadAt, onClose }) {
     this.mapView = mapView;
     this.map = mapView.map;
@@ -63,6 +63,7 @@ export class Fly {
     this.onClose = onClose;
     this.roadAt = roadAt || (() => null);
     this.shown = 0;
+    this.lift = this.liftTo = FLY.exaggeration;  // how much taller than life the terrain is drawn
     this.speed = FLY.speed;
     this.s = 0;
     this.heading = null;
@@ -84,7 +85,7 @@ export class Fly {
     addEventListener('resize', this.resize);
     document.body.classList.add('flying');
     this.map.setMaxPitch(TERRAIN.maxPitch);
-    this.map.setTerrain({ source: 'dem', exaggeration: FLY.exaggeration });
+    this.map.setTerrain({ source: 'dem', exaggeration: this.lift });
     mapView.showRoadMarks(false);
     this.pad();
     const p = this.f.pointAt(0);
@@ -173,11 +174,17 @@ export class Fly {
     this.mapView.setRider(p);
     this.now.style.left = `${m / this.f.total * 100}%`;
     if (this.slider) this.slider.value = Math.round(this.s / this.f.seconds * 1000);
-    // The text a few times a second is plenty.
-    if (dt && performance.now() - this.shown < 250) return;
+    // What's under the rider, and the text, a few times a second is plenty.
+    const due = !dt || performance.now() - this.shown >= 250;
+    if (due) {
+      this.here = this.roadAt(p);
+      this.liftTo = this.here && this.here.curvy ? FLY.exaggeration : FLY.flatExaggeration;
+    }
+    this.terrainLift(dt);
+    if (!due) return;
     this.shown = performance.now();
     const at = this.f.index(m), man = (this.route.maneuvers || []).find(x => at >= x.at && at < x.end);
-    const road = this.roadAt(p) || (man ? routeRefs(man).join(' / ') || man.names[0] || '' : '');
+    const road = (this.here && this.here.name) || (man ? routeRefs(man).join(' / ') || man.names[0] || '' : '');
     const sample = this.profile && this.profile.samples[Math.round(m / this.f.total * (this.profile.samples.length - 1))];
     this.readout.replaceChildren(
       h('b', {}, `Mile ${miles(m)}`), ` · ${fmtDuration(this.s)} in`,
@@ -186,6 +193,15 @@ export class Fly {
     const crest = this.crests.find(c => c - m > -40 && c - m < FLY.crestM);
     this.callout.hidden = crest == null;
     if (crest != null) this.callout.textContent = crest - m > 30 ? `⚠ Blind crest ahead · ${Math.round((crest - m) * 3.281 / 10) * 10} ft` : '⚠ Blind crest';
+  }
+
+  // Tall hills on back roads, where they're the point. On highways and in town the terrain data
+  // has no bridges (an overpass is the ground under it) and cuts and fills look like canyons
+  // when exaggerated, so it eases down there. MapLibre reads the terrain's exaggeration every
+  // frame, so changing it in place is smooth (setTerrain would rebuild the terrain).
+  terrainLift(dt) {
+    this.lift += (this.liftTo - this.lift) * (dt ? 1 - Math.exp(-dt / FLY.liftS) : 1);
+    if (this.map.terrain) this.map.terrain.exaggeration = this.lift;
   }
 
   close() {

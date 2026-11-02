@@ -86,9 +86,12 @@ export const WEATHER = {
 export const TERRAIN = { exaggeration: 2, maxPitch: 85, pitch: 65 };
 
 // Fly-through: plays a ride at a multiple of its riding time, so curvy roads go by slower than
-// highways. The camera sits low behind the rider and turns toward the road aheadM on.
+// highways. The camera sits low behind the rider and turns toward the road aheadM on. Terrain is
+// drawn `exaggeration` times taller on curvy roads, flatExaggeration elsewhere (highways and
+// towns, where bridges and road cuts turn into canyons), easing between them over ~liftS.
 export const FLY = {
-  speeds: [5, 10, 20, 40], speed: 10, zoom: 16.2, pitch: 78, pitchTall: 72, exaggeration: 2.2,
+  speeds: [5, 10, 20, 40], speed: 10, zoom: 16.2, pitch: 78, pitchTall: 72,
+  exaggeration: 2.2, flatExaggeration: 1.2, liftS: 1.5,
   aheadM: 250, turnS: 0.6, crestM: 400,
 };
 
