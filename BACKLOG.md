@@ -2,6 +2,18 @@
 
 Ideas that came up, roughly in order of how much they'd help.
 
+- **Check first next session** (from a screenshot on 2026-11-01: a 33.7 mi Lake Jacomo / Fleming Park
+  loop from Lee's Summit, 3 stops):
+  - The elevation chart is very spiky, and "1,959 ft of climbing" looks too high for a ride whose
+    lowest and highest points are only 205 ft apart (842–1,047 ft). Noise in the terrain samples is
+    probably being counted as climbing. Smooth the profile and count climbs only past a small threshold.
+  - Stops 2 and 3 are just called "Stop". When a stop sits on a road, name it after that road.
+  - Ask what the user meant by the screenshot, in case it was something else.
+- **Bottlenecks to fix before going national** (measured 2026-11-01): the site's map files are 68 MB for
+  3 states (about 70% is the speed-limit layer), so the whole US would be near GitHub Pages' 1 GB limit,
+  and every rebuild adds to git history. Slim the speed-limit layer, then move tiles off git (e.g.
+  Cloudflare R2). Routing uses the free public Valhalla server (20–40 requests per Generate); host our
+  own only if other people start using the site.
 - **Turn-by-turn "Ride mode"** in the app, so it follows the planned route exactly (Google
   re-plans between stops). Full-screen map following GPS, big next-turn banner, voice prompts
   from Valhalla's turn instructions, screen kept awake, re-routing back onto the planned roads,
