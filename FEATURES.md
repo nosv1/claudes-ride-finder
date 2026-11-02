@@ -286,10 +286,12 @@ colored road), Add a stop here, Street View here.
     there, the router's street names (no limit). Under the sign, the **next turn** from 1.5 mi out, in the
     router's words ("In 0.60 mi Keep right to take I 435 North…"); starts, arrivals at stops, continue/becomes
     and stay-straight aren't turns.
-  - **Weather** under the turn: the clock time you'd be here (the Leaving time under Weather plus the riding time
+  - Things that come and go sit last in each column (left: road sign, weather, then the turn; right: mini-map,
+    then the speed limit), so they never push the steady ones around.
+  - **Weather** under the road sign: the clock time you'd be here (the Leaving time under Weather plus the riding time
     so far), sky, temperature and rain chance, gusts when ≥ 20 mph; yellow when it would be a warning in the
     Weather section. From the forecast point nearest the rider, for that hour (the same forecast, no new request).
-  - **Mini-map** (top right, under the speed limit): the whole ride north up, the start in white, the rider in
+  - **Mini-map** (top right, above the speed limit): the whole ride north up, the start in white, the rider in
     yellow. A tap jumps the flight to the nearest point of the ride.
   - **Riding ~52 mph** by the speed button: the pace the router expects on this stretch (maneuver length ÷
     time), which is what the playback runs at, times the speed button.

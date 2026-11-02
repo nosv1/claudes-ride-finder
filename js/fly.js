@@ -135,8 +135,10 @@ export class Fly {
     this.paceEl = h('span.fly-pace');
     this.wxEl = h('div.fly-wx', { hidden: true });
     this.mini = this.miniMap();
-    this.hud = h('div.fly-hud', {}, h('div.fly-hud-left', {}, this.sign, this.turnEl, this.wxEl),
-      h('div.fly-hud-right', {}, this.limitEl, this.mini));
+    // What comes and goes (the turn, the speed limit) sits last in each column, so it never
+    // pushes the steady things (road sign, weather, mini-map) around.
+    this.hud = h('div.fly-hud', {}, h('div.fly-hud-left', {}, this.sign, this.wxEl, this.turnEl),
+      h('div.fly-hud-right', {}, this.mini, this.limitEl));
     this.now = h('div.fly-now');
     let down = false;
     const chart = this.profile ? elevationChart(this.profile, s => { if (down && s) this.seek(this.f.secondsAt(s.m)); }) : null;
