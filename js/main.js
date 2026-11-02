@@ -898,7 +898,15 @@ function flyRide() {
     const guess = /^(motorway|trunk)|_link$/.test(x && x.hw) ? null : x && x.estMph;
     return x && { ref: (x.ref || '').replace(/;/g, ' / '), name: x.name, curvy: x.cls >= 0, limit: x.mph ?? guess, posted: x.mph != null };
   };
-  fly = new Fly(mapView, { route: r, profile: info && info.profile, crests: P.blindCrestsOn(r.path, store.roads), roadAt,
+  loadWeather();
+  // The forecast at the weather point nearest m, for the hour you'd pass: leaving time + s.
+  const weatherAt = (m, s) => {
+    const w = weather && weather.route === r && weather.hourly ? weather : null;
+    if (!w) return null;
+    const i = w.points.reduce((best, x, k) => Math.abs(x.m - m) < Math.abs(w.points[best].m - m) ? k : best, 0);
+    return W.atPassing([{ ...w.points[i], s }], [w.hourly[i]], leaveTime())[0];
+  };
+  fly = new Fly(mapView, { route: r, profile: info && info.profile, crests: P.blindCrestsOn(r.path, store.roads), roadAt, weatherAt,
     onClose: () => { fly = null; mapView.setBasemap(settings.basemap); mapView.updateInsets(); mapView.fit(boundsOf(r.path)); } });
 }
 

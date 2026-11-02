@@ -342,3 +342,16 @@ body.flying #map, body.tilted #map { background: #9db4c8; }
 .fly-limit.est { border-style: dashed; opacity: .9; }
 .fly-pace { font-size: 13px; color: var(--text); white-space: nowrap; }
 .fly-controls .grow { flex: 1; text-align: right; }
+.fly-hud-right { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.fly-wx {
+  font-size: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px;
+  box-shadow: var(--shadow);
+}
+.fly-wx b { margin-right: 2px; }
+.fly-wx.warn { border-color: var(--warn); color: var(--warn); }
+.fly-mini {
+  width: 150px; height: 150px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow); pointer-events: auto; cursor: pointer;
+}
+.fly-mini svg { width: 100%; height: 100%; }
+@media (max-width: 600px) { .fly-mini { width: 108px; height: 108px; } }

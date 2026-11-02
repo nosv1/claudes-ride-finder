@@ -294,6 +294,13 @@ test('fly-through: rides the route low in 3D, plays and pauses, seeks, and puts 
   assert.match(await page.eval("document.querySelector('.fly-readout').innerText"), /Mile [\d.]+ · \d+ min in/);
   assert.ok(await page.eval("document.querySelector('.fly-road').innerText.trim().length > 0"), 'a road sign');
   assert.match(await page.eval("document.querySelector('.fly-pace').innerText"), /riding ~48 mph/);
+  // The weather for when you'd be here (Open-Meteo is stubbed by the weather test: dry, 71°F).
+  await page.waitFor("!document.querySelector('.fly-wx').hidden", 5000);
+  assert.match(await page.eval("document.querySelector('.fly-wx').innerText"), /\d+:\d\d [AP]M .* 71°F · rain 5%/);
+  // The mini-map: a tap at its right edge jumps to the east end of the ride.
+  await page.eval(`(() => { const b = document.querySelector('.fly-mini svg').getBoundingClientRect();
+    document.querySelector('.fly-mini').dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: b.right - b.width * 8 / 116, clientY: b.top + b.height / 2 })); })()`);
+  assert.ok(await page.eval('RF.fly.s') > 3900, 'jumped to the far end');
   // Pause holds still; seeking moves the rider.
   await page.eval("document.querySelector('.fly-play').click()");
   const held = await page.eval('RF.fly.s');

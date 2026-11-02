@@ -1,8 +1,8 @@
 // Fly-through: a 3D camera that rides a planned route, looking ahead, with play/pause, speed,
 // the elevation chart as a scrubber, and blind crests called out as they come up.
-import { FLY, TERRAIN } from './config.js';
-import { cumulative, bearing, miles, fmtDuration } from './geo.js';
-import { timesAlong } from './weather.js';
+import { FLY, TERRAIN, WEATHER } from './config.js';
+import { cumulative, bearing, miles, fmtDuration, boundsOf, nearestIndex } from './geo.js';
+import { timesAlong, sky } from './weather.js';
 import { routeRefs } from './routing.js';
 import { icon, h, elevationChart } from './ui.js';
 
@@ -69,8 +69,9 @@ export const turn = (from, to, k) => (from + ((to - from + 540) % 360 - 180) * k
 
 export class Fly {
   // crests: [{ mile }] along the route; profile: the elevation profile, or null; roadAt(p, heading):
-  // the road there as { ref, name, curvy, limit, posted }, if known (else the router's names).
-  constructor(mapView, { route, profile, crests, roadAt, onClose }) {
+  // the road there as { ref, name, curvy, limit, posted }, if known (else the router's names);
+  // weatherAt(m, s): the forecast row (weather.js atPassing) at meters m, s seconds into the ride.
+  constructor(mapView, { route, profile, crests, roadAt, weatherAt, onClose }) {
     this.mapView = mapView;
     this.map = mapView.map;
     this.route = route;
@@ -79,6 +80,7 @@ export class Fly {
     this.crests = (crests || []).map(c => c.mile * 1609.34);
     this.onClose = onClose;
     this.roadAt = roadAt || (() => null);
+    this.weatherAt = weatherAt || (() => null);
     this.shown = 0;
     this.lift = this.liftTo = FLY.exaggeration;  // how much taller than life the terrain is drawn
     this.speed = FLY.speed;
@@ -131,7 +133,10 @@ export class Fly {
     this.turnEl = h('div.fly-turn', { hidden: true });
     this.limitEl = h('div.fly-limit', { hidden: true });
     this.paceEl = h('span.fly-pace');
-    this.hud = h('div.fly-hud', {}, h('div.fly-hud-left', {}, this.sign, this.turnEl), this.limitEl);
+    this.wxEl = h('div.fly-wx', { hidden: true });
+    this.mini = this.miniMap();
+    this.hud = h('div.fly-hud', {}, h('div.fly-hud-left', {}, this.sign, this.turnEl, this.wxEl),
+      h('div.fly-hud-right', {}, this.limitEl, this.mini));
     this.now = h('div.fly-now');
     let down = false;
     const chart = this.profile ? elevationChart(this.profile, s => { if (down && s) this.seek(this.f.secondsAt(s.m)); }) : null;
@@ -194,6 +199,8 @@ export class Fly {
     this.heading = this.heading == null || !dt ? want : turn(this.heading, want, 1 - Math.exp(-dt / FLY.turnS));
     this.map.jumpTo({ center: [p[1], p[0]], bearing: this.heading, pitch: this.pitch });
     this.mapView.setRider(p);
+    this.miniDot.setAttribute('cx', this.miniX(p[1]).toFixed(1));
+    this.miniDot.setAttribute('cy', this.miniY(p[0]).toFixed(1));
     this.now.style.left = `${m / this.f.total * 100}%`;
     if (this.slider) this.slider.value = Math.round(this.s / this.f.seconds * 1000);
     // What's under the rider, and the text, a few times a second is plenty.
@@ -208,6 +215,7 @@ export class Fly {
     const at = this.f.index(m), man = (this.route.maneuvers || []).find(x => at >= x.at && at < x.end);
     this.showRoad(this.here, man);
     this.showTurn(at, m);
+    this.showWeather(m);
     // The pace the router expects here: what the playback runs at, times the speed button.
     const mph = man && man.s > 0 ? man.km / man.s * 3600 / 1.609 : null;
     this.paceEl.textContent = mph ? `riding ~${Math.round(mph)} mph` : '';
@@ -236,6 +244,43 @@ export class Fly {
       this.limitEl.replaceChildren(h('small', {}, here.posted ? 'SPEED LIMIT' : 'LIKELY'), h('b', {}, limit));
       this.limitEl.title = here.posted ? 'Posted speed limit' : 'No posted limit in OpenStreetMap: the usual limit for this kind of road';
     }
+  }
+
+  // The whole ride, north up, with the rider on it; a tap there jumps the ride to that spot.
+  miniMap() {
+    const path = this.route.path, b = boundsOf(path), k = Math.cos((b[0] + b[2]) / 2 * Math.PI / 180);
+    const w = (b[3] - b[1]) * k || 1e-6, ht = b[2] - b[0] || 1e-6, S = 100 / Math.max(w, ht);
+    this.miniX = lon => (lon - b[1]) * k * S + (100 - w * S) / 2;
+    this.miniY = lat => (b[2] - lat) * S + (100 - ht * S) / 2;
+    const step = Math.max(1, Math.floor(path.length / 500));
+    const line = path.filter((_, i) => i % step === 0).concat([path[path.length - 1]])
+      .map(p => `${this.miniX(p[1]).toFixed(1)},${this.miniY(p[0]).toFixed(1)}`).join(' ');
+    const el = h('div.fly-mini', { title: 'The whole ride: tap to jump there' });
+    el.innerHTML = `<svg viewBox="-8 -8 116 116"><polyline points="${line}" fill="none" stroke="#4dabf7" stroke-width="3"
+      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+      <circle cx="${this.miniX(path[0][1]).toFixed(1)}" cy="${this.miniY(path[0][0]).toFixed(1)}" r="4" fill="#fff"/>
+      <circle class="dot" r="6" fill="#ffd43b" stroke="#111" stroke-width="2"/></svg>`;
+    this.miniDot = el.querySelector('.dot');
+    el.addEventListener('click', e => {
+      const box = el.querySelector('svg').getBoundingClientRect();
+      const x = (e.clientX - box.left) / box.width * 116 - 8, y = (e.clientY - box.top) / box.height * 116 - 8;
+      const at = [b[2] - (y - (100 - ht * S) / 2) / S, b[1] + (x - (100 - w * S) / 2) / S / k];
+      this.seek(this.f.secondsAt(this.f.metersAtIndex(nearestIndex(path, at))));
+    });
+    return el;
+  }
+
+  // The forecast here, for when you'd be here: the clock time, sky, temperature, rain, gusts.
+  showWeather(m) {
+    const r = this.weatherAt(m, this.s);
+    this.wxEl.hidden = !r || r.none;
+    if (!r || r.none) return;
+    const bad = r.code >= 95 || r.rain >= WEATHER.rainPct || r.gust >= WEATHER.gustMph || r.temp <= WEATHER.coldF || r.temp >= WEATHER.hotF;
+    this.wxEl.classList.toggle('warn', bad);
+    this.wxEl.replaceChildren(
+      h('b', {}, new Date(r.when).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })),
+      ` ${sky(r.code)[2]} ${Math.round(r.temp)}°F · rain ${r.rain ?? 0}%`, r.gust >= 20 ? ` · gusts ${Math.round(r.gust)} mph` : '');
+    this.wxEl.title = `${sky(r.code)[1]}: the forecast here for when you'd be here, leaving at the time set under Weather`;
   }
 
   // The next turn, from a mile and a half out.
