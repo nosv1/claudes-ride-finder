@@ -12,8 +12,10 @@ Ideas that came up, roughly in order of how much they'd help.
   from Valhalla's turn instructions, screen kept awake, re-routing back onto the planned roads,
   gas and blind-crest callouts. Limits: screen on and app in front (phone mounted on a charger),
   no CarPlay/Android Auto, re-routing needs signal, iPhone voice can be finicky.
-- **Fly-through extras**: a chase camera that banks into corners, a "skip the highway" toggle that speeds up
-  through straight fast stretches, and recording it as a video to share.
+- **Fly-through extras**: a chase camera that banks into corners; a "skip the boring parts" toggle that
+  speeds through highways and town; curve callouts ("Tight curves next 2.1 mi", hairpins); gas stops as you
+  pass them ("Casey's, 90+ likely, next gas 38 mi"); the weather where you'll be at that time; a mini-map
+  of the whole ride with the dot; recording it as a video to share.
 - **Interchange tours and roundabouts**: fast ramps now have their own Interchanges mode.
   Next: roundabouts (`junction=roundabout`, like the double roundabouts on 87th St), and a
   generator for short interchange loops, e.g. west on I-470, US-71 north, I-435 north, the
