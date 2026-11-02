@@ -93,6 +93,19 @@ export function insertRoad(trip, g) {
   return best.i;
 }
 
+// Turn stop i into a road ridden end to end, in the same place in the ride, entered from the
+// end that adds the least riding.
+export function replaceWithRoad(trip, i, g) {
+  const stop = roadStop(g), items = trip.items, n = items.length, wrap = trip.loop && n > 1;
+  const prev = i > 0 ? items[i - 1] : wrap ? items[n - 1] : null, next = i < n - 1 ? items[i + 1] : wrap ? items[0] : null;
+  const dist = (a, b) => a && b ? Math.sqrt(d2(a, b)) : 0;
+  const from = prev && prev.pts[prev.pts.length - 1], to = next && next.pts[0];
+  const cost = pts => dist(from, pts[0]) + dist(pts[pts.length - 1], to);
+  if (!stop.oneway && cost([...stop.pts].reverse()) < cost(stop.pts) - 1e-9) stop.pts.reverse();
+  items[i] = stop;
+  return stop;
+}
+
 // Which end a road stop is entered and left at, as compass words ("north", "southwest").
 export const ends = stop => {
   const a = stop.pts[0], b = stop.pts[stop.pts.length - 1];

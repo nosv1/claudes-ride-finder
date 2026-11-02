@@ -1,7 +1,7 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
 import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
-import { visible, stretchOf, bestInView, clusterRoads, summarize } from './roads.js';
+import { visible, stretchOf, bestInView, clusterRoads, summarize, roadNear } from './roads.js';
 import * as T from './trip.js';
 import * as P from './plan.js';
 import { localResults, photonResults } from './search.js';
@@ -207,20 +207,46 @@ function refreshInfo(withProfile) {
 
 // Added where it fits best in the ride, entered from the end that makes sense; the toast offers
 // the other end.
-function addRoad(g) {
+function addRoad(g, extra) {
   const it = trip.items[T.insertRoad(trip, g)];
   tripChanged();
-  roadToast(it, 'Added');
+  roadToast(it, 'Added', extra);
+  return it;
 }
 
-function roadToast(it, verb) {
+// A stop dropped on a colored road rides that road end to end; the toast can make it just a stop.
+function addStopOn(at, g) {
+  const it = addRoad(g, { label: 'Just a stop', run: () => {
+    const i = trip.items.indexOf(it);
+    if (i >= 0) T.removeStop(trip, i);
+    T.addPoint(trip, at, 'Stop');
+    tripChanged();
+  } });
+}
+
+// The stretch of colored road (as the map shows it now) a spot is on, or null.
+function desiredRoadAt(at) {
+  const f = filters();
+  const r = roadNear(store.roads, at, r => (r.cls >= 0 || r.rampTier >= 0) && visible(r, f));
+  return r && stretchOf(store.roads, r);
+}
+
+function roadToast(it, verb, extra) {
   const i = trip.items.indexOf(it);
   if (i < 0) return;
   const where = it.oneway ? '' : `, in at the ${T.ends(it).entry} end`;
   toast(`${verb} ${it.label} as stop ${i + 1}${where}`, [
     it.oneway ? null : { label: 'Switch ends', run: () => flipRoad(it) },
     view === 'trip' ? null : { label: 'View ride', run: () => go('trip') },
+    extra,
   ].filter(Boolean));
+}
+
+// A pinned stop that sits on a colored road becomes that road, ridden end to end.
+function stopToRoad(i, g) {
+  const it = T.replaceWithRoad(trip, i, g);
+  tripChanged();
+  roadToast(it, 'Riding');
 }
 
 function flipRoad(it) {
@@ -491,12 +517,14 @@ function onHover(id) {
 
 function spotMenu(at, pt) {
   const sv = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${at[0].toFixed(6)},${at[1].toFixed(6)}`;
+  const g = desiredRoadAt(at);
   menu([
     { heading: `${at[0].toFixed(4)}, ${at[1].toFixed(4)}` },
     { label: 'Start a ride here', icon: icon.pin, run: () => { setStartAt(at, 'Start'); go('plan'); } },
+    g ? { label: `Ride ${g.key} end to end`, icon: icon.route, run: () => addRoad(g) } : null,
     { label: 'Add a stop here', icon: icon.plus, run: () => { T.addPoint(trip, at, 'Stop'); tripChanged(); toast('Stop added. Drag its pin to adjust.'); } },
     { label: 'Street View here', icon: icon.person, run: () => window.open(sv, '_blank', 'noopener') },
-  ], { x: pt.x, y: pt.y });
+  ].filter(Boolean), { x: pt.x, y: pt.y });
 }
 
 // While picking a spot for the start or a stop, or a road, the next map tap is used for that.
@@ -509,8 +537,10 @@ function usePick(at, roadId = null) {
   const kind = picking;
   stopPicking();
   if (kind === 'start') setStartAt(at, 'Start');
-  else if (kind === 'road') addRoad(stretchOf(store.roads, store.byId.get(roadId)));
-  else { T.addPoint(trip, at, 'Stop'); tripChanged(); }
+  else if (roadId != null) {
+    const g = stretchOf(store.roads, store.byId.get(roadId));
+    kind === 'road' ? addRoad(g) : addStopOn(at, g);
+  } else { T.addPoint(trip, at, 'Stop'); tripChanged(); }
   renderSoon();
   return true;
 }
@@ -923,16 +953,20 @@ function weatherSection() {
 }
 
 function stopList() {
-  const list = h('ol.stops', {}, trip.items.map((it, i) => h('li', {},
+  const list = h('ol.stops', {}, trip.items.map((it, i) => {
+    const on = it.type === 'point' && i > 0 ? desiredRoadAt(it.pts[0]) : null;
+    return h('li', {},
     h('span.grip', { html: icon.grip, title: 'Drag to reorder' }),
     h('span.num', {}, i + 1),
     h('div.grow', { onclick: () => mapView.fit(boundsOf(it.pts), 13) },
       h('div', {}, it.label),
-      h('div.muted.small', {}, it.type !== 'road' ? 'Stop · drag its pin to move'
+      h('div.muted.small', {}, it.type !== 'road' ? (on ? `Stop on ${on.key} · drag its pin to move` : 'Stop · drag its pin to move')
         : `${it.oneway ? 'One way' : `${cap(T.ends(it).entry)} end → ${T.ends(it).exit} end`} · ${miles(it.curvy || 0)} mi of curves`)),
     it.type === 'road' && !it.oneway ? h('button.icon-btn', { title: 'Switch ends: ride it the other way', html: icon.swap,
       onclick: () => flipRoad(it) }) : '',
-    h('button.icon-btn', { title: 'Remove', html: icon.x, onclick: () => { T.removeStop(trip, i); tripChanged(); } }))));
+    on ? h('button.icon-btn', { title: `Ride ${on.key} end to end`, html: icon.route, onclick: () => stopToRoad(i, on) }) : '',
+    h('button.icon-btn', { title: 'Remove', html: icon.x, onclick: () => { T.removeStop(trip, i); tripChanged(); } }));
+  }));
   sortable(list, (from, to) => { T.moveStop(trip, from, to); tripChanged(); });
   return list;
 }

@@ -196,7 +196,8 @@ under the tag, and the Hills chip lists ft/mi.
     two-way road (it looked backwards half the time), so two-way roads get a ⇄ button for the other way.
 - Hovering a road on the map (desktop) outlines its whole stretch.
 
-**Long-press the map** (right-click on desktop): Start a ride here, Add a stop here, Street View here.
+**Long-press the map** (right-click on desktop): Start a ride here, **Ride <road> end to end** (when the spot is on a
+colored road), Add a stop here, Street View here.
 
 ## 4. Search
 
@@ -225,6 +226,10 @@ under the tag, and the Hills chip lists ft/mi.
     where it adds the least straight-line distance (counting the ride home on a loop, never before the start),
     entered from whichever end does that. The toast says which end ("in at the north end") with **Switch ends**.
   - Road rows say which end they're entered and left at ("South end → north end").
+  - **A stop on a colored road is that road.** Add stop, then a tap on a colored road, adds the road (as above);
+    the toast's **Just a stop** makes it a plain pin there instead. A pinned stop that sits within 30 m of a
+    colored road (dragged there, or from an old link) says "Stop on MO 150", with a button that turns it into
+    the road, in the same place in the ride, entered from the end that adds the least riding.
 - **Your ride** lists the stops first, right under the title, so nothing above them changes height while the
   route is worked out again: after removing one, the next ✕ is under the same finger. The ride's name stays on one
   line for the same reason. **Clear all** sits by the "Stops (n)" heading, with Undo in the toast instead of a

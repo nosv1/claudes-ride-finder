@@ -221,6 +221,24 @@ test('Add road on the ride page: tap a road, it goes in where it fits, and its e
   assert.match(await sheetText(), /MO 150\s+\w+ end → \w+ end/);
 });
 
+test('a stop dropped on a colored road rides that road; Just a stop, and the stop list, switch between them', async () => {
+  await showMo150();
+  await page.eval(pointTrip);
+  await page.waitFor("[...document.querySelectorAll('#sheetBody button')].some(b => b.textContent === 'Add stop')");
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => b.textContent === 'Add stop').click()");
+  await page.eval(`(() => { const r = RF.store.byId.get(${MO150}); RF.mapView.emit('road', r.id, r.geom[2]); })()`);
+  await sleep(300);
+  assert.equal(await page.eval("RF.trip.items.filter(i => i.label === 'MO 150' && i.type === 'road').length"), 1);
+  await page.eval("[...document.querySelectorAll('#toast button')].find(b => b.textContent === 'Just a stop').click()");
+  await sleep(300);
+  assert.deepEqual(await page.eval('RF.trip.items.map(i => i.type + ":" + i.label)'), ['point:Start', 'point:A', 'point:B', 'point:C', 'point:Stop']);
+  // A plain stop on the road says so, and its button makes it the road, in the same place.
+  assert.match(await sheetText(), /Stop on MO 150/);
+  await page.eval("document.querySelector('#sheetBody button[title=\"Ride MO 150 end to end\"]').click()");
+  await sleep(300);
+  assert.deepEqual(await page.eval('RF.trip.items.map(i => i.type + ":" + i.label)'), ['point:Start', 'point:A', 'point:B', 'point:C', 'road:MO 150']);
+});
+
 test('the ride page can generate loops through its stops', async () => {
   await page.eval(pointTrip);
   await page.waitFor("[...document.querySelectorAll('#sheetBody button')].some(b => /Generate loops through these stops/.test(b.textContent))");

@@ -1,7 +1,7 @@
 // Roads: decoding tile rows, classifying them, filtering, and grouping pieces into stretches.
 // Pure: no DOM, no map library.
 import { CURVE_CLASSES, SPEED_BINS, HILLS, MINOR_TYPES, RAMP_TIERS, RAMP_TYPES } from './config.js';
-import { decodeDeltas, boundsOf, extend, pad, intersects } from './geo.js';
+import { decodeDeltas, boundsOf, extend, pad, intersects, contains, spotOnLine, distance } from './geo.js';
 
 // Row: [id, highway, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords, hill, blind, lanes]
 export function decodeRow(row) {
@@ -95,6 +95,17 @@ export function stretchOf(roads, r) {
   if (!r.key) return summarize({ roads: [r], bounds: r.bounds }, 'Unnamed road');
   const same = roads.filter(x => x === r || (x.key === r.key && (x.cls >= 0 || x.rampTier >= 0) && x.oneway === r.oneway));
   return summarize(clusterRoads(same).find(c => c.roads.includes(r)), r.key);
+}
+
+// The road (among those `ok` accepts) within maxM meters of a point, nearest first; or null.
+export function roadNear(roads, at, ok = () => true, maxM = 30) {
+  let best = null, bd = maxM;
+  for (const r of roads) {
+    if (!contains(pad(r.bounds, 0.0005), at) || !ok(r)) continue;
+    const d = distance(spotOnLine(r.geom, at).p, at);
+    if (d <= bd) { bd = d; best = r; }
+  }
+  return best;
 }
 
 // The best named stretches among visible roads in view.

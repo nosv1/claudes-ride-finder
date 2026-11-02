@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 
 import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, nearestIndex } from '../../js/geo.js';
-import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel } from '../../js/roads.js';
-import { newTrip, addRoad, insertRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
+import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear } from '../../js/roads.js';
+import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
 import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
@@ -140,6 +140,22 @@ test('an added road goes where it fits best, entered from the sensible end, and 
   // Never before the start, and onto an empty trip it just goes in.
   const empty = newTrip();
   assert.equal(insertRoad(empty, stretchOf([a], a)), 0);
+});
+
+test('a stop pinned on a road can become that road, ridden end to end in its place', () => {
+  const trip = newTrip();
+  setStart(trip, [38, -94], 'Start');
+  const b = row({ id: 3, ref: 'B', score: 600, pts: Array.from({ length: 10 }, (_, i) => [38.05 + i * 0.03, -94.45]) });  // runs north
+  const other = row({ id: 4, ref: 'C', score: 600, pts: east(38.2, -94.3, 10, 0.01) });
+  addPoint(trip, [38.2, -94.4501], 'Stop');                    // about 10 m off B
+  addPoint(trip, [38.3, -94], 'Lunch');
+  assert.equal(roadNear([b, other], [38.2, -94.4501]), b);
+  assert.equal(roadNear([b, other], [38.2, -94.44]), null, 'nearly 900 m off: not on it');
+  assert.equal(roadNear([b, other], [38.2, -94.4501], r => r !== b), null, 'only roads that are shown');
+  replaceWithRoad(trip, 1, stretchOf([b], b));
+  assert.deepEqual(trip.items.map(i => i.label), ['Start', 'B', 'Lunch']);
+  assert.equal(trip.items[1].type, 'road');
+  assert.deepEqual(ends(trip.items[1]), { entry: 'south', exit: 'north' }, 'in from the start side, out toward Lunch');
 });
 
 test('loop roads are turned so the rides between them are shortest overall', () => {
