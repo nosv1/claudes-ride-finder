@@ -278,8 +278,18 @@ colored road), Add a stop here, Street View here.
   - It switches to satellite and hides route numbers and arrows (they smear at that angle). The rider is a
     circle layer on the ground, facing the camera: a DOM marker drifted off the line in 3D, and a ground-aligned
     circle flattened to a sliver.
-  - A bar at the bottom: mile, time in, the road (our road data under the rider first, the router's street names
-    otherwise), height; the elevation chart as the scrubber (press and drag; it pauses while held); play/pause
+  - **Heads-up display** (top): the road sign (route number and name) and its **speed limit** sign, from our
+    road data under the rider: the nearest road within 25 m running the rider's way (within 35°), so a road
+    crossing over or under doesn't count. The flight loads the speed-only tiles along the route (not just the
+    curvy roads). Posted limits look like the sign; an estimate is dashed and says LIKELY, and isn't shown on
+    motorways, trunks or ramps (the rule of thumb would say 30 on an interstate through town). With no road data
+    there, the router's street names (no limit). Under the sign, the **next turn** from 1.5 mi out, in the
+    router's words ("In 0.60 mi Keep right to take I 435 North…"); starts, arrivals at stops, continue/becomes
+    and stay-straight aren't turns.
+  - **Riding ~52 mph** by the speed button: the pace the router expects on this stretch (maneuver length ÷
+    time), which is what the playback runs at, times the speed button.
+  - A bar at the bottom: mile, time in, height, and the grade when it's 3% or more ("↗ 6%", over ±150 m);
+    the elevation chart as the scrubber (press and drag; it pauses while held); play/pause
     (space), speed, close (Esc). **Blind crests** along the route are called out 400 m before: "⚠ Blind crest
     ahead · 900 ft".
   - Closing puts back the panel, the basemap, the tilt and the terrain, and frames the whole ride.

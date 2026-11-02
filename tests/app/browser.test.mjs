@@ -283,7 +283,7 @@ test('the ride page shows the weather along the route, for the time you leave', 
 test('fly-through: rides the route low in 3D, plays and pauses, seeks, and puts the map back', async () => {
   await page.eval(pointTrip);
   await page.eval(`RF.setRoute({ path: Array.from({ length: 200 }, (_, i) => [38.852, -94.343 + i * 0.005]), meters: 86000, seconds: 4000,
-    maneuvers: [{ at: 0, end: 199, s: 4000, names: ['US 50'] }] })`);
+    maneuvers: [{ at: 0, end: 199, s: 4000, km: 86, names: ['US 50'] }] })`);
   await page.waitFor("[...document.querySelectorAll('#sheetBody button')].some(b => /Fly through/.test(b.textContent))", 10000);
   await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Fly through/.test(b.textContent)).click()");
   assert.ok(await page.eval("RF.fly && document.body.classList.contains('flying') && !!document.querySelector('.fly-bar')"));
@@ -291,7 +291,9 @@ test('fly-through: rides the route low in 3D, plays and pauses, seeks, and puts 
   await page.waitFor('RF.fly.s > 3', 10000);
   assert.ok(await page.eval('RF.mapView.map.getPitch()') > 65, 'camera sits low');
   assert.ok(await page.eval("RF.mapView.map.getTerrain() && RF.mapView.map.getLayoutProperty('sat', 'visibility') === 'visible'"));
-  assert.match(await page.eval("document.querySelector('.fly-readout').innerText"), /Mile [\d.]+ · \d+ min in · US 50/);
+  assert.match(await page.eval("document.querySelector('.fly-readout').innerText"), /Mile [\d.]+ · \d+ min in/);
+  assert.ok(await page.eval("document.querySelector('.fly-road').innerText.trim().length > 0"), 'a road sign');
+  assert.match(await page.eval("document.querySelector('.fly-pace').innerText"), /riding ~48 mph/);
   // Pause holds still; seeking moves the rider.
   await page.eval("document.querySelector('.fly-play').click()");
   const held = await page.eval('RF.fly.s');

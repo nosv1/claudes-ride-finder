@@ -38,7 +38,7 @@ async function valhalla(pts, useHighways, uTurns) {
       for (const m of leg.maneuvers) {
         result.maneuvers.push({
           type: m.type, at: offset + m.begin_shape_index, end: offset + m.end_shape_index,
-          km: m.length * 1.609, s: m.time, names: m.street_names || [],
+          km: m.length * 1.609, s: m.time, names: m.street_names || [], text: m.instruction || '',
         });
       }
       result.path.push(...decodePolyline(leg.shape));

@@ -36,6 +36,7 @@ export function flight(route) {
   };
   return {
     total, seconds, pointAt,
+    metersAtIndex: i => cum[clamp(i, 0, cum.length - 1)],
     metersAt: s => map(t, cum, clamp(s, 0, seconds)),
     secondsAt: m => map(cum, t, clamp(m, 0, total)),
     index: m => bracket(cum, clamp(m, 0, total)).i,
@@ -47,12 +48,28 @@ export function flight(route) {
   };
 }
 
+// Valhalla maneuvers that aren't a turn to call out: starts and arrivals (every stop is one),
+// "becomes", "continue", "stay straight".
+const NOT_TURNS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 22]);
+
+// The next turn after path index `at`, or null.
+export const nextTurn = (maneuvers, at) => (maneuvers || []).find(x => x.at > at && !NOT_TURNS.has(x.type) && x.text) || null;
+
+// The road's grade in % at meters m (up positive), over about ±halfM; null without a profile.
+export function gradeAt(profile, m, halfM = 150) {
+  if (!profile) return null;
+  const s = profile.samples, n = s.length - 1, step = profile.meters / n || 1;
+  const j = Math.round(m / step), k = Math.max(1, Math.round(halfM / step));
+  const a = s[clamp(j - k, 0, n)], b = s[clamp(j + k, 0, n)];
+  return b.m > a.m ? (b.ft - a.ft) / 3.281 / (b.m - a.m) * 100 : 0;
+}
+
 // A heading turned part of the way (k, 0–1) toward another, the short way around.
 export const turn = (from, to, k) => (from + ((to - from + 540) % 360 - 180) * k + 360) % 360;
 
 export class Fly {
-  // crests: [{ mile }] along the route; profile: the elevation profile, or null; roadAt: the
-  // road at a point as { name, curvy }, if known (else the router's street names are used).
+  // crests: [{ mile }] along the route; profile: the elevation profile, or null; roadAt(p, heading):
+  // the road there as { ref, name, curvy, limit, posted }, if known (else the router's names).
   constructor(mapView, { route, profile, crests, roadAt, onClose }) {
     this.mapView = mapView;
     this.map = mapView.map;
@@ -110,6 +127,11 @@ export class Fly {
     } }, `${this.speed}×`);
     this.readout = h('div.fly-readout');
     this.callout = h('div.fly-crest', { hidden: true });
+    this.sign = h('div.fly-road');
+    this.turnEl = h('div.fly-turn', { hidden: true });
+    this.limitEl = h('div.fly-limit', { hidden: true });
+    this.paceEl = h('span.fly-pace');
+    this.hud = h('div.fly-hud', {}, h('div.fly-hud-left', {}, this.sign, this.turnEl), this.limitEl);
     this.now = h('div.fly-now');
     let down = false;
     const chart = this.profile ? elevationChart(this.profile, s => { if (down && s) this.seek(this.f.secondsAt(s.m)); }) : null;
@@ -126,9 +148,9 @@ export class Fly {
       this.callout,
       h('div.fly-top', {}, this.readout, h('button.icon-btn', { title: 'Close (Esc)', html: icon.x, onclick: () => this.close() })),
       chart || this.slider,
-      h('div.fly-controls', {}, this.playBtn, this.speedBtn,
-        h('span.muted.small', {}, `${miles(this.f.total)} mi · ${fmtDuration(this.f.seconds)} of riding`)));
-    document.body.append(this.bar);
+      h('div.fly-controls', {}, this.playBtn, this.speedBtn, this.paceEl,
+        h('span.muted.small.grow', {}, `${miles(this.f.total)} mi · ${fmtDuration(this.f.seconds)}`)));
+    document.body.append(this.hud, this.bar);
   }
 
   play() {
@@ -177,22 +199,50 @@ export class Fly {
     // What's under the rider, and the text, a few times a second is plenty.
     const due = !dt || performance.now() - this.shown >= 250;
     if (due) {
-      this.here = this.roadAt(p);
+      this.here = this.roadAt(p, this.f.lookFrom(m, 40));
       this.liftTo = this.here && this.here.curvy ? FLY.exaggeration : FLY.flatExaggeration;
     }
     this.terrainLift(dt);
     if (!due) return;
     this.shown = performance.now();
     const at = this.f.index(m), man = (this.route.maneuvers || []).find(x => at >= x.at && at < x.end);
-    const road = (this.here && this.here.name) || (man ? routeRefs(man).join(' / ') || man.names[0] || '' : '');
+    this.showRoad(this.here, man);
+    this.showTurn(at, m);
+    // The pace the router expects here: what the playback runs at, times the speed button.
+    const mph = man && man.s > 0 ? man.km / man.s * 3600 / 1.609 : null;
+    this.paceEl.textContent = mph ? `riding ~${Math.round(mph)} mph` : '';
     const sample = this.profile && this.profile.samples[Math.round(m / this.f.total * (this.profile.samples.length - 1))];
+    const grade = gradeAt(this.profile, m);
     this.readout.replaceChildren(
       h('b', {}, `Mile ${miles(m)}`), ` · ${fmtDuration(this.s)} in`,
-      road ? h('span', {}, ` · ${road}`) : '',
-      sample ? ` · ${Math.round(sample.ft).toLocaleString()} ft` : '');
+      sample ? ` · ${Math.round(sample.ft).toLocaleString()} ft` : '',
+      grade != null && Math.abs(grade) >= 3 ? h('span.fly-grade', {}, ` · ${grade > 0 ? '↗' : '↘'} ${Math.round(Math.abs(grade))}%`) : '');
     const crest = this.crests.find(c => c - m > -40 && c - m < FLY.crestM);
     this.callout.hidden = crest == null;
     if (crest != null) this.callout.textContent = crest - m > 30 ? `⚠ Blind crest ahead · ${Math.round((crest - m) * 3.281 / 10) * 10} ft` : '⚠ Blind crest';
+  }
+
+  // The road sign (route number and name) and its speed limit: from our road data under the
+  // rider, else the router's street names (and no limit).
+  showRoad(here, man) {
+    const refs = man ? routeRefs(man) : [], names = man ? man.names.filter(n => !routeRefs({ names: [n] }).length) : [];
+    const ref = here ? here.ref : refs[0], name = here ? here.name : names[0];
+    this.sign.replaceChildren(ref ? h('span.fly-ref', {}, ref) : '', name && name !== ref ? h('span.fly-name', {}, name) : '');
+    this.sign.hidden = !ref && !name;
+    const limit = here && here.limit;
+    this.limitEl.hidden = !limit;
+    if (limit) {
+      this.limitEl.classList.toggle('est', !here.posted);
+      this.limitEl.replaceChildren(h('small', {}, here.posted ? 'SPEED LIMIT' : 'LIKELY'), h('b', {}, limit));
+      this.limitEl.title = here.posted ? 'Posted speed limit' : 'No posted limit in OpenStreetMap: the usual limit for this kind of road';
+    }
+  }
+
+  // The next turn, from a mile and a half out.
+  showTurn(at, m) {
+    const t = nextTurn(this.route.maneuvers, at), d = t ? this.f.metersAtIndex(t.at) - m : Infinity;
+    this.turnEl.hidden = d > 2400;
+    if (d <= 2400) this.turnEl.replaceChildren(h('b', {}, d < 50 ? 'Now' : `In ${miles(d)} mi`), ` ${t.text}`);
   }
 
   // Tall hills on back roads, where they're the point. On highways and in town the terrain data
@@ -211,6 +261,7 @@ export class Fly {
     this.map.off('pitchend', this.tilted);
     if (this.up) removeEventListener('pointerup', this.up);
     this.bar.remove();
+    this.hud.remove();
     document.body.classList.remove('flying');
     this.mapView.setRider(null);
     this.mapView.showRoadMarks(true);

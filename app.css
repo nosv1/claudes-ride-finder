@@ -320,3 +320,25 @@ body.flying #map, body.tilted #map { background: #9db4c8; }
   position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 10px); white-space: nowrap;
   background: var(--warn); color: #111; font-weight: 700; padding: 6px 14px; border-radius: 999px; box-shadow: var(--shadow);
 }
+.fly-hud {
+  position: fixed; z-index: 30; top: calc(var(--top) + 12px); left: 12px; right: 12px;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; pointer-events: none;
+}
+.fly-hud-left { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.fly-road, .fly-turn {
+  display: flex; align-items: center; gap: 8px; max-width: 100%; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 6px 10px; box-shadow: var(--shadow);
+}
+.fly-ref { background: #fff; color: #111; font-weight: 800; border-radius: 5px; padding: 1px 7px; white-space: nowrap; }
+.fly-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fly-turn { font-size: 14px; }
+.fly-turn b { color: #74c0fc; margin-right: 2px; white-space: nowrap; }
+.fly-limit {
+  flex: none; width: 64px; padding: 5px 0 4px; background: #fff; color: #111; border: 3px solid #111; outline: 2px solid #fff;
+  border-radius: 7px; text-align: center; line-height: 1.05; box-shadow: var(--shadow);
+}
+.fly-limit small { display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .02em; }
+.fly-limit b { display: block; font-size: 28px; font-weight: 800; }
+.fly-limit.est { border-style: dashed; opacity: .9; }
+.fly-pace { font-size: 13px; color: var(--text); white-space: nowrap; }
+.fly-controls .grow { flex: 1; text-align: right; }

@@ -1,7 +1,7 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
 import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
-import { visible, stretchOf, bestInView, clusterRoads, summarize, roadNear } from './roads.js';
+import { visible, stretchOf, bestInView, clusterRoads, summarize, roadNear, roadAlong } from './roads.js';
 import * as T from './trip.js';
 import * as P from './plan.js';
 import { localResults, photonResults } from './search.js';
@@ -9,7 +9,7 @@ import { fetchRoute, routeRefs } from './routing.js';
 import { profile } from './elevation.js';
 import * as W from './weather.js';
 import { Fly } from './fly.js';
-import { store, initData, onRoadsChanged, loadTiles, tilesSettled, loadingCount, coverageBox } from './store.js';
+import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox } from './store.js';
 import { MapView } from './mapview.js';
 import { icon, h, elevationChart, Sheet, toast, menu, closeMenu } from './ui.js';
 
@@ -891,7 +891,13 @@ function flyRide() {
   closeMenu();
   const r = route;
   mapView.setBasemap('satellite');  // the dark map is bleak from the seat
-  const roadAt = p => { const x = roadNear(store.roads, p, x => x.cls >= 0 || x.rampTier >= 0, 25); return x && { name: x.key, curvy: x.cls >= 0 }; };
+  loadTilesAlong(r.path, { speed: true });  // speed limits for every road on it, not just the curvy ones
+  const roadAt = (p, heading) => {
+    const x = roadAlong(store.roads, p, heading);
+    // The estimate is a rule of thumb for ordinary roads (30 in town): none on highways or ramps.
+    const guess = /^(motorway|trunk)|_link$/.test(x && x.hw) ? null : x && x.estMph;
+    return x && { ref: (x.ref || '').replace(/;/g, ' / '), name: x.name, curvy: x.cls >= 0, limit: x.mph ?? guess, posted: x.mph != null };
+  };
   fly = new Fly(mapView, { route: r, profile: info && info.profile, crests: P.blindCrestsOn(r.path, store.roads), roadAt,
     onClose: () => { fly = null; mapView.setBasemap(settings.basemap); mapView.updateInsets(); mapView.fit(boundsOf(r.path)); } });
 }

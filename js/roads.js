@@ -108,6 +108,18 @@ export function roadNear(roads, at, ok = () => true, maxM = 30) {
   return best;
 }
 
+// The road under someone at `at` heading `heading` (degrees): the nearest within maxM that runs
+// that way (either direction), so a road crossing over or under doesn't count. Or null.
+export function roadAlong(roads, at, heading, maxM = 25) {
+  let best = null, bd = maxM;
+  for (const r of roads) {
+    if (!contains(pad(r.bounds, 0.0005), at)) continue;
+    const s = spotOnLine(r.geom, at), d = distance(s.p, at), off = Math.abs(((s.heading - heading) % 180 + 270) % 180 - 90);
+    if (d <= bd && off <= 35) { bd = d; best = r; }
+  }
+  return best;
+}
+
 // The best named stretches among visible roads in view.
 export function bestInView(roads, view, filters, limit = 8) {
   const byKey = new Map();

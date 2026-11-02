@@ -62,6 +62,17 @@ export function loadTiles([s, w, n, e], { speed = false } = {}) {
   }
 }
 
+// Every tile a path passes through (with speed: their speed-only roads too).
+export function loadTilesAlong(path, opts) {
+  const size = store.index.size, seen = new Set();
+  for (let i = 0; i < path.length; i += 5) {
+    const [lat, lon] = path[i], x = Math.floor(lon / size), y = Math.floor(lat / size), k = `${x}_${y}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    loadTiles([y * size + 0.01, x * size + 0.01, (y + 1) * size - 0.01, (x + 1) * size - 0.01], opts);
+  }
+}
+
 export const loadingCount = () => [...tileState.values()].filter(s => s === 'loading').length;
 
 export function tilesSettled(timeout = 20000) {

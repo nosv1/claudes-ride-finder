@@ -4,12 +4,12 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 
 import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, nearestIndex } from '../../js/geo.js';
-import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear } from '../../js/roads.js';
+import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
 import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
 import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
-import { flight, turn } from '../../js/fly.js';
+import { flight, turn, nextTurn, gradeAt } from '../../js/fly.js';
 
 const TILES = new URL('../../tiles/', import.meta.url);
 const haveTiles = existsSync(new URL('index.js', TILES));
@@ -411,4 +411,20 @@ test('elevation: smoothing evens out grid noise; climbing ignores small wiggles 
   const hill = Array.from({ length: 200 }, (_, i) => 300 + 40 * Math.sin(i / 199 * Math.PI) + (i % 2 ? 4 : -4));
   assert.ok(climbOf(hill) > 300, 'raw noise counts as climbing');
   assert.ok(Math.abs(climbOf(smooth(hill)) - 40) < 6, `about the hill's 40 m: ${climbOf(smooth(hill))}`);
+});
+
+test('fly-through: the road under the rider runs their way; the next real turn; the grade', () => {
+  const ew = row({ id: 1, ref: 'EW', score: 600, pts: east(38, -94, 10, 0.001) });
+  const ns = row({ id: 2, ref: 'NS', score: 600, pts: Array.from({ length: 10 }, (_, i) => [37.996 + i * 0.001, -93.995]) });
+  assert.equal(roadAlong([ew, ns], [38, -93.995], 90), ew, 'heading east: the east-west road, not the one crossing');
+  assert.equal(roadAlong([ew, ns], [38, -93.995], 180), ns);
+  assert.equal(roadAlong([ew, ns], [38, -93.995], 45), null, 'neither runs northeast');
+  const ms = [{ type: 1, at: 0, text: 'Drive east.' }, { type: 8, at: 5, text: 'Continue on A.' },
+    { type: 4, at: 9, text: 'You have arrived.' }, { type: 15, at: 12, text: 'Turn left onto B.' }];
+  assert.equal(nextTurn(ms, 0).text, 'Turn left onto B.', 'skips continue and arrivals at stops');
+  assert.equal(nextTurn(ms, 12), null);
+  // 1,000 m rising 50 m: a 5% grade.
+  const profile = { meters: 1000, samples: Array.from({ length: 11 }, (_, i) => ({ m: i * 100, ft: i * 5 * 3.281 })) };
+  assert.ok(Math.abs(gradeAt(profile, 500) - 5) < 1e-9);
+  assert.equal(gradeAt(null, 500), null);
 });
