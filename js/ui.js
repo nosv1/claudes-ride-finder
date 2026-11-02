@@ -17,6 +17,8 @@ export const icon = {
   grip: svg('<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>'),
   swap: svg('<path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/>'),
   trash: svg('<path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13"/>'),
+  play: svg('<path d="M7 4.5v15l12.5-7.5Z" fill="currentColor"/>'),
+  pause: svg('<path d="M8 5v14M16 5v14" stroke-width="3"/>'),
   cloud: svg('<path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18Z"/>'),
   fuel: svg('<path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M14 10h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3"/><path d="M7 7h4"/>'),
   warn: svg('<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17v.5"/>'),

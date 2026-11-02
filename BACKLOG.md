@@ -2,13 +2,6 @@
 
 Ideas that came up, roughly in order of how much they'd help.
 
-- **Check first next session** (from a screenshot on 2026-11-01: a 33.7 mi Lake Jacomo / Fleming Park
-  loop from Lee's Summit, 3 stops):
-  - The elevation chart is very spiky, and "1,959 ft of climbing" looks too high for a ride whose
-    lowest and highest points are only 205 ft apart (842–1,047 ft). Noise in the terrain samples is
-    probably being counted as climbing. Smooth the profile and count climbs only past a small threshold.
-  - Stops 2 and 3 are just called "Stop". When a stop sits on a road, name it after that road.
-  - Ask what the user meant by the screenshot, in case it was something else.
 - **Bottlenecks to fix before going national** (measured 2026-11-01): the site's map files are 68 MB for
   3 states (about 70% is the speed-limit layer), so the whole US would be near GitHub Pages' 1 GB limit,
   and every rebuild adds to git history. Slim the speed-limit layer, then move tiles off git (e.g.
@@ -19,12 +12,8 @@ Ideas that came up, roughly in order of how much they'd help.
   from Valhalla's turn instructions, screen kept awake, re-routing back onto the planned roads,
   gas and blind-crest callouts. Limits: screen on and app in front (phone mounted on a charger),
   no CarPlay/Android Auto, re-routing needs signal, iPhone voice can be finicky.
-- **3D that feels street level**: in 3D mode the hills look flat. Exaggerate the terrain more (and more
-  when zoomed in), tilt further, and let the camera sit low, so a ride looks the way it feels from the seat.
-  Pairs with the fly-through below.
-- **Route fly-through**: a 3D camera flight along a planned ride (inspired by the "god's eye
-  view" project). Tilted camera following the route and looking ahead, play/pause and speed,
-  a scrubber tied to the elevation chart, blind crests called out as it passes them.
+- **Fly-through extras**: a chase camera that banks into corners, a "skip the highway" toggle that speeds up
+  through straight fast stretches, and recording it as a video to share.
 - **Interchange tours and roundabouts**: fast ramps now have their own Interchanges mode.
   Next: roundabouts (`junction=roundabout`, like the double roundabouts on 87th St), and a
   generator for short interchange loops, e.g. west on I-470, US-71 north, I-435 north, the

@@ -294,3 +294,29 @@ select { min-height: 38px; padding: 0 8px; border-radius: 10px; border: 1px soli
   width: 18px; height: 18px; border-radius: 50%; background: #e64980; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.6);
 }
 .profile-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--blue); border: 2.5px solid #fff; pointer-events: none; }
+
+/* ---------- fly-through ---------- */
+body.flying #topbar, body.flying .fabs, body.flying #sheet, body.flying .maplibregl-ctrl-bottom-right,
+body.flying .stop-marker { display: none; }
+/* Tilted, the map stops short of the horizon: fill that gap with the horizon's haze, not black. */
+body.flying #map, body.tilted #map { background: #9db4c8; }
+.fly-bar {
+  position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  width: min(640px, calc(100% - 20px)); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 8px 12px 10px;
+}
+.fly-top { display: flex; align-items: center; gap: 8px; }
+.fly-readout { flex: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fly-chart { margin: 2px 0 0; }
+.fly-chart svg { height: 56px; }
+.fly-chart .chart-readout { display: none; }
+.fly-now { position: absolute; top: 0; height: 56px; width: 2px; margin-left: -1px; background: var(--warn); pointer-events: none; }
+.fly-slider { width: 100%; margin: 8px 0; }
+.fly-controls { display: flex; align-items: center; gap: 10px; }
+.fly-play { width: 42px; height: 42px; background: var(--blue); color: #fff; border-radius: 50%; }
+.fly-play:hover { background: var(--blue); color: #fff; }
+.fly-speed { min-width: 48px; }
+.fly-crest {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 10px); white-space: nowrap;
+  background: var(--warn); color: #111; font-weight: 700; padding: 6px 14px; border-radius: 999px; box-shadow: var(--shadow);
+}

@@ -8,6 +8,7 @@ import { localResults, photonResults } from './search.js';
 import { fetchRoute, routeRefs } from './routing.js';
 import { profile } from './elevation.js';
 import * as W from './weather.js';
+import { Fly } from './fly.js';
 import { store, initData, onRoadsChanged, loadTiles, tilesSettled, loadingCount, coverageBox } from './store.js';
 import { MapView } from './mapview.js';
 import { icon, h, elevationChart, Sheet, toast, menu, closeMenu } from './ui.js';
@@ -40,6 +41,7 @@ let showGoogleParts = false;
 let leaveAt = null;          // when the rider leaves (ms), for the weather; null: soon (next quarter hour)
 let weather = null;          // { route, points, hourly, at, loading, error }: the forecast along the route
 let tilted = false;
+let fly = null;               // the fly-through playing, if any
 
 const MODES = { ride: 'Best rides', curvy: 'All curvy roads', ramps: 'Interchanges', speed: 'Speed limits' };
 
@@ -59,7 +61,7 @@ const mapView = new MapView('map', {
     return { top: Sheet.wide() ? 0 : $('#topbar').getBoundingClientRect().bottom, right: 0, bottom: c.bottom, left: c.left };
   },
 });
-window.RF = { store, mapView, go: (v, arg) => go(v, arg), get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, setRoute: r => { routeSeq++; clearTimeout(routeTimer); setRoute(r); }, settings };
+window.RF = { store, mapView, go: (v, arg) => go(v, arg), get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, get fly() { return fly; }, setRoute: r => { routeSeq++; clearTimeout(routeTimer); setRoute(r); }, settings };
 
 async function start() {
   // The side panel starts below the top bar, whose height depends on how the chips wrap.
@@ -879,7 +881,19 @@ function routeSummary() {
     p ? h('div', {},
       h('div.chart-head', {}, h('span', {}, h('b', {}, `${Math.round(p.climbFt).toLocaleString()} ft`), ' of climbing'),
         h('span', {}, `${Math.round(p.lo).toLocaleString()}–${Math.round(p.hi).toLocaleString()} ft`)),
-      elevationChart(p, s => mapView.setDot(s && s.p))) : '');
+      elevationChart(p, s => mapView.setDot(s && s.p))) : '',
+    h('button.btn.wide', { onclick: flyRide }, iconEl(icon.play), 'Fly through the ride in 3D'));
+}
+
+// Watch the ride from just behind the rider, at a multiple of its riding time.
+function flyRide() {
+  if (!route || fly) return;
+  closeMenu();
+  const r = route;
+  mapView.setBasemap('satellite');  // the dark map is bleak from the seat
+  const roadAt = p => { const x = roadNear(store.roads, p, x => x.key && (x.cls >= 0 || x.rampTier >= 0), 25); return x && x.key; };
+  fly = new Fly(mapView, { route: r, profile: info && info.profile, crests: P.blindCrestsOn(r.path, store.roads), roadAt,
+    onClose: () => { fly = null; mapView.setBasemap(settings.basemap); mapView.updateInsets(); mapView.fit(boundsOf(r.path)); } });
 }
 
 function doubleBack() {
@@ -1174,6 +1188,7 @@ $('#locateBtn').addEventListener('click', async () => {
 $('#tiltBtn').addEventListener('click', () => {
   tilted = !tilted;
   mapView.set3D(tilted);
+  document.body.classList.toggle('tilted', tilted);
   $('#tiltBtn').classList.toggle('on', tilted);
   if (tilted) toast('3D terrain on. Drag with two fingers (or right-click drag) to tilt and turn.');
 });

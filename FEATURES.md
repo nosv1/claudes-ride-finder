@@ -108,7 +108,9 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 - Esri Dark Gray Canvas (default) or World Imagery as raster layers, both keyless. CARTO now requires a key.
 - Place-name labels sit in a separate raster layer above the roads.
 - Hillshade drawn by MapLibre from AWS Terrain Tiles (Terrarium encoding), toggled in the layers menu.
-- **3D** button: terrain from the same tiles at 1.5× exaggeration and a 60° pitch.
+- **3D** button: terrain from the same tiles at 2× exaggeration (hills look flat from above at real height), a
+  65° pitch, and tilting allowed to 85° so the camera can sit low. A hazy sky fills the view above the horizon,
+  and the gap the map leaves short of the horizon is painted the horizon's color instead of black.
 - Map text (shields) uses OpenFreeMap's font server (Noto Sans).
 
 **Roads on the map**
@@ -256,8 +258,27 @@ colored road), Add a stop here, Street View here.
   stretches dashed orange on the map, and **Try fixing**: each road is tried the other way round (one route request
   each), keeping a flip when it cuts the doubling back by 200 m+ without adding more than 15% to the ride.
 - Miles, riding time, miles on curvy roads, and the blind-crest count along the route.
-- **Elevation profile:** total climbing, low and high points, from Terrain Tiles z11 read in the browser.
-  Scrubbing the chart (mouse or finger) marks that point on the map.
+- **Elevation profile:** total climbing, low and high points, from Terrain Tiles z12 (~30 m pixels) read in the
+  browser. Heights are read every ~60 m along the road (up to 3,000 reads), blended from the 4 pixels around each
+  point, and averaged ±2 reads (~±120 m): the terrain grid beside a road (a hillside, a road cut) isn't the road's
+  own height, and reading the nearest z11 pixel made the chart jagged and overstated climbing by ~20%. Climbing
+  then ignores wiggles under 3 m. Scrubbing the chart (mouse or finger) marks that point on the map.
+- **Fly through the ride in 3D** (button under the chart): a camera that rides the route.
+  - It plays the ride at 5/10/20/40× its riding time (10× default) using the router's maneuver times, so
+    curvy roads go by slower than highways, as they do on the bike.
+  - The camera sits low behind the rider: zoom 16.2, pitch 78° (72° on a tall phone screen, else it's mostly
+    sky), terrain at 2.2×, the rider 70% down the screen. It turns toward the route 250 m ahead, eased over ~0.6 s.
+  - The tilt is asked for every frame. MapLibre lowers it when the camera would be inside a hill, which also
+    happens at the start before the terrain there has loaded, and then it would stay low. A tilt by hand is kept.
+    More padding also lowers how far MapLibre lets the camera tilt, so only top padding is used.
+  - It switches to satellite and hides route numbers and arrows (they smear at that angle). The rider is a
+    circle layer on the ground, facing the camera: a DOM marker drifted off the line in 3D, and a ground-aligned
+    circle flattened to a sliver.
+  - A bar at the bottom: mile, time in, the road (our road data under the rider first, the router's street names
+    otherwise), height; the elevation chart as the scrubber (press and drag; it pauses while held); play/pause
+    (space), speed, close (Esc). **Blind crests** along the route are called out 400 m before: "⚠ Blind crest
+    ahead · 900 ft".
+  - Closing puts back the panel, the basemap, the tilt and the terrain, and frames the whole ride.
 - A ride bar on the main list shows the ride's stats with **Go**.
 
 **Weather** (Your ride, under the route summary)

@@ -82,6 +82,16 @@ export const WEATHER = {
   rainPct: 40, likelyPct: 60, gustMph: 35, coldF: 45, hotF: 95,
 };
 
+// 3D: hills drawn taller than life (they look flat from above), and a camera that can sit low.
+export const TERRAIN = { exaggeration: 2, maxPitch: 85, pitch: 65 };
+
+// Fly-through: plays a ride at a multiple of its riding time, so curvy roads go by slower than
+// highways. The camera sits low behind the rider and turns toward the road aheadM on.
+export const FLY = {
+  speeds: [5, 10, 20, 40], speed: 10, zoom: 16.2, pitch: 78, pitchTall: 72, exaggeration: 2.2,
+  aheadM: 250, turnS: 0.6, crestM: 400,
+};
+
 export const GOOGLE = { perPart: 9, parts: 2, pastTurn: 200, minSpacing: 800, maxGap: 25000 };
 export const DECISION_TURNS = new Set([9, 10, 11, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26]);
 

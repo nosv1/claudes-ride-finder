@@ -9,6 +9,7 @@ import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint
 import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
+import { flight, turn } from '../../js/fly.js';
 
 const TILES = new URL('../../tiles/', import.meta.url);
 const haveTiles = existsSync(new URL('index.js', TILES));
@@ -381,4 +382,33 @@ test('search finds routes, roads near towns, and towns', { skip: !haveTiles }, (
   assert.equal(keys('hwy 7')[0], 'MO 7');
   assert.ok(keys('MO Y camdenton').includes('MO Y'));
   assert.ok(localResults('lees summit', index).some(r => r.label === "Lee's Summit"));
+});
+
+test('fly-through: plays a route by its riding time, slower where the riding is slower, and looks down the road', () => {
+  // 20 km east then 2 km north; the first 10 km take 10 min (60 km/h), the rest 5 min (144 km/h).
+  const path = [...Array.from({ length: 21 }, (_, i) => [38, -94 + i * 0.0115]), [38.009, -93.77], [38.018, -93.77]];
+  const f0 = flight({ path, seconds: 900 });
+  const route = { path, seconds: 900, maneuvers: [{ at: 0, end: 10, s: 600 }, { at: 10, end: path.length - 1, s: 300 }] };
+  const f = flight(route);
+  assert.ok(Math.abs(f.seconds - 900) < 1e-6);
+  assert.ok(Math.abs(f.secondsAt(f.metersAt(123)) - 123) < 1e-6);
+  assert.ok(f.metersAt(300) < f0.metersAt(300), 'the slow first part plays slower than by distance');
+  assert.ok(Math.abs(f.pointAt(f.metersAt(600))[1] - (-94 + 10 * 0.0115)) < 1e-9, '10 min in: the end of the slow part');
+  assert.ok(Math.abs(f.lookFrom(1000, 250) - 90) < 1, 'looking east on the straight');
+  assert.ok(Math.abs(f.lookFrom(f.total, 250)) < 1 || Math.abs(f.lookFrom(f.total, 250) - 360) < 1, 'at the end: along the last stretch (north)');
+  assert.deepEqual(f.pointAt(-5), path[0]);
+  assert.deepEqual(f.pointAt(1e9), path.at(-1));
+  // Turning eases the short way around.
+  assert.equal(turn(350, 10, 0.5), 0);
+  assert.equal(turn(10, 350, 0.5), 0);
+  assert.equal(turn(90, 180, 1), 180);
+});
+
+test('elevation: smoothing evens out grid noise; climbing ignores small wiggles but keeps real hills', async () => {
+  const { smooth, climbOf } = await import('../../js/elevation.js');
+  assert.deepEqual(smooth([0, 10, 0, 10, 0], 1), [5, 10 / 3, 20 / 3, 10 / 3, 5]);
+  // A 40 m hill with ±4 m of noise on top: smoothing takes most of the noise's false climbing out.
+  const hill = Array.from({ length: 200 }, (_, i) => 300 + 40 * Math.sin(i / 199 * Math.PI) + (i % 2 ? 4 : -4));
+  assert.ok(climbOf(hill) > 300, 'raw noise counts as climbing');
+  assert.ok(Math.abs(climbOf(smooth(hill)) - 40) < 6, `about the hill's 40 m: ${climbOf(smooth(hill))}`);
 });

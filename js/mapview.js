@@ -2,7 +2,7 @@
 // and GeoJSON sources for roads, the route, gas stations and blind crests. Everything here
 // works in [lat, lon]; MapLibre's [lon, lat] stays inside this file.
 /* global maplibregl */
-import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS } from './config.js';
+import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN } from './config.js';
 import { speedBin, isMinor } from './roads.js';
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
@@ -94,7 +94,11 @@ export class MapView {
           preview: { type: 'geojson', data: EMPTY },
           fuel: { type: 'geojson', data: EMPTY },
           routeFuel: { type: 'geojson', data: EMPTY },
+          rider: { type: 'geojson', data: EMPTY },
         },
+        // Only seen when tilted: a hazy horizon instead of black.
+        sky: { 'sky-color': '#3d5a80', 'horizon-color': '#9db4c8', 'fog-color': '#6f8296',
+          'sky-horizon-blend': 0.6, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.75, 'atmosphere-blend': 0 },
         layers: [
           { id: 'dark', type: 'raster', source: 'dark' },
           { id: 'sat', type: 'raster', source: 'sat', layout: { visibility: 'none' } },
@@ -137,6 +141,10 @@ export class MapView {
           { id: 'fuel', type: 'circle', source: 'fuel', minzoom: 9, layout: { visibility: 'none' }, paint: {
             'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3.5, 14, 7], 'circle-stroke-color': '#111', 'circle-stroke-width': 1.5,
             'circle-color': ['match', ['get', 'status'], 2, FUEL_STATUS[2].color, 1, FUEL_STATUS[1].color, -1, FUEL_STATUS['-1'].color, FUEL_STATUS[0].color] } },
+          // The rider in a fly-through: placed on the ground (so it stays on the road in 3D), but
+          // facing the camera, so it doesn't flatten to a sliver when tilted.
+          { id: 'rider', type: 'circle', source: 'rider', paint: { 'circle-radius': 9, 'circle-color': '#1c7ed6',
+            'circle-stroke-color': '#fff', 'circle-stroke-width': 3, 'circle-pitch-alignment': 'viewport' } },
           { id: 'route-fuel', type: 'circle', source: 'routeFuel', paint: {
             'circle-radius': ['case', ['get', 'pick'], 8, 5], 'circle-stroke-color': ['case', ['get', 'pick'], '#fff', '#111'],
             'circle-stroke-width': ['case', ['get', 'pick'], 2.5, 1.5],
@@ -234,9 +242,12 @@ export class MapView {
   }
   showHillshade(on) { this.map.setLayoutProperty('hillshade', 'visibility', on ? 'visible' : 'none'); }
 
+  // Taller than life, and free to tilt nearly to the horizon, so it looks the way it rides.
   set3D(on) {
-    this.map.setTerrain(on ? { source: 'dem', exaggeration: 1.5 } : null);
-    this.map.easeTo({ pitch: on ? 60 : 0, bearing: on ? this.map.getBearing() : 0, duration: 800 });
+    this.map.setTerrain(on ? { source: 'dem', exaggeration: TERRAIN.exaggeration } : null);
+    if (on) this.map.setMaxPitch(TERRAIN.maxPitch);
+    this.map.easeTo({ pitch: on ? TERRAIN.pitch : 0, bearing: on ? this.map.getBearing() : 0, duration: 800 });
+    if (!on) this.map.once('moveend', () => this.map.setMaxPitch(60));
   }
 
   // ---------- markers ----------
@@ -253,6 +264,12 @@ export class MapView {
       if (s.draggable) m.on('dragend', () => { const { lat, lng } = m.getLngLat(); onDrag(s.index, [lat, lng]); });
       return m;
     });
+  }
+
+  setRider(p) { this.map.getSource('rider').setData(p ? fc([point(p)]) : EMPTY); }
+  // Route numbers and arrows along the road crowd a low 3D view (a fly-through names the road itself).
+  showRoadMarks(on) {
+    for (const id of ['shields', 'route-shields', 'route-arrows']) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
   }
 
   setPin(p) {
