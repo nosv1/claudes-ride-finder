@@ -4,7 +4,7 @@ import { DATA_URL } from './config.js';
 import { decodeRow } from './roads.js';
 
 export const store = {
-  roads: [], byId: new Map(), version: 0,
+  roads: [], byId: new Map(), version: 0, signals: null,
   index: null, available: new Set(), speedAvailable: new Set(), fuel: [], search: { places: [], roads: [] },
 };
 
@@ -45,6 +45,22 @@ export async function initData() {
 }
 
 export const onRoadsChanged = fn => listeners.add(fn);
+
+// Every traffic light (tiles/signals.js, ~1 MB), loaded the first time a route needs them. Until the file
+// exists (it's built from the state files) there are none, and routes just don't count stoplights.
+let signalsLoad = null;
+export function loadSignals() {
+  signalsLoad = signalsLoad || loadScript(DATA_URL + 'signals.js').then(() => {
+    const d = window.SIGNALS || [], out = [];
+    let lat = 0, lon = 0;
+    for (let i = 0; i < d.length; i += 2) {
+      lat += d[i]; lon += d[i + 1];
+      out.push({ lat: lat / 1e5, lon: lon / 1e5 });
+    }
+    store.signals = out;
+  }, () => { store.signals = []; });
+  return signalsLoad;
+}
 
 // Load every tile overlapping bounds [s, w, n, e]: its curvy roads and ramps, and with speed,
 // its roads kept only for their speed limit too (the bulk of the data, as "x_y.s").

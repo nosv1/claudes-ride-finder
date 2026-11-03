@@ -158,6 +158,21 @@ class TestHighwaySweeps(unittest.TestCase):
         self.assertEqual(sorted(r[0] for r in found), [-200, -100])
 
 
+class TestSignals(unittest.TestCase):
+    def test_signals_file_round_trips(self):
+        import tempfile
+        out, bt.OUT_DIR = bt.OUT_DIR, tempfile.mkdtemp()
+        try:
+            n = bt.write_signals([(38.91234, -94.51234), (38.5, -94.0), (38.912341, -94.512339)])
+            self.assertEqual(n, 2, "the same light twice is one")
+            with open(os.path.join(bt.OUT_DIR, "signals.js"), encoding="utf-8") as f:
+                text = f.read()
+            self.assertTrue(text.startswith("window.SIGNALS = "))
+            self.assertEqual(bt.decode(json.loads(text[text.index("=") + 1:text.rindex(";")])), [(38.5, -94.0), (38.91234, -94.51234)])
+        finally:
+            bt.OUT_DIR = out
+
+
 class TestSpeedAndSurface(unittest.TestCase):
     def test_parse_mph(self):
         self.assertEqual(bt.parse_mph("45 mph"), 45)

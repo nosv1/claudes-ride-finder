@@ -32,5 +32,6 @@ Elevation comes from AWS Terrain Tiles (USGS), basemaps from Esri, routing from 
 3. `python build_tiles.py` (downloads elevation tiles for curvy roads the first time)
 4. Commit the regenerated `tiles/` folder
 
-To change only the highway-sweep rules, `python tools/add_highway_sweeps.py` redoes that step on the built `tiles/`
+For just the traffic lights (stoplight counts on rides), `python tools/add_signals.py` reads only the nodes of the
+state files in a minute or two. To change only the highway-sweep rules, `python tools/add_highway_sweeps.py` redoes that step on the built `tiles/`
 in about 15 seconds, without the downloads.

@@ -352,8 +352,9 @@ class RampNodes(osmium.SimpleHandler):
 
 
 class Roads(osmium.SimpleHandler):
-    def __init__(self, tiles, seen, residential, fuel, places, ramp_nodes, region=""):
+    def __init__(self, tiles, seen, residential, fuel, places, ramp_nodes, region="", lights=None):
         super().__init__()
+        self.lights = lights if lights is not None else []  # every traffic light, for the stoplights on a route
         self.region = region  # "missouri", "texas"...: speed defaults differ by state
         self.tiles, self.seen, self.residential, self.fuel, self.places = tiles, seen, residential, fuel, places
         self.lanes = {}
@@ -368,6 +369,8 @@ class Roads(osmium.SimpleHandler):
     def node(self, n):
         if n.tags.get("highway") in ("traffic_signals", "stop") and n.id in self.ramp_nodes:
             self.signals.add(n.id)
+        if n.tags.get("highway") == "traffic_signals":
+            self.lights.append((n.location.lat, n.location.lon))
         if n.tags.get("place") in PLACE_KINDS and "name" in n.tags:
             self.places[n.id] = [n.tags["name"], round(n.location.lat, 4), round(n.location.lon, 4), n.tags["place"]]
         if is_gas_station(n.tags) and ("n", n.id) not in self.fuel:
@@ -710,6 +713,28 @@ def highway_sweeps(tiles):
     return added
 
 
+class Lights(osmium.SimpleHandler):
+    """Just the traffic lights (tools/add_signals.py: no need to read the ways)."""
+    def __init__(self, lights):
+        super().__init__()
+        self.lights = lights
+
+    def node(self, n):
+        if n.tags.get("highway") == "traffic_signals":
+            self.lights.append((n.location.lat, n.location.lon))
+
+
+def write_signals(lights):
+    """tiles/signals.js: every traffic light, delta-encoded like road coords, sorted so the deltas are small.
+    The app loads it when it routes, to count the stoplights on a ride."""
+    pts = sorted({(round(lat, 5), round(lon, 5)) for lat, lon in lights})
+    with open(os.path.join(OUT_DIR, "signals.js"), "w", encoding="utf-8") as f:
+        f.write("window.SIGNALS = ")
+        json.dump(encode(pts), f, separators=(",", ":"))
+        f.write(";\n")
+    return len(pts)
+
+
 def write_tiles(tiles, regions):
     """Each tile in two files: {x}_{y}.js with the curvy roads, sweepers and fast ramps (what the
     ride modes use) and {x}_{y}.s.js with the roads kept only for their speed limit, about 70% of
@@ -740,13 +765,13 @@ def main(args):
     paths = sorted({p for a in (args or ["raw/*.osm.pbf"]) for p in glob.glob(a)})
     if not paths:
         sys.exit("No .osm.pbf files found in raw/.\n" + __doc__)
-    tiles, seen, residential, fuel, places, lanes = defaultdict(list), set(), defaultdict(int), {}, {}, {}
+    tiles, seen, residential, fuel, places, lanes, lights = defaultdict(list), set(), defaultdict(int), {}, {}, {}, []
     for path in paths:
         print(f"Reading {path} (takes a few minutes)...", flush=True)
         ramps = RampNodes()
         ramps.apply_file(path)
         region = os.path.basename(path).replace("-latest.osm.pbf", "")
-        h = Roads(tiles, seen, residential, fuel, places, ramps.nodes, region)
+        h = Roads(tiles, seen, residential, fuel, places, ramps.nodes, region, lights)
         h.apply_file(path, locations=True, idx="flex_mem")
         h.finish_ramps()
         lanes.update(h.lanes)
@@ -782,6 +807,8 @@ def main(args):
         json.dump(search, f, separators=(",", ":"), ensure_ascii=False)
         f.write(";\n")
     print(f"Search index: {len(places):,} towns, {len(search['roads']):,} road stretches")
+
+    print(f"Traffic lights: {write_signals(lights):,}")
 
     with open(os.path.join(OUT_DIR, "fuel.js"), "w", encoding="utf-8") as f:
         f.write("window.FUEL = ")

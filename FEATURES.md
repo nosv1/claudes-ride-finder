@@ -30,6 +30,7 @@ committed as `tiles/`. The app needs no OSM server at runtime.
 | `tiles/index.js` | `window.TILE_INDEX = {size: 0.5, built, regions, tiles: ["x_y", …], speed: ["x_y", …]}` (tiles with curvy / speed-only files) |
 | `tiles/{x}_{y}.js` | `addTile("x_y", rows)`, one 0.5° tile, each road assigned by its midpoint |
 | `tiles/{x}_{y}.s.js` | `addTile("x_y.s", rows)`: the same tile's roads kept only for their speed limit (~70% of the data) |
+| `tiles/signals.js` | `window.SIGNALS = [dlat, dlon, …]`: every `highway=traffic_signals` node, 1e-5° delta-encoded, sorted (`python tools/add_signals.py` writes just this, reading only the nodes) |
 | `tiles/fuel.js` | `window.FUEL = [[lat, lon, label, city, status90, hours], …]` |
 | `tiles/search.js` | `window.SEARCH = {places: [[name, lat, lon, kind]], roads: [[key, name, s, w, n, e, curveMetres, nearestTown]]}` |
 
@@ -412,11 +413,18 @@ colored road), Add a stop here, Street View here.
     nearest);
   - keeping a change only if it ranks higher and stays in 80–120%. From Lee's Summit at 1.5 h on back roads, the
     out-and-back "MO TT" loop (48% twice) became Buckner Tarsney → MO TT → Litchford (12%).
+- **Stoplights:** each one the route goes through keeps 97% of a loop's rank, and one where it turns left counts
+  twice ("booking it down a highway, it's lame to get stopped by a stoplight"; double lefts off a highway are
+  the worst). A light within 15 m of the route counts, one per intersection (nodes within 80 m along the route
+  are one), and the turn is the change in heading from 60 m before to 60 m after (over 50° left or right).
+  The router (Valhalla) has no setting to avoid lights, so the app ranks and fixes instead: a loop with a left at
+  a light tries dropping the generated road nearest it, as for turnarounds. Option cards show "🚦 12 (3 left)";
+  the ride says how many and how many turn left. Until `tiles/signals.js` is built, no lights are counted.
 - **Turnarounds:** a spot off the curvy roads where the route comes back past within 120 m heading the other way
   (over 150° off) after 400 m to 3 km of riding: off the highway, left twice through the lights and back on, or round
   a block. Not a cloverleaf loop (shorter), not a hairpin (on a curvy road), not in the first or last 1.5 km. Each
-  one keeps 60% of a loop's rank, and a loop with one tries dropping the generated road nearest it (up to twice,
-  kept if it ranks higher and stays in 80–120%). Seen with the Highways road type: a loop rode a sweep on
+  one keeps 60% of a loop's rank, and a loop with one, or with a left turn at a stoplight, tries dropping the
+  generated road nearest the first of them (up to twice, kept if it ranks higher and stays in 80–120%). Seen with the Highways road type: a loop rode a sweep on
   I-435 / US 50 west, away from home, then got off and back on to head east. Option cards and the ride say "↺ turns around".
 - **Roads on the way:** after that, a routed loop that rides within 500 m of an end of a road it isn't taking
   (a candidate, short ones included, mostly off the route, not one-way) tries adding the best one, then the next

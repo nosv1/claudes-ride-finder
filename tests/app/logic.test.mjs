@@ -7,7 +7,7 @@ import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, neares
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds } from '../../js/plan.js';
+import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
@@ -389,6 +389,26 @@ test('turnarounds: off the highway and back the other way counts; cloverleaf loo
   // A plain loop: 4 km a side.
   const sq = [...line(38.5, -94, 0, 1, 4), ...line(38.5, -94 + 4 / 87, 1, 0, 4).slice(1), ...line(38.5 + 4 / 111, -94 + 4 / 87, 0, -1, 4).slice(1), ...line(38.5 + 4 / 111, -94, -1, 0, 4).slice(1)];
   assert.equal(turnarounds(sq).length, 0);
+});
+
+test('stoplights on a route: one per intersection, and which way it turns there', () => {
+  const line = (lat0, lon0, dlat, dlon, km) => Array.from({ length: Math.round(km * 20) + 1 }, (_, i) => [lat0 + dlat * i / 20 / 111, lon0 + dlon * i / 20 / 87]);
+  // 3 km east, then left (north) 3 km.
+  const east3 = line(38.5, -94, 0, 1, 3), corner = east3.at(-1), north3 = line(corner[0], corner[1], 1, 0, 3).slice(1);
+  const path = [...east3, ...north3];
+  const L = (lat, lon) => ({ lat, lon });
+  const lights = [
+    L(38.5, -94 + 1 / 87),                                  // straight through, 1 km in
+    L(corner[0] + 0.0001, corner[1]), L(corner[0], corner[1] - 0.0002),  // the corner: two nodes, one intersection
+    L(38.5 + 0.0004, -94 + 2 / 87),                         // 45 m off the route: a side street
+    L(39.5, -93),                                           // nowhere near
+  ];
+  const found = stoplightsOn(path, lights);
+  assert.deepEqual(found.map(f => f.turn), ['straight', 'left']);
+  // The same corner ridden the other way is a right.
+  assert.deepEqual(stoplightsOn([...path].reverse(), lights).map(f => f.turn), ['right', 'straight']);
+  assert.deepEqual(stoplightsOn(path, []), [], 'no light data yet: nothing counted');
+  assert.deepEqual(stoplightsOn(path, null), []);
 });
 
 test('roads on the way: the loop rides past an end of them, but not along them', () => {

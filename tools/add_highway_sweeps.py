@@ -34,12 +34,13 @@ def main():
 
     index_text = open(os.path.join(bt.OUT_DIR, "index.js"), encoding="utf-8").read()
     index = json.loads(re.search(r"=\s*(\{.*\})", index_text, re.S).group(1))
-    keep = {name: open(os.path.join(bt.OUT_DIR, name), encoding="utf-8").read() for name in ("fuel.js", "search.js")}
+    keep = {name: open(os.path.join(bt.OUT_DIR, name), encoding="utf-8").read()
+            for name in ("fuel.js", "search.js", "signals.js") if os.path.exists(os.path.join(bt.OUT_DIR, name))}
 
     print(f"Highway sweeps: {bt.highway_sweeps(tiles):,}")
     bt.write_tiles(tiles, index["regions"])
 
-    # write_tiles starts tiles/ from scratch: put back the gas stations and search index, and keep the date
+    # write_tiles starts tiles/ from scratch: put back the gas stations, search index and traffic lights, and keep the date
     # the OSM data is from.
     for name, text in keep.items():
         with open(os.path.join(bt.OUT_DIR, name), "w", encoding="utf-8") as f:

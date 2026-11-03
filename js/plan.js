@@ -63,6 +63,25 @@ export function turnarounds(path, roads = [], ends = 1500) {
   return spots;
 }
 
+// The stoplights a route goes through, one per intersection (a big one has a light node on each approach),
+// and which way it turns there: { p, m, turn: 'left' | 'right' | 'straight' }. A light within 15 m of the
+// route counts.
+export function stoplightsOn(path, lights) {
+  if (!lights || !lights.length || path.length < 2) return [];
+  const [s, w, n, e] = pad(boundsOf(path), 0.001);
+  const near = lights.filter(l => l.lat >= s && l.lat <= n && l.lon >= w && l.lon <= e);
+  const cum = cumulative(path), total = cum[cum.length - 1], out = [];
+  const at = d => { const i = cum.findIndex(c => c >= d); return path[i < 0 ? path.length - 1 : i]; };
+  for (const { item, mile } of alongRoute(path, near, 15, 10).hits) {
+    const m = mile * 1609.34;
+    if (out.length && m - out[out.length - 1].m < 80) continue;
+    const before = bearing(at(Math.max(0, m - 60)), at(m)), after = bearing(at(m), at(Math.min(total, m + 60)));
+    const t = relAngle(after, before);
+    out.push({ p: [item.lat, item.lon], m, turn: t < -50 ? 'left' : t > 50 ? 'right' : 'straight' });
+  }
+  return out;
+}
+
 export function blindCrestsOn(path, roads) {
   const area = pad(boundsOf(path), 0.02), crests = [];
   for (const r of roads) {
