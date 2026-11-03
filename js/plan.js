@@ -236,6 +236,12 @@ export function buildOptions(groups, start, hours, required = []) {
   return picked.slice(0, GEN.maxOptions).sort((a, b) => b.value - a.value);
 }
 
+// Whether most of a group's road lies within 200 m of these spots.
+function mostlyOn(g, spots) {
+  const pts = g.roads.flatMap(r => r.geom.filter((_, i) => i % 5 === 0));
+  return pts.filter(p => spots.some(q => km(p, q) < 0.2)).length > pts.length / 2;
+}
+
 // Roads that could give a loop another way home where it rides the same road twice: an end or a
 // midpoint within wayHomeKm of the doubled-back stretch, not already in the loop, and not mostly
 // on that stretch itself. Best first.
@@ -244,11 +250,20 @@ export function wayHomeRoads(groups, items, lines) {
   if (!spots.length) return [];
   const used = new Set(items.flatMap(it => it.ids || []));
   const near = p => spots.some(q => km(p, q) < GEN.wayHomeKm);
-  const onIt = g => {
-    const pts = g.roads.flatMap(r => r.geom.filter((_, i) => i % 5 === 0));
-    return pts.filter(p => spots.some(q => km(p, q) < 0.2)).length > pts.length / 2;
-  };
-  return groups.filter(g => !g.oneway && !g.ids.some(id => used.has(id)) && g.stop.pts.some(near) && !onIt(g))
+  return groups.filter(g => !g.oneway && !g.ids.some(id => used.has(id)) && g.stop.pts.some(near) && !mostlyOn(g, spots))
+    .sort((a, b) => b.score - a.score);
+}
+
+// Roads a routed loop rides right past without taking: an end within onWayKm of the route, not
+// already in the loop, and mostly off the route. Short ones too: from Lee's Summit, a loop up MO 7
+// passed the end of MO FF, a sweeper running the same way. Best first.
+export function onTheWay(groups, items, path) {
+  const spots = path.filter((_, i) => i % 5 === 0);
+  if (!spots.length) return [];
+  const used = new Set(items.flatMap(it => it.ids || []));
+  const near = p => spots.some(q => km(p, q) < GEN.onWayKm);
+  return groups.filter(g => !g.oneway && !g.ids.some(id => used.has(id))
+      && (near(g.stop.pts[0]) || near(g.stop.pts[g.stop.pts.length - 1])) && !mostlyOn(g, spots))
     .sort((a, b) => b.score - a.score);
 }
 

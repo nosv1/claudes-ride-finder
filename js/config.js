@@ -84,6 +84,7 @@ export const GEN = {
   // Shorter curvy roads (down to wayHomeM of curves, not farm lanes) only join a loop that
   // doubles back, as another way home: one within wayHomeKm of the stretch ridden twice.
   wayHomeM: 800, wayHomeKm: 3,
+  onWayKm: 0.5,      // a road with an end this close to a routed loop is "on the way": try riding it
   twinKm: 1,         // one-way stretches centered this close are the two directions of one highway bend
   under: 0.8, overrun: 1.2,   // loops must route to 80–120% of the chosen time
   maxBack: 0.04,     // share of a loop ridden twice before it tries dropping a road

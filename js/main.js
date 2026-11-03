@@ -105,7 +105,7 @@ async function start() {
   });
   mapView.on('road', onRoadTap);
   mapView.on('station', k => { if (!usePick(null)) go('station', store.fuel[k]); });
-  mapView.on('empty', at => { if (!usePick(at)) clearSelection(); });
+  mapView.on('empty', at => { if (!usePick(at)) { clearSelection(); speedAt(at); } });
   mapView.on('hover', onHover);
   mapView.on('menu', spotMenu);
   mapView.map.on('movestart', closeMenu);
@@ -481,6 +481,20 @@ async function routeOption(opt, start, hours) {
     items = better.list;
     best = better.other;
   }
+  // Roads it rides right past (up to 2 tries): picked up if the loop ranks higher and stays in 80–120%.
+  const tried = new Set();
+  for (let tries = 0; tries < 2 && best; tries++) {
+    const g = P.onTheWay(opt.free, items, best.route.path).find(x => !tried.has(x));
+    if (!g) break;
+    tried.add(g);
+    const more = { items: items.map(it => ({ ...it, pts: it.pts.map(p => [...p]) })), loop: true };
+    more.items[T.insertRoad(more, g)].gen = true;
+    const other = rate(await routeOf(more.items)), hrs = other && other.route.seconds / 3600;
+    if (other && other.worth > best.worth && hrs >= hours * GEN.under && hrs <= hours * GEN.overrun) {
+      items = more.items;
+      best = other;
+    }
+  }
   Object.assign(opt, { items, route: best && best.route }, best ? { curvy: best.curvy, highway: best.highway, blind: best.blind, back: best.back, worth: best.worth } : {});
 }
 
@@ -498,6 +512,25 @@ function selectOption(i) {
 }
 
 // ---------- map interactions ----------
+
+// A tap on a road the map isn't coloring (MO 7, a highway): its name and speed limit, from that spot's
+// speed-limit tile, loaded just for the tap. Zoomed in only: one tile is up to a few MB.
+let speedTap = 0;
+async function speedAt(at) {
+  const z = mapView.zoom(), tap = ++speedTap;
+  if (z < 11) return;
+  loadTiles([at[0], at[1], at[0], at[1]], { speed: true });
+  await tilesSettled(8000);
+  if (tap !== speedTap || fly) return;
+  // About 12 px of the screen either side of the finger.
+  const reach = Math.min(120, Math.max(20, 12 * 156543 * Math.cos(at[0] * Math.PI / 180) / 2 ** z));
+  const r = roadNear(store.roads, at, x => (x.mph ?? x.estMph) != null && !x.highway, reach);
+  if (!r) return;
+  const name = (r.ref || r.name || 'Unnamed road').replace(/;/g, ' / ');
+  // The estimate is a rule of thumb for ordinary roads (30 in town): none on highways or ramps.
+  const guess = /^(motorway|trunk)|_link$/.test(r.hw) ? null : r.estMph;
+  toast(r.mph != null ? `${name} · ${r.mph} mph` : guess != null ? `${name} · about ${guess} mph (no posted limit)` : `${name} · no posted limit`);
+}
 
 function onRoadTap(id, at) {
   if (usePick(at, id)) return;

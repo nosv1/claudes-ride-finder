@@ -134,6 +134,21 @@ test('zoomed far out it loads no more roads, and speed-only roads only in Speed 
   await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Best rides/.test(b.textContent)).click()");
 });
 
+test('tapping an uncolored road tells its speed limit', async () => {
+  const MO7 = 517106224, I435 = 567231236;
+  await page.eval("RF.go('home')");
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.284, 39.12], zoom: 14 })");
+  await page.waitFor(`RF.store.byId.has(${MO7})`, 30000);
+  await page.eval(`(() => { const r = RF.store.byId.get(${MO7}); RF.mapView.emit('empty', r.geom[Math.floor(r.geom.length / 2)]); })()`);
+  await page.waitFor("/MO 7 · 55 mph/.test(document.getElementById('toast').innerText)", 15000);
+  // A road only in the speed-limit tiles: loaded for the tap.
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.76, 38.95], zoom: 14 })");
+  await page.eval("RF.mapView.emit('empty', [38.95, -94.76])");
+  await page.waitFor(`RF.store.byId.has(${I435})`, 30000);
+  await page.eval(`(() => { const r = RF.store.byId.get(${I435}); RF.mapView.emit('empty', r.geom[Math.floor(r.geom.length / 2)]); })()`);
+  await page.waitFor("/I 435 · 70 mph/.test(document.getElementById('toast').innerText)", 15000);
+});
+
 test('search finds a route number and opens the road', async () => {
   await page.eval("(() => { const q = document.getElementById('q'); q.value = 'hwy 7'; q.dispatchEvent(new Event('input')); })()");
   await page.waitFor("document.querySelectorAll('#results .result').length > 0", 5000);

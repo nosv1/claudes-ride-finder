@@ -220,6 +220,11 @@ under the tag, and the Hills chip lists ft/mi.
 - A "stretch" means pieces of the same ref/name within ~3 km. Missouri reuses lettered routes in every county.
 - **Plan a ride** stays pinned at the bottom of the sheet.
 
+**What's this road?** Tapping a road the map isn't coloring (MO 7, an interstate), from zoom 11, toasts its
+name and limit: "MO 7 · 55 mph", "about 45 mph (no posted limit)" from the estimate, or "no posted limit" on
+highways and ramps. It loads that spot's speed-limit tile just for the tap (they're up to a few MB, so not for
+every view), and looks within about 12 screen pixels (20–120 m).
+
 **Road card** (tap a road, a card, or a search result)
 - For the whole stretch: curve class, curve miles, hills (word and ft/mi), speed (posted, or "~55 mph" when
   estimated) and blind crests.
@@ -407,6 +412,11 @@ colored road), Add a stop here, Street View here.
     nearest);
   - keeping a change only if it ranks higher and stays in 80–120%. From Lee's Summit at 1.5 h on back roads, the
     out-and-back "MO TT" loop (48% twice) became Buckner Tarsney → MO TT → Litchford (12%).
+- **Roads on the way:** after that, a routed loop that rides within 500 m of an end of a road it isn't taking
+  (a candidate, short ones included, mostly off the route, not one-way) tries adding the best one, then the next
+  (up to 2 tries), keeping it if the loop ranks higher and stays in 80–120%. From Lee's Summit at 1.5 h, a loop up
+  MO 7 rode straight past MO FF, a sweeper running the same way, which only has 950 m of curves (under the 2 km
+  for main roads), so it was highlighted but never picked.
 - The same loop reached from two directions is shown once. Loops riding more than 20% twice are
   left out when at least 3 others remain. Measured on Oct-31 data: the top loop from south KC went from 29% to 13%,
   from the Lake of the Ozarks from 28% to 1%.

@@ -7,7 +7,7 @@ import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, neares
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads, curvyMetersOn, highwayMetersOn } from '../../js/plan.js';
+import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
@@ -367,6 +367,17 @@ test('sweeping highways count toward a ride, and the generator can ride to one',
   assert.ok(g && !g.small && g.oneway);
   assert.ok(buildOptions([g], start, 1.5).some(o => o.stops.some(st => st.label === g.key && st.oneway)));
   assert.deepEqual(wayHomeRoads([g], [], [along(sweep.geom)]), [], 'a one-way highway isn’t a way home');
+});
+
+test('roads on the way: the loop rides past an end of them, but not along them', () => {
+  const route = Array.from({ length: 400 }, (_, i) => [38.5 + i * 0.0005, -94]);  // 22 km north
+  const g = (id, score, pts, extra = {}) => ({ key: `R${id}`, ids: [id], score, roads: [{ geom: pts }], stop: { pts: [pts[0], pts[pts.length - 1]] }, ...extra });
+  const ff = g(1, 900, east(38.55, -93.9995, 40));        // starts at the route, runs off east (MO FF off MO 7)
+  const better = g(2, 2000, east(38.6, -93.999, 40).reverse());  // ends at it
+  const along = g(3, 3000, Array.from({ length: 40 }, (_, i) => [38.52 + i * 0.001, -94.0005]));  // the route's own road
+  const far = g(4, 4000, east(38.55, -93.9, 40)), used = g(5, 5000, east(38.56, -93.999, 40));
+  const oneway = g(6, 6000, east(38.57, -93.999, 40), { oneway: true });
+  assert.deepEqual(onTheWay([ff, better, along, far, used, oneway], [{ ids: [5] }], route).map(x => x.key), ['R2', 'R1']);
 });
 
 test('another way home: roads near the stretch ridden twice, not on it, not already in the loop', () => {
