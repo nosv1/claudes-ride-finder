@@ -2,7 +2,7 @@
 // and GeoJSON sources for roads, the route, gas stations and blind crests. Everything here
 // works in [lat, lon]; MapLibre's [lon, lat] stays inside this file.
 /* global maplibregl */
-import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN } from './config.js';
+import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN, HIGHWAYS, tiersFor } from './config.js';
 import { speedBin, isMinor } from './roads.js';
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
@@ -22,16 +22,16 @@ const zoomWidth = base => ['interpolate', ['linear'], ['zoom'], 7, ['*', base, 0
 function roadFilter(f) {
   const all = ['all'];
   if (f.hideUnpaved) all.push(['!=', ['get', 'surf'], 1]);
-  if (f.mode === 'ramps') {
-    all.push(['in', ['get', 'rt'], ['literal', [...f.rampTiers]]]);
-  } else if (f.mode === 'speed') {
+  if (f.mode === 'speed') {
     all.push(['==', ['get', 'posted'], 1], ['!=', ['get', 'hwy'], 1], ['in', ['get', 'sbin'], ['literal', [...f.speedBins]]]);
     if (f.zoom < 11) all.push(['==', ['get', 'minor'], 0]);
-  } else {
-    all.push(['in', ['get', 'cls'], ['literal', [...f.classes]]]);
-    if (f.minHills > 0) all.push(['>=', ['get', 'hill'], f.minHills]);
-    if (f.mode === 'ride') all.push(['>=', ['get', 'spd'], f.minSpeed]);
+    return all;
   }
+  const highways = ['in', ['get', 'rt'], ['literal', tiersFor(f.roadType, f.rampTiers)]];
+  const curvy = ['all', ['in', ['get', 'cls'], ['literal', [...f.classes]]]];
+  if (f.minHills > 0) curvy.push(['>=', ['get', 'hill'], f.minHills]);
+  if (f.mode === 'ride') curvy.push(['>=', ['get', 'spd'], f.minSpeed]);
+  all.push(f.roadType === 'highway' ? highways : f.roadType === 'back' ? curvy : ['any', highways, curvy]);
   return all;
 }
 
@@ -197,11 +197,12 @@ export class MapView {
     this.map.setFilter('shields', ['all', base, ['has', 'ref']]);
     this.map.setFilter('blind', curvyModes ? base : ['==', 1, 0]);
     this.map.setLayoutProperty('blind', 'visibility', f.showBlind ? 'visible' : 'none');
-    const color = f.mode === 'ramps' ? ['match', ['get', 'rt'], ...RAMP_TIERS.flatMap((t, i) => [i, t.color]), '#888']
-      : curvyModes ? ['match', ['get', 'cls'], ...CURVE_CLASSES.flatMap((c, i) => [i, c.color]), '#888']
+    // Highways and ramps: by tier in Highways, one color next to the curvy roads in All.
+    const highway = ['>=', ['get', 'rt'], 0];
+    const tierColor = f.roadType === 'highway' ? ['match', ['get', 'rt'], ...RAMP_TIERS.flatMap((t, i) => [i, t.color]), '#888'] : HIGHWAYS.color;
+    const color = curvyModes ? ['case', highway, tierColor, ['match', ['get', 'cls'], ...CURVE_CLASSES.flatMap((c, i) => [i, c.color]), '#888']]
       : ['match', ['get', 'sbin'], ...SPEED_BINS.flatMap((b, i) => [i, b.color]), '#888'];
-    const width = f.mode === 'ramps' ? zoomWidth(4)
-      : curvyModes ? zoomWidth(['match', ['get', 'cls'], ...CURVE_CLASSES.flatMap((c, i) => [i, c.width]), 2.5])
+    const width = curvyModes ? zoomWidth(['case', highway, f.roadType === 'highway' ? 4 : 3, ['match', ['get', 'cls'], ...CURVE_CLASSES.flatMap((c, i) => [i, c.width]), 2.5]])
       : zoomWidth(['case', ['==', ['get', 'minor'], 1], 2, 3]);
     for (const id of ROAD_LAYERS) {
       this.map.setPaintProperty(id, 'line-color', color);

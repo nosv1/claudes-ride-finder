@@ -23,7 +23,7 @@ Ideas that came up, roughly in order of how much they'd help.
 - **Fly-through extras**: a chase camera that banks into corners; a "skip the boring parts" toggle that
   speeds through highways and town; curve callouts ("Tight curves next 2.1 mi", hairpins); gas stops as you
   pass them ("Casey's, 90+ likely, next gas 38 mi"); recording it as a video to share.
-- **Interchange tours and roundabouts**: fast ramps now have their own Interchanges mode.
+- **Interchange tours and roundabouts**: fast ramps and highway sweeps now show with the Highways road type.
   Roundabouts drawn as one closed way are now left off the curvy map; ones split into pieces still show as
   short Twisty arcs. Keep `junction=roundabout` in `build_tiles.py` to catch them all (and to map them).
   Next: roundabouts (`junction=roundabout`, like the double roundabouts on 87th St), and a
@@ -31,7 +31,7 @@ Ideas that came up, roughly in order of how much they'd help.
   87th St roundabouts, and back through the Grandview Triangle.
 - **Mixed rides: back roads plus interchanges**: a good loop can link curvy back roads with fun
   interchanges, as long as the highway parts sweep and aren't jammed.
-  - **Highway sweeps**: done (Interchanges mode, 65+ mph, bonus for 3+ lanes). Two-lane trunk highways at
+  - **Highway sweeps**: done (Highways road type and All roads, 65+ mph, bonus for 3+ lanes). Two-lane trunk highways at
     65 (US 83 in western Kansas) aren't curvy candidates at all yet; scoring them as ordinary roads would add
     their sweepers to Best rides.
   - **Generator**: done for highway sweeps (candidates unless Back roads; sweep and fast-ramp miles count in a

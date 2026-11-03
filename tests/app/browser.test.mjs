@@ -50,8 +50,9 @@ async function showMo150() {
 
 test('loads roads, draws them, and lists the best ones', async () => {
   assert.ok(await page.eval('RF.store.roads.length') > 1000);
-  assert.equal(await page.eval("document.querySelectorAll('#chips .chip').length"), 6);
-  assert.equal(await page.eval("document.querySelectorAll('.legend-chip:not(.key-btn)').length"), 5);
+  assert.equal(await page.eval("document.querySelectorAll('#chips .chip').length"), 7);
+  // The curve classes, plus Highways & ramps with All roads.
+  assert.equal(await page.eval("document.querySelectorAll('.legend-chip:not(.key-btn)').length"), 6);
   assert.match(await sheetText(), /Best roads in view/);
   assert.ok(await page.eval("document.querySelectorAll('.road-card').length") > 0);
 });
@@ -91,10 +92,16 @@ test('turning off a curve class hides those roads', async () => {
   await page.waitFor(`RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).some(f => f.properties.i === ${MO150})`, 10000);
 });
 
-test('Interchanges mode shows the fast ramps at the Grandview Triangle and the I-435 bend in Lenexa', async () => {
+test('the Highways road type shows the fast ramps at the Grandview Triangle and the I-435 bend in Lenexa', async () => {
   await page.eval("document.querySelector('.view-head .icon-btn') && document.querySelector('.view-head .icon-btn').click()");
-  await page.eval("document.querySelector('#chips .chip').click()");
-  await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Interchanges/.test(b.textContent)).click()");
+  const roadType = async label => {
+    await page.eval("document.querySelectorAll('#chips .chip')[1].click()");
+    await page.eval(`[...document.querySelectorAll('#menu .menu-item')].find(b => b.textContent.startsWith('${label}')).click()`);
+  };
+  // All roads (the default) already draws them, in one color next to the curvy roads.
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.525, 38.93], zoom: 13.5 })");
+  await page.waitFor("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).some(f => f.properties.rt >= 0)", 30000);
+  await roadType('Highways');
   await page.eval("void RF.mapView.map.jumpTo({ center: [-94.525, 38.93], zoom: 13.5 })");
   await page.waitFor("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).some(f => f.properties.rt >= 0)", 30000);
   assert.ok(await page.eval("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).every(f => f.properties.rt >= 0)"), 'only ramps drawn');
@@ -104,9 +111,10 @@ test('Interchanges mode shows the fast ramps at the Grandview Triangle and the I
   await page.eval("void RF.mapView.map.jumpTo({ center: [-94.768, 38.946], zoom: 13.5 })");
   await page.waitFor("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).filter(f => f.properties.hwy === 1 && f.properties.rt >= 3).length >= 2", 30000);
   await page.waitFor("/I 435 heading/.test(document.getElementById('sheetBody').innerText)", 10000);
-  // Back to Best rides for the remaining tests.
-  await page.eval("document.querySelector('#chips .chip').click()");
-  await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Best rides/.test(b.textContent)).click()");
+  // Back roads hides them; then back to All roads for the remaining tests.
+  await roadType('Back roads');
+  await page.waitFor("!RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).some(f => f.properties.rt >= 0)", 10000);
+  await roadType('All roads');
 });
 
 test('zoomed far out it loads no more roads, and speed-only roads only in Speed limits mode', async () => {

@@ -1,5 +1,5 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER } from './config.js';
+import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, tiersFor } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
 import { visible, stretchOf, bestInView, clusterRoads, summarize, roadNear, roadAlong } from './roads.js';
 import * as T from './trip.js';
@@ -22,7 +22,7 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 // ---------- state ----------
 
 const settings = Object.assign({
-  mode: 'ride', minSpeed: 45, minHills: 0, hideUnpaved: true, showBlind: true, showFuel: false,
+  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, showBlind: true, showFuel: false,
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
   basemap: 'dark', hillshade: true, genHours: 3,
 }, load(SETTINGS_KEY));
@@ -31,6 +31,8 @@ if (!settings.highwayTiers) {
   settings.rampTiers = [...new Set([...settings.rampTiers, ...RAMP_TIERS.flatMap((t, i) => t.highway ? [i] : [])])];
   settings.highwayTiers = true;
 }
+// Interchanges mode became Best rides with the Highways road type.
+if (settings.mode === 'ramps') Object.assign(settings, { mode: 'ride', roadType: 'highway' });
 
 let trip = T.newTrip();
 let route = null;            // { path, meters, seconds, maneuvers, fallback }
@@ -48,7 +50,8 @@ let weather = null;          // { route, points, hourly, at, loading, error }: t
 let tilted = false;
 let fly = null;               // the fly-through playing, if any
 
-const MODES = { ride: 'Best rides', curvy: 'All curvy roads', ramps: 'Interchanges', speed: 'Speed limits' };
+const MODES = { ride: 'Best rides', curvy: 'All curvy roads', speed: 'Speed limits' };
+const highwaysOnly = () => settings.mode !== 'speed' && settings.roadType === 'highway';
 
 function filters() {
   return { ...settings, classes: new Set(settings.classes), speedBins: new Set(settings.speedBins),
@@ -371,9 +374,8 @@ async function generate() {
   renderSoon();
   loadTiles([s[0] - dLat, s[1] - dLon, s[0] + dLat, s[1] + dLon]);
   await tilesSettled();
-  // Sweeping highways are candidates too, unless the rider asked for back roads.
-  const f = filters(), worthy = r => visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' })
-    || (trip.pref !== '0' && r.highway && r.rampTier >= 0);
+  // The roads the map shows, by road type: curvy roads, highway sweeps or both (ramps aren't stops, yet).
+  const f = filters(), worthy = r => visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
   const options = P.buildOptions(P.candidateGroups(store.roads, s, reach, worthy), s, hours, required);
   if (!options.length) {
     gen = { options: [], index: -1, running: false, status: 'No good roads within reach. Try a longer ride, or loosen the filters.' };
@@ -610,7 +612,7 @@ function homeView() {
   const groups = speedMode || !store.roads.length || mapView.zoom() < LOAD_ZOOM ? [] : bestInView(store.roads, mapView.view(), filters());
   return [
     route ? rideBar() : null,
-    h('div.section-head', {}, h('h2', {}, speedMode ? 'Posted speed limits' : settings.mode === 'ramps' ? 'Fast ramps and highways in view' : 'Best roads in view'),
+    h('div.section-head', {}, h('h2', {}, speedMode ? 'Posted speed limits' : highwaysOnly() ? 'Fast ramps and highways in view' : 'Best roads in view'),
       loadingCount() ? h('span.muted', {}, 'Loading…') : ''),
     legend(),
     speedMode
@@ -618,7 +620,7 @@ function homeView() {
       : groups.length
         ? h('div.cards', {}, groups.map(roadCard))
         : h('p.empty', {}, !store.roads.length || mapView.zoom() < LOAD_ZOOM ? 'Zoom in to see roads.'
-          : settings.mode === 'ramps' ? 'No fast ramps or highway sweeps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
+          : highwaysOnly() ? 'No fast ramps or highway sweeps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
     h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
   ];
@@ -629,30 +631,34 @@ function legend() {
   if (settings.mode === 'speed') {
     return h('div.legend', {}, SPEED_BINS.map((b, i) => legendChip(b, settings.speedBins.includes(i), () => toggleIn('speedBins', i))));
   }
-  const ramps = settings.mode === 'ramps', classes = ramps ? RAMP_TIERS : CURVE_CLASSES;
-  const on = ramps ? settings.rampTiers || RAMP_TIERS.map((_, i) => i) : settings.classes;
+  // Highways: the ramp and highway tiers. All roads: the curve classes, plus one chip for every highway and ramp.
+  const ramps = highwaysOnly(), classes = ramps ? RAMP_TIERS : CURVE_CLASSES;
+  const on = ramps ? settings.rampTiers : settings.classes, allTiers = RAMP_TIERS.map((_, i) => i);
+  const anyHighways = tiersFor('all', settings.rampTiers).length > 0;
   return [
     h('div.legend', {},
       classes.map((c, i) => legendChip(c, on.includes(i), () => toggleIn(ramps ? 'rampTiers' : 'classes', i))),
+      settings.roadType === 'all' ? legendChip(HIGHWAYS, anyHighways, () => setSetting({ rampTiers: anyHighways ? [] : allTiers })) : null,
       h(`button.legend-chip.key-btn${showKey ? '.on' : ''}`, { title: 'What do these mean?', 'aria-expanded': showKey ? 'true' : 'false',
         onclick: () => { showKey = !showKey; render(); } }, iconEl(icon.help), showKey ? 'Hide' : 'What’s this?')),
-    showKey ? keyHelp(classes, ramps) : null,
+    showKey ? keyHelp(classes, ramps, settings.roadType === 'all') : null,
   ];
 }
 
-function keyHelp(classes, ramps) {
+function keyHelp(classes, ramps, withHighways) {
   const row = (swatch, label, about) => h('div.key-row', {}, swatch, h('div', {}, h('b', {}, label), ' ', about));
   const sw = color => h('span.swatch', { style: `background:${color}` });
   return h('div.key-help', {},
     h('p', {}, ramps ? RAMP_ABOUT : CORNER_ABOUT),
     classes.map(c => row(sw(c.color), c.label, c.about)),
+    withHighways ? row(sw(HIGHWAYS.color), HIGHWAYS.label, HIGHWAYS.about) : '',
     ramps ? '' : [
       row(h('span.swatch.dashed'), 'Dashed', 'Surface not recorded, so it could be gravel.'),
       row(h('span.key-icon', {}, '⚠'), 'Blind crest', 'A tight turn at or just past the top of a rise, so you can’t see through it.'),
       row(iconEl(icon.mountain, 'key-icon'), 'Hills', `Feet of up and down per mile: ${HILLS.slice(1).map(l => `${l.label.toLowerCase()} ${l.ft}+`).join(', ')}. Around KC is about 95, the Ozarks about 160.`),
     ]);
 }
-const groupColor = g => g.rampTier >= 0 ? RAMP_TIERS[g.rampTier].color : CURVE_CLASSES[Math.max(0, g.cls)].color;
+const groupColor = g => g.rampTier >= 0 ? (highwaysOnly() ? RAMP_TIERS[g.rampTier].color : HIGHWAYS.color) : CURVE_CLASSES[Math.max(0, g.cls)].color;
 const legendChip = (c, on, onclick) => h(`button.legend-chip${on ? '' : '.off'}`, {
   onclick, title: `${c.about ? `${c.label}: ${c.about}\n` : ''}Tap to ${on ? 'hide' : 'show'} these`,
 }, h('span.swatch', { style: `background:${c.color}` }), c.label);
@@ -855,7 +861,7 @@ function tripView() {
       rideTime('Generate a loop'),
       h('button.btn.primary.wide', { onclick: () => { go('plan'); generate(); }, disabled: gen.running },
         iconEl(icon.route), gen.running ? 'Working…' : ownStops().length ? 'Generate loops through these stops' : 'Generate loops from this start'),
-      h('p.muted.small', {}, `Keeps your own stops and fills the time with the best roads nearby${trip.pref === '0' ? '' : ', sweeping highways included'}.`)),
+      h('p.muted.small', {}, `Keeps your own stops and fills the time with the best ${{ all: 'roads nearby, sweeping highways included', back: 'back roads nearby', highway: 'highway sweeps nearby' }[settings.roadType] || 'roads nearby'}. The road type on the map decides which.`)),
     h('div.field', {}, h('label.switch', {},
       h('input', { type: 'checkbox', checked: trip.loop, onchange: e => { trip.loop = e.target.checked; tripChanged(); } }),
       h('span', {}, 'Return to start'))),
@@ -1120,11 +1126,16 @@ function renderChips() {
   const s = settings, chips = [
     chip(MODES[s.mode], { menuItems: Object.entries(MODES).map(([k, l]) => ({ label: l, on: s.mode === k, run: () => setSetting({ mode: k }) })) }),
   ];
-  if (s.mode === 'ride') {
+  if (s.mode !== 'speed') {
+    chips.push(chip(ROAD_TYPES[s.roadType], { on: s.roadType !== 'all', menuItems: [{ heading: 'Road type' },
+      ...Object.entries(ROAD_TYPES).map(([k, l]) => ({ label: l, on: s.roadType === k, run: () =>
+        setSetting({ roadType: k, ...(k === 'highway' && !s.rampTiers.length ? { rampTiers: RAMP_TIERS.map((_, i) => i) } : {}) }) }))] }));
+  }
+  if (s.mode === 'ride' && s.roadType !== 'highway') {
     chips.push(chip(`${s.minSpeed}+ mph`, { menuItems: [{ heading: 'Speed limit at least' },
       ...[35, 40, 45, 50, 55].map(v => ({ label: `${v} mph`, on: s.minSpeed === v, run: () => setSetting({ minSpeed: v }) }))] }));
   }
-  if (s.mode === 'ride' || s.mode === 'curvy') {
+  if ((s.mode === 'ride' || s.mode === 'curvy') && s.roadType !== 'highway') {
     chips.push(chip(s.minHills ? `${HILLS[s.minHills].label}+` : 'Any hills', { on: s.minHills > 0, menuItems: [{ heading: 'Hills' },
       ...['Any', 'Rolling or more', 'Hilly or more', 'Very hilly'].map((l, v) => ({
         label: v ? `${l} (${HILLS[v].ft}+ ft/mi)` : l, on: s.minHills === v, run: () => setSetting({ minHills: v }) }))] }));

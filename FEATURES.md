@@ -175,10 +175,20 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 |---|---|---|
 | Best rides (default) | curvy and sweeper roads with a limit (posted or estimated) ≥ the chosen 35/40/45/50/55 mph | curviness |
 | All curvy roads | all curvy and sweeper roads | curviness |
-| Interchanges | fast interchange ramps and highway sweeps (a different kind of riding) | 3 ramp tiers, 2 highway tiers |
 | Speed limits | roads with a posted limit only; county and residential roads hidden below zoom 11 | 9 speed bins (≤20 … 70+) |
 
-Ramps never appear in the curvy modes or the generator's candidates (highway sweeps do, see Generate loops); they're one-way, so a ramp stop is ridden
+**Road type** (a chip in Best rides and All curvy roads): which roads those modes show, and the generator uses.
+| Road type | Shows | Colored by |
+|---|---|---|
+| All roads (default) | the curvy roads, plus highway sweeps and Flyover ramps | curviness; highways and flyovers all white ("Highways") |
+| Back roads | the curvy roads only | curviness |
+| Highways | fast ramps (all 3 tiers) and highway sweeps only (a different kind of riding); the mph and hills chips go away | 3 ramp tiers, 2 highway tiers |
+
+All roads leaves out the smaller ramp tiers: across a metro at zoom 10–11, every interchange's ramps drew as white
+confetti over the curvy roads. The Highways chip in its key turns all highways off and on. Saved settings in the old
+Interchanges mode open as Best rides with Highways.
+
+Ramps are never generator candidates (highway sweeps are, see Generate loops); they're one-way, so a ramp stop is ridden
 in its own direction (no ⇄). Ramp cards show sweep, lanes, posted limit (never the town estimate) and length.
 Highway sweeps work the same way. They're named for the way they head, from first point to last ("I 435 heading
 south"), so the two directions are separate stretches, and they're hidden in Speed limits mode, where the plain
@@ -360,7 +370,7 @@ colored road), Add a stop here, Street View here.
   - Loops head their way: straight at them, or swinging 35° or 70° to either side.
   - Without any, all 12 directions are tried.
 - Looks at roads within `hours × 80 / 2.6` km.
-- **Highway sweeps are candidates too**, unless Between roads is set to Back roads. One is a stop of its own
+- **Candidates follow the road type**: curvy roads, highway sweeps, or both (All roads). A highway sweep is a stop of its own
   despite being short (the 2 km rule for main roads doesn't apply), ridden in its own direction, scored at half its
   sweep (×1.25 with 3+ lanes), so a good back road still beats one. A loop takes only one direction of a bend:
   one-way stops centered within 1 km are the two directions of the same bend. Never another way home.

@@ -23,7 +23,7 @@ const loadSearch = () => {
   return JSON.parse(s.slice(s.indexOf('{'), s.lastIndexOf('}') + 1));
 };
 
-const FILTERS = { mode: 'ride', minSpeed: 45, minHills: 0, hideUnpaved: true, classes: new Set([0, 1, 2, 3, 4]), speedBins: new Set([...Array(9).keys()]), zoom: 12 };
+const FILTERS = { mode: 'ride', roadType: 'all', rampTiers: new Set(RAMP_TIERS.map((_, i) => i)), minSpeed: 45, minHills: 0, hideUnpaved: true, classes: new Set([0, 1, 2, 3, 4]), speedBins: new Set([...Array(9).keys()]), zoom: 12 };
 
 // A fake road row along a line of [lat, lon] points.
 function row({ id = 1, hw = 'secondary', name = '', ref = '', mph = null, est = 55, surface = 0, score = 0, curvy = 0, sweep = 0, length = 1000, pts = east(38, -93), hill = null, lanes = null }) {
@@ -83,9 +83,13 @@ test('fast ramps: sweeping ones count, cloverleaf loops don’t, and they stay o
   assert.equal(flyover.rampTier, 1);
   assert.equal(flyover.cls, -1, 'not a curvy-road class');
   assert.equal(loop.rampTier, -1);
-  const f = { ...FILTERS, mode: 'ramps', rampTiers: new Set([0, 1, 2]) };
+  const f = { ...FILTERS, roadType: 'highway', rampTiers: new Set([0, 1, 2]) };
   assert.ok(visible(flyover, f) && !visible(loop, f));
-  assert.ok(!visible(flyover, FILTERS), 'hidden in Best rides');
+  assert.ok(!visible(flyover, FILTERS), 'All roads shows only the big flyovers (city ramps are confetti there)');
+  const big = row({ hw: 'motorway_link', name: 'Ramp to I 470 East', sweep: 1100, curvy: 50, length: 1200 });
+  assert.ok(visible(big, FILTERS), 'a Flyover shows with All roads');
+  assert.ok(!visible(big, { ...FILTERS, roadType: 'back' }), 'hidden with Back roads');
+  assert.ok(!visible(row({ score: 1000, length: 1000 }), f), 'Highways hides the curvy roads');
   // One-way: ridden in its own direction even when the trip ends near its far end.
   const g = stretchOf([flyover], flyover), trip = newTrip();
   addPoint(trip, flyover.geom.at(-1), 'Near the exit end');
@@ -105,7 +109,7 @@ test('highway sweeps: their own tiers in Interchanges, a bonus for 3+ lanes, one
   assert.ok(h.highway && h.oneway);
   assert.equal(h.cls, -1, 'not in the curvy modes');
   assert.equal(h.key, 'I 435 heading east', 'named for the way it heads');
-  const all = { ...FILTERS, mode: 'ramps', rampTiers: new Set(RAMP_TIERS.map((_, i) => i)) };
+  const all = { ...FILTERS, roadType: 'highway' };
   assert.ok(visible(h, all));
   assert.ok(!visible(h, { ...all, rampTiers: new Set([0, 1, 2]) }), 'its tier can be turned off');
   // The speed-limit tiles have the plain highway pieces; the sweep would draw over them.

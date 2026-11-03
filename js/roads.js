@@ -1,6 +1,6 @@
 // Roads: decoding tile rows, classifying them, filtering, and grouping pieces into stretches.
 // Pure: no DOM, no map library.
-import { CURVE_CLASSES, SPEED_BINS, HILLS, MINOR_TYPES, RAMP_TIERS, RAMP_TYPES, HIGHWAY_TYPES, HIGHWAY_LANES_BONUS } from './config.js';
+import { CURVE_CLASSES, SPEED_BINS, HILLS, MINOR_TYPES, RAMP_TIERS, RAMP_TYPES, HIGHWAY_TYPES, HIGHWAY_LANES_BONUS, tiersFor } from './config.js';
 import { decodeDeltas, boundsOf, extend, pad, intersects, contains, spotOnLine, distance } from './geo.js';
 
 // Row: [id, highway, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords, hill, blind, lanes]
@@ -63,9 +63,11 @@ export const curveMeters = r => r.curvy + r.sweep;
 export const isMinor = r => MINOR_TYPES.has(r.hw.replace('_link', ''));
 
 // Whether a road shows under the current filters (the map's layer filters mirror this).
-// f: { mode: 'ride'|'curvy'|'speed'|'ramps', minSpeed, minHills, hideUnpaved, classes: Set, speedBins: Set, rampTiers: Set, zoom }
+// f: { mode: 'ride'|'curvy'|'speed', roadType: 'all'|'back'|'highway', minSpeed, minHills, hideUnpaved, classes: Set,
+//      speedBins: Set, rampTiers: Set, zoom }
 export function visible(r, f) {
-  if (f.mode === 'ramps') return r.rampTier >= 0 && f.rampTiers.has(r.rampTier);
+  if (f.mode !== 'speed' && r.rampTier >= 0) return tiersFor(f.roadType, f.rampTiers).includes(r.rampTier);
+  if (f.mode !== 'speed' && f.roadType === 'highway') return false;
   if (f.hideUnpaved && r.surface === 1) return false;
   if (f.mode === 'speed') {
     // Highway sweeps repeat highway pieces from the speed-limit tiles, so they'd draw twice.
