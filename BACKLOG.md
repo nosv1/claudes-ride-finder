@@ -55,6 +55,13 @@ Ideas that came up, roughly in order of how much they'd help.
 - **More states**: Arkansas (Eureka Springs, the Pig Trail), Oklahoma, Iowa, Nebraska. (Texas is in.)
   Check each state's default speed limits in `estimate_mph`.
   Download the `.osm.pbf` into `raw/` and rebuild.
+- **Cameras layer: plate readers, speed and red-light cameras**: a map layer (off by default, like Gas) and a
+  count on each ride, the way stoplights are counted. Plate readers (Flock Safety and others) are mapped in OSM as
+  `man_made=surveillance` with `surveillance:type=ALPR` (plus `manufacturer`, `direction`), mostly by the DeFlock
+  project; speed cameras as `highway=speed_camera`; red-light cameras as `enforcement` relations or
+  `highway=traffic_signals` + `enforcement=traffic_signals`. All nodes, so `tools/add_signals.py`'s nodes-only pass can
+  collect them too, into their own file. Show which way a camera faces when mapped. Coverage is whatever volunteers
+  have mapped, so say so ("mapped cameras", not "all cameras").
 - **Sunset and deer hour**: warn when a ride ends after dark (Open-Meteo has sunset), and flag dusk on
   wooded back roads, when deer are out. Shown with the weather.
 - **Roads you've ridden**: import GPX from a ride (or record one in Ride mode) and mark those roads, so
