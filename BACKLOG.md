@@ -42,6 +42,24 @@ Ideas that came up, roughly in order of how much they'd help.
   wooded back roads, when deer are out. Shown with the weather.
 - **Roads you've ridden**: import GPX from a ride (or record one in Ride mode) and mark those roads, so
   the map shows what's new to you and the generator can prefer it.
+- **Adventures (make it a game)**: a reason to go ride, as "go see this, by these roads".
+  - **Destinations**: add places worth riding to from OSM in `build_tiles.py`, kept like `fuel.js`:
+    viewpoints, waterfalls, peaks, historic sites, river crossings and ferries, old bridges, small-town diners
+    and BBQ. Prefer ones off the beaten path, with good curvy roads nearby.
+  - **Quests**: the generator picks a destination for the time you have, rides out on curvy roads and back on
+    different ones. The card reads like a mission ("Reach Elephant Rocks by the curvy part of MO-21,
+    3 h, 2 blind crests") and the fly-through plays as the briefing.
+  - **Collections**: sets to finish, like every Flyover in KC, the Twisted Sisters, all lettered routes in
+    a county, every Ozark river crossing, or the I-435 loop at dawn. Badges for the firsts (first 100 curvy miles,
+    first very hilly road, first state line crossed).
+  - **Map that fills in**: roads you've ridden glow and the rest stay dim, so new roads stand out
+    (needs Roads you've ridden).
+  - **Ride of the week**: one quest near you each week, the same for everyone in the area, so friends can
+    ride the same one.
+  - **Proof**: a quest counts as done when a GPX import (or Ride mode track) covers most of its roads.
+    Kept on the device, no account.
+  - **No speed or time scores.** Score roads and places, never how fast you got there: leaderboards for
+    pace on public roads are how people get hurt (and how the app gets blamed).
 - **Saved rides**: keep rides by name on the device (not just the last one), with the share link.
 - **Group rides**: a share link with the leave time and meeting spot, so everyone sees the same plan.
 - **Favorites**: star roads you've ridden and liked.
