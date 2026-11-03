@@ -29,6 +29,20 @@ Ideas that came up, roughly in order of how much they'd help.
   Next: roundabouts (`junction=roundabout`, like the double roundabouts on 87th St), and a
   generator for short interchange loops, e.g. west on I-470, US-71 north, I-435 north, the
   87th St roundabouts, and back through the Grandview Triangle.
+- **Mixed rides: back roads plus interchanges**: a good loop can link curvy back roads with fun
+  interchanges, as long as the highway parts sweep and aren't jammed.
+  - **Highway sweeps**: score interstate and trunk mainlines too, not just their ramps. Join each one's
+    pieces into a road per direction (by `ref` and direction), then count curves of 150–1,500 m radius like
+    ramps. Show them in Interchanges mode as their own tier. Example: I-435 swinging from north–south by Renner
+    Blvd to east–west across Lackman Rd in Lenexa has about 1.3 mi of sweep each way (measured from the tiles),
+    but no mode shows it today: back-road sweepers stop at 600 m radius and motorways are only kept for speed.
+  - **Generator**: a "Mix in interchanges" option that links curvy roads through the best ramps and highway
+    sweeps nearby, instead of the fastest or the flattest way between them. Highway miles count toward the
+    ride only where they sweep; straight interstate is still just getting there.
+  - **Low traffic**: suggest when to go, since a fun interchange in rush hour isn't. Simplest is a rule of
+    thumb (weekend mornings, weekdays outside 6–9 am and 3–7 pm). Better is typical traffic by hour, if a free
+    source turns up (state DOT counts, e.g. KDOT and MoDOT, give daily volume per segment, not by hour). Put
+    it on the leave-time picker: "I-435 is usually quiet now".
 - **Hide maybe-gravel roads**: an option to hide county roads whose surface isn't recorded
   (drawn dashed today). Many are gravel in the Ozarks.
 - **Generator avoids city traffic**: today loops through town only rank lower. Penalize
