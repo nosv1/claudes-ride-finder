@@ -412,6 +412,12 @@ colored road), Add a stop here, Street View here.
     nearest);
   - keeping a change only if it ranks higher and stays in 80–120%. From Lee's Summit at 1.5 h on back roads, the
     out-and-back "MO TT" loop (48% twice) became Buckner Tarsney → MO TT → Litchford (12%).
+- **Turnarounds:** a spot off the curvy roads where the route comes back past within 120 m heading the other way
+  (over 150° off) after 400 m to 3 km of riding: off the highway, left twice through the lights and back on, or round
+  a block. Not a cloverleaf loop (shorter), not a hairpin (on a curvy road), not in the first or last 1.5 km. Each
+  one keeps 60% of a loop's rank, and a loop with one tries dropping the generated road nearest it (up to twice,
+  kept if it ranks higher and stays in 80–120%). Seen with the Highways road type: a loop rode a sweep on
+  I-435 / US 50 west, away from home, then got off and back on to head east. Option cards and the ride say "↺ turns around".
 - **Roads on the way:** after that, a routed loop that rides within 500 m of an end of a road it isn't taking
   (a candidate, short ones included, mostly off the route, not one-way) tries adding the best one, then the next
   (up to 2 tries), keeping it if the loop ranks higher and stays in 80–120%. From Lee's Summit at 1.5 h, a loop up

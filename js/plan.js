@@ -7,18 +7,24 @@ import { tripPoints, roadStop } from './trip.js';
 
 // ---------- along a route ----------
 
-// Metres of the route that follow roads `ok` accepts, by matching on a ~200 m grid.
-export function metersOn(path, roads, ok) {
-  const CELL = 0.002, cells = new Set(), area = pad(boundsOf(path), 0.02);
-  const key = (la, lo) => Math.round(la / CELL) + ',' + Math.round(lo / CELL);
+// The ~200 m grid cells that roads `ok` accepts pass through, near a path, and a test for a point.
+const CELL = 0.002, cellKey = (la, lo) => Math.round(la / CELL) + ',' + Math.round(lo / CELL);
+function roadCells(path, roads, ok) {
+  const cells = new Set(), area = pad(boundsOf(path), 0.02);
   for (const r of roads) {
     if (!ok(r) || !intersects(area, r.bounds)) continue;
     for (let i = 1; i < r.geom.length; i++) {
       const [a0, a1] = r.geom[i - 1], [b0, b1] = r.geom[i];
       const n = Math.ceil(Math.max(Math.abs(b0 - a0), Math.abs(b1 - a1)) / CELL) || 1;
-      for (let k = 0; k <= n; k++) cells.add(key(a0 + (b0 - a0) * k / n, a1 + (b1 - a1) * k / n));
+      for (let k = 0; k <= n; k++) cells.add(cellKey(a0 + (b0 - a0) * k / n, a1 + (b1 - a1) * k / n));
     }
   }
+  return cells;
+}
+
+// Metres of the route that follow roads `ok` accepts, by matching on the grid.
+export function metersOn(path, roads, ok) {
+  const cells = roadCells(path, roads, ok), key = cellKey;
   let m = 0;
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1], b = path[i];
@@ -31,6 +37,31 @@ export const curvyMetersOn = (path, roads) => metersOn(path, roads, r => r.cls >
 // The interesting parts of the interstates: highway sweeps and fast ramps. (The grid can't tell a
 // highway's two directions apart, but they nearly always sweep alike.)
 export const highwayMetersOn = (path, roads) => metersOn(path, roads, r => r.rampTier >= 0);
+
+// Where a route turns back the way it came off the curvy roads: off a highway, left twice through the lights
+// and back on the other way, or round a block. A spot the route comes back past, within 120 m and heading the
+// other way, after 400 m to 3 km of riding (a cloverleaf loop is shorter; on a curvy road it's a hairpin, and
+// riding a dead end out and back is retrace's job). Not in the first or last `ends` metres. Spots, in order.
+export function turnarounds(path, roads = [], ends = 1500) {
+  const cum = cumulative(path), total = cum[cum.length - 1], curvy = roadCells(path, roads, r => r.cls >= 0);
+  const ahead = (i, m) => { let k = i; while (k < path.length - 1 && cum[k] - cum[i] < m) k++; return k; };
+  const spots = [];
+  for (let i = 0, next = 0; i < path.length - 1; i++) {
+    if (cum[i] < next || cum[i] < ends || total - cum[i] < ends) continue;
+    next = cum[i] + 50;  // look every 50 m
+    if (curvy.has(cellKey(path[i][0], path[i][1]))) continue;
+    const h = bearing(path[i], path[ahead(i, 60)]);
+    for (let j = ahead(i, 400); j < path.length - 1 && cum[j] - cum[i] <= 3000; j++) {
+      if (total - cum[j] < ends) break;
+      if (distance(path[i], path[j]) > 120) continue;
+      if (Math.abs(relAngle(bearing(path[j], path[ahead(j, 60)]), h)) < 150) continue;
+      spots.push(path[Math.floor((i + j) / 2)]);
+      next = cum[j] + 50;
+      break;
+    }
+  }
+  return spots;
+}
 
 export function blindCrestsOn(path, roads) {
   const area = pad(boundsOf(path), 0.02), crests = [];

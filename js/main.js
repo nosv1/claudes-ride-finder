@@ -208,7 +208,7 @@ function refreshInfo(withProfile) {
     ...(withProfile ? {} : { profile: info && info.profile }),
     curvy: P.curvyMetersOn(r.path, store.roads), highway: P.highwayMetersOn(r.path, store.roads),
     blind: P.blindCrestsOn(r.path, store.roads).length, fuel,
-    back: P.retrace(r.path),
+    back: P.retrace(r.path), turns: P.turnarounds(r.path, store.roads),
   };
   mapView.setRetrace(info.back.lines);
   mapView.setRouteStations(fuel.along.map(a => ({ k: a.item.k, status: a.item.status, pick: fuel.picks.includes(a) })));
@@ -413,14 +413,14 @@ async function generate() {
 }
 
 // How good a routed loop is: miles on curvy roads plus highway sweeps and fast ramps, scaled by the
-// share of the ride they make up, and cut by the share it rides twice (each 10% doubled back costs
-// 30%). Best first.
+// share of the ride they make up, cut by the share it rides twice (each 10% doubled back costs 30%)
+// and by each turnaround (off the highway, round through the lights, back on: 40% each). Best first.
 function rate(r) {
   if (!r) return null;
   const curvy = P.curvyMetersOn(r.path, store.roads), highway = P.highwayMetersOn(r.path, store.roads);
-  const back = P.retrace(r.path).meters, fun = curvy + highway;
-  return { route: r, curvy, highway, back, blind: P.blindCrestsOn(r.path, store.roads).length,
-    worth: fun * fun / r.meters * Math.max(0.1, 1 - 3 * back / r.meters) };
+  const back = P.retrace(r.path).meters, turns = P.turnarounds(r.path, store.roads), fun = curvy + highway;
+  return { route: r, curvy, highway, back, turns, blind: P.blindCrestsOn(r.path, store.roads).length,
+    worth: fun * fun / r.meters * Math.max(0.1, 1 - 3 * back / r.meters) * GEN.turnKeep ** turns.length };
 }
 
 // Route a loop for real. Under 80% of the time, fill it again aiming that much longer (the
@@ -481,6 +481,19 @@ async function routeOption(opt, start, hours) {
     items = better.list;
     best = better.other;
   }
+  // Turnarounds (up to 2 tries): without the generated road nearest the first one, if the loop then ranks
+  // higher and stays in 80–120%. Usually a highway sweep ridden away from home, then back the other way.
+  for (let tries = 0; tries < 2 && best && best.turns.length; tries++) {
+    const at = best.turns[0], added = items.filter(it => it.gen);
+    if (!added.length || items.length <= 2) break;
+    const dist = it => Math.min(...it.pts.map(p => km(p, at)));
+    const blame = added.reduce((a, b) => dist(b) < dist(a) ? b : a);
+    const list = items.filter(it => it !== blame).map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
+    const other = rate(await routeOf(list)), hrs = other && other.route.seconds / 3600;
+    if (!(other && other.worth > best.worth && hrs >= hours * GEN.under && hrs <= hours * GEN.overrun)) break;
+    items = list;
+    best = other;
+  }
   // Roads it rides right past (up to 2 tries): picked up if the loop ranks higher and stays in 80–120%.
   const tried = new Set();
   for (let tries = 0; tries < 2 && best; tries++) {
@@ -495,7 +508,7 @@ async function routeOption(opt, start, hours) {
       best = other;
     }
   }
-  Object.assign(opt, { items, route: best && best.route }, best ? { curvy: best.curvy, highway: best.highway, blind: best.blind, back: best.back, worth: best.worth } : {});
+  Object.assign(opt, { items, route: best && best.route }, best ? { curvy: best.curvy, highway: best.highway, blind: best.blind, back: best.back, turns: best.turns.length, worth: best.worth } : {});
 }
 
 function selectOption(i) {
@@ -861,7 +874,8 @@ function optionCard(o, i) {
     h('span.muted.push', {}, fmtDuration(o.route.seconds))),
   h('div.option-stats', {}, `${miles(o.route.meters)} mi · `, h('b', {}, `${miles(o.curvy)} mi curvy`), ` (${pct}%)`,
     o.highway >= 200 ? ` · ${miles(o.highway)} mi highway sweeps` : '',
-    o.blind ? h('span.warn', {}, ` · ⚠ ${o.blind}`) : '', o.back >= 400 ? h('span.warn', {}, ` · ↩ ${miles(o.back)} mi twice`) : ''),
+    o.blind ? h('span.warn', {}, ` · ⚠ ${o.blind}`) : '', o.back >= 400 ? h('span.warn', {}, ` · ↩ ${miles(o.back)} mi twice`) : '',
+    o.turns ? h('span.warn', {}, ` · ↺ turns around${o.turns > 1 ? ` ${o.turns}×` : ''}`) : ''),
   h('div.muted.small', {}, o.items.slice(1).flatMap((it, k) => [k ? ', ' : '', it.gen ? it.label : h('b.own', {}, it.label)])));
 }
 
@@ -962,13 +976,14 @@ function flyRide() {
 }
 
 function doubleBack() {
-  const back = info && info.back;
-  if (!back || back.meters < 400) return '';
+  const back = info && info.back, turns = info && info.turns ? info.turns.length : 0;
+  const turnNote = turns ? h('p.warn.small', {}, `↺ Turns around ${turns === 1 ? 'once' : `${turns} times`} off the curvy roads: off the highway and back on the other way, or round a block.`) : '';
+  if (!back || back.meters < 400) return turnNote;
   const canFlip = trip.items.some(it => it.type === 'road' && !it.oneway);
-  return h('div.back-note', {},
+  return [h('div.back-note', {},
     h('div.grow', {}, h('b', {}, `↩ ${miles(back.meters)} mi doubled back`),
       h('div.muted.small', {}, fixing || 'Roads ridden twice are dashed orange on the map.')),
-    canFlip ? h('button.btn.small', { onclick: fixDoubleBack, disabled: !!fixing }, fixing ? 'Working…' : 'Try fixing') : '');
+    canFlip ? h('button.btn.small', { onclick: fixDoubleBack, disabled: !!fixing }, fixing ? 'Working…' : 'Try fixing') : ''), turnNote];
 }
 
 // ---------- weather ----------

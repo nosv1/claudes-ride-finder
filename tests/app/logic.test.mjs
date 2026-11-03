@@ -7,7 +7,7 @@ import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, neares
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn } from '../../js/plan.js';
+import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
@@ -367,6 +367,28 @@ test('sweeping highways count toward a ride, and the generator can ride to one',
   assert.ok(g && !g.small && g.oneway);
   assert.ok(buildOptions([g], start, 1.5).some(o => o.stops.some(st => st.label === g.key && st.oneway)));
   assert.deepEqual(wayHomeRoads([g], [], [along(sweep.geom)]), [], 'a one-way highway isn’t a way home');
+});
+
+test('turnarounds: off the highway and back the other way counts; cloverleaf loops, hairpins and plain loops don’t', () => {
+  const line = (lat0, lon0, dlat, dlon, km) => Array.from({ length: Math.round(km * 20) + 1 }, (_, i) => [lat0 + dlat * i / 20 / 111, lon0 + dlon * i / 20 / 87]);
+  // 6 km east, cross over 40 m north, 6 km back west: one turnaround, at the far end.
+  const out = line(38.5, -94, 0, 1, 6), back = line(38.50036, out.at(-1)[1], 0, -1, 6);
+  const spots = turnarounds([...out, ...back]);
+  assert.equal(spots.length, 1);
+  assert.ok(spots[0][1] > -94 + 5.5 / 87, 'at the far end');
+  // A cloverleaf loop (70 m radius, 270°) in the middle of a straight ride.
+  const c = out.at(-1), loop = Array.from({ length: 28 }, (_, i) => { const a = -Math.PI / 2 + i * (1.5 * Math.PI) / 27; return [c[0] + 0.07 / 111 * (1 + Math.sin(a)), c[1] + 0.07 / 87 * Math.cos(a)]; });
+  const on = line(loop.at(-1)[0], loop.at(-1)[1], 1, 0, 6);
+  assert.equal(turnarounds([...out, ...loop, ...on]).length, 0);
+  // A hairpin: legs 60 m apart. On a curvy road it's the ride; anywhere else it reads as turning back.
+  const leg2 = line(38.50054, out.at(-1)[1], 0, -1, 0.6), after = line(leg2.at(-1)[0], leg2.at(-1)[1], 1, 0, 5);
+  const hairpin = [...out, ...leg2, ...after];
+  const curvy = row({ id: 9, ref: 'MO W', score: 900, length: 2000, pts: [...out.slice(-30), ...leg2] });
+  assert.equal(turnarounds(hairpin, [curvy]).length, 0);
+  assert.equal(turnarounds(hairpin).length, 1);
+  // A plain loop: 4 km a side.
+  const sq = [...line(38.5, -94, 0, 1, 4), ...line(38.5, -94 + 4 / 87, 1, 0, 4).slice(1), ...line(38.5 + 4 / 111, -94 + 4 / 87, 0, -1, 4).slice(1), ...line(38.5 + 4 / 111, -94, -1, 0, 4).slice(1)];
+  assert.equal(turnarounds(sq).length, 0);
 });
 
 test('roads on the way: the loop rides past an end of them, but not along them', () => {

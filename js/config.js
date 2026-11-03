@@ -85,7 +85,8 @@ export const GEN = {
   // doubles back, as another way home: one within wayHomeKm of the stretch ridden twice.
   wayHomeM: 800, wayHomeKm: 3,
   onWayKm: 0.5,      // a road with an end this close to a routed loop is "on the way": try riding it
-  twinKm: 1,         // one-way stretches centered this close are the two directions of one highway bend
+  twinKm: 1,
+  turnKeep: 0.6,     // a loop that turns around (off the highway, round through the lights, back on) keeps this much of its rank         // one-way stretches centered this close are the two directions of one highway bend
   under: 0.8, overrun: 1.2,   // loops must route to 80–120% of the chosen time
   maxBack: 0.04,     // share of a loop ridden twice before it tries dropping a road
   hideBack: 0.2,     // loops riding more than this share twice are left out (if 3 others remain)
