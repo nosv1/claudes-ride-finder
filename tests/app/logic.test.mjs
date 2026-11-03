@@ -7,7 +7,7 @@ import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, neares
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads } from '../../js/plan.js';
+import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads, curvyMetersOn, highwayMetersOn } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
@@ -346,6 +346,23 @@ test('short curvy roads are kept only as another way home, never as the main roa
   const opts = buildOptions(groups, start, 1.5);
   assert.ok(opts.length && opts.every(o => o.stops.every(s => s.label === 'MO TT')), 'loops are built from the main roads');
   assert.equal(buildOptions(groups.filter(g => g.small), start, 1.5).length, 0);
+});
+
+test('sweeping highways count toward a ride, and the generator can ride to one', () => {
+  const start = [38.5, -94];
+  const sweep = row({ id: -1, hw: 'motorway', ref: 'I 435', mph: 70, est: null, sweep: 1000, lanes: 3, length: 1400, pts: east(38.6, -93.9, 15) });
+  const plain = row({ id: 2, hw: 'motorway', ref: 'I 435', mph: 70, est: null, lanes: 3, length: 1400, pts: east(38.7, -93.9, 15) });
+  const curvy = row({ id: 3, ref: 'MO TT', score: 4000, curvy: 3500, length: 1400, pts: east(38.8, -93.9, 15) });
+  const along = pts => pts.map(([la, lo]) => [la + 0.00005, lo]);
+  assert.ok(highwayMetersOn(along(sweep.geom), [sweep, plain, curvy]) > 1000, 'riding the sweep counts');
+  assert.equal(highwayMetersOn(along(plain.geom), [sweep, plain, curvy]), 0, 'straight interstate doesn’t');
+  assert.equal(curvyMetersOn(along(sweep.geom), [sweep, plain, curvy]), 0, 'and it isn’t a curvy road');
+  // Short as it is, a highway sweep is a stop of its own, not just another way home.
+  const groups = candidateGroups([sweep, curvy], start, 100, () => true);
+  const g = groups.find(x => x.key.startsWith('I 435'));
+  assert.ok(g && !g.small && g.oneway);
+  assert.ok(buildOptions([g], start, 1.5).some(o => o.stops.some(st => st.label === g.key && st.oneway)));
+  assert.deepEqual(wayHomeRoads([g], [], [along(sweep.geom)]), [], 'a one-way highway isn’t a way home');
 });
 
 test('another way home: roads near the stretch ridden twice, not on it, not already in the loop', () => {

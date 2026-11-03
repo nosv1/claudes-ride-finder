@@ -34,9 +34,9 @@ Ideas that came up, roughly in order of how much they'd help.
   - **Highway sweeps**: done (Interchanges mode, 65+ mph, bonus for 3+ lanes). Two-lane trunk highways at
     65 (US 83 in western Kansas) aren't curvy candidates at all yet; scoring them as ordinary roads would add
     their sweepers to Best rides.
-  - **Generator**: a "Mix in interchanges" option that links curvy roads through the best ramps and highway
-    sweeps nearby, instead of the fastest or the flattest way between them. Highway miles count toward the
-    ride only where they sweep; straight interstate is still just getting there.
+  - **Generator**: done for highway sweeps (candidates unless Back roads; sweep and fast-ramp miles count in a
+    ride's score). Next: fast ramps as stops too, and routing between roads through the best interchanges
+    instead of only the fastest or flattest way.
   - **Low traffic**: suggest when to go, since a fun interchange in rush hour isn't. Simplest is a rule of
     thumb (weekend mornings, weekdays outside 6–9 am and 3–7 pm). Better is typical traffic by hour, if a free
     source turns up (state DOT counts, e.g. KDOT and MoDOT, give daily volume per segment, not by hour). Put

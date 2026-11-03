@@ -7,12 +7,12 @@ import { tripPoints, roadStop } from './trip.js';
 
 // ---------- along a route ----------
 
-// Metres of the route that follow curvy roads, by matching on a ~200 m grid.
-export function curvyMetersOn(path, roads) {
+// Metres of the route that follow roads `ok` accepts, by matching on a ~200 m grid.
+export function metersOn(path, roads, ok) {
   const CELL = 0.002, cells = new Set(), area = pad(boundsOf(path), 0.02);
   const key = (la, lo) => Math.round(la / CELL) + ',' + Math.round(lo / CELL);
   for (const r of roads) {
-    if (r.cls < 0 || r.surface === 1 || !intersects(area, r.bounds)) continue;
+    if (!ok(r) || !intersects(area, r.bounds)) continue;
     for (let i = 1; i < r.geom.length; i++) {
       const [a0, a1] = r.geom[i - 1], [b0, b1] = r.geom[i];
       const n = Math.ceil(Math.max(Math.abs(b0 - a0), Math.abs(b1 - a1)) / CELL) || 1;
@@ -26,6 +26,11 @@ export function curvyMetersOn(path, roads) {
   }
   return m;
 }
+
+export const curvyMetersOn = (path, roads) => metersOn(path, roads, r => r.cls >= 0 && r.surface !== 1);
+// The interesting parts of the interstates: highway sweeps and fast ramps. (The grid can't tell a
+// highway's two directions apart, but they nearly always sweep alike.)
+export const highwayMetersOn = (path, roads) => metersOn(path, roads, r => r.rampTier >= 0);
 
 export function blindCrestsOn(path, roads) {
   const area = pad(boundsOf(path), 0.02), crests = [];
@@ -107,7 +112,8 @@ export function candidateGroups(roads, start, maxKm, isWorthy) {
     const g = summarize(c, key);
     if (g.curvy < GEN.wayHomeM) return;
     if (g.curvy < GEN.minCurveM && g.roads.every(r => r.hw === 'unclassified')) return;
-    if (g.curvy < GEN.minCurveM) g.small = true;  // only as another way home (see routeOption)
+    // Only as another way home (see routeOption). A highway sweep is short but worth riding to.
+    if (g.curvy < GEN.minCurveM && !g.roads.every(r => r.highway)) g.small = true;
     g.stop = roadStop(g);
     g.center = center(boundsOf([g.stop.pts[0], g.stop.pts[g.stop.pts.length - 1]]));
     groups.push(g);
@@ -154,6 +160,9 @@ export function estimate(start, stops) {
   return { hours: link + road, roadHours: road };
 }
 
+// The other direction of the same highway bend: both one-way, centered within twinKm. A loop rides one.
+const twins = (a, b) => a.oneway && b.oneway && km(a.center, b.center) < GEN.twinKm;
+
 export const reachKm = hours => hours * GEN.linkKmh / (2 * GEN.roadFactor);
 
 // Up to 4 roads for short rides, more for long ones: a 6 h loop needs about 9 to fill its time.
@@ -170,7 +179,7 @@ export function fillLoop(start, pool, dir, hours, chosen, maxRoads) {
     const share = (hours - est.hours) / (maxRoads - chosen.length);
     let best = null;
     for (const g of pool) {
-      if (chosen.includes(g) || g.small) continue;
+      if (chosen.includes(g) || g.small || chosen.some(c => twins(c, g))) continue;
       const trial = orderLoop(start, [...chosen, g], dir);
       const e = estimate(start, trial);
       if (e.hours > hours) continue;
@@ -239,7 +248,7 @@ export function wayHomeRoads(groups, items, lines) {
     const pts = g.roads.flatMap(r => r.geom.filter((_, i) => i % 5 === 0));
     return pts.filter(p => spots.some(q => km(p, q) < 0.2)).length > pts.length / 2;
   };
-  return groups.filter(g => !g.ids.some(id => used.has(id)) && g.stop.pts.some(near) && !onIt(g))
+  return groups.filter(g => !g.oneway && !g.ids.some(id => used.has(id)) && g.stop.pts.some(near) && !onIt(g))
     .sort((a, b) => b.score - a.score);
 }
 

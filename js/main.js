@@ -203,7 +203,8 @@ function refreshInfo(withProfile) {
   const r = route, fuel = P.planFuel(r.path, store.fuel, trip.range, trip.need90);
   info = {
     ...(withProfile ? {} : { profile: info && info.profile }),
-    curvy: P.curvyMetersOn(r.path, store.roads), blind: P.blindCrestsOn(r.path, store.roads).length, fuel,
+    curvy: P.curvyMetersOn(r.path, store.roads), highway: P.highwayMetersOn(r.path, store.roads),
+    blind: P.blindCrestsOn(r.path, store.roads).length, fuel,
     back: P.retrace(r.path),
   };
   mapView.setRetrace(info.back.lines);
@@ -370,7 +371,9 @@ async function generate() {
   renderSoon();
   loadTiles([s[0] - dLat, s[1] - dLon, s[0] + dLat, s[1] + dLon]);
   await tilesSettled();
-  const f = filters(), worthy = r => visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' });
+  // Sweeping highways are candidates too, unless the rider asked for back roads.
+  const f = filters(), worthy = r => visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' })
+    || (trip.pref !== '0' && r.highway && r.rampTier >= 0);
   const options = P.buildOptions(P.candidateGroups(store.roads, s, reach, worthy), s, hours, required);
   if (!options.length) {
     gen = { options: [], index: -1, running: false, status: 'No good roads within reach. Try a longer ride, or loosen the filters.' };
@@ -407,13 +410,15 @@ async function generate() {
   else renderSoon();
 }
 
-// How good a routed loop is: curvy miles, scaled by the share of the ride they make up, and
-// cut by the share it rides twice (each 10% doubled back costs 30%). Best first.
+// How good a routed loop is: miles on curvy roads plus highway sweeps and fast ramps, scaled by the
+// share of the ride they make up, and cut by the share it rides twice (each 10% doubled back costs
+// 30%). Best first.
 function rate(r) {
   if (!r) return null;
-  const curvy = P.curvyMetersOn(r.path, store.roads), back = P.retrace(r.path).meters;
-  return { route: r, curvy, back, blind: P.blindCrestsOn(r.path, store.roads).length,
-    worth: curvy * curvy / r.meters * Math.max(0.1, 1 - 3 * back / r.meters) };
+  const curvy = P.curvyMetersOn(r.path, store.roads), highway = P.highwayMetersOn(r.path, store.roads);
+  const back = P.retrace(r.path).meters, fun = curvy + highway;
+  return { route: r, curvy, highway, back, blind: P.blindCrestsOn(r.path, store.roads).length,
+    worth: fun * fun / r.meters * Math.max(0.1, 1 - 3 * back / r.meters) };
 }
 
 // Route a loop for real. Under 80% of the time, fill it again aiming that much longer (the
@@ -474,7 +479,7 @@ async function routeOption(opt, start, hours) {
     items = better.list;
     best = better.other;
   }
-  Object.assign(opt, { items, route: best && best.route }, best ? { curvy: best.curvy, blind: best.blind, back: best.back, worth: best.worth } : {});
+  Object.assign(opt, { items, route: best && best.route }, best ? { curvy: best.curvy, highway: best.highway, blind: best.blind, back: best.back, worth: best.worth } : {});
 }
 
 function selectOption(i) {
@@ -816,6 +821,7 @@ function optionCard(o, i) {
   h('div.option-head', {}, h('span.num', {}, i + 1), h('b', {}, P.heading(o.dir)[0].toUpperCase() + P.heading(o.dir).slice(1)),
     h('span.muted.push', {}, fmtDuration(o.route.seconds))),
   h('div.option-stats', {}, `${miles(o.route.meters)} mi · `, h('b', {}, `${miles(o.curvy)} mi curvy`), ` (${pct}%)`,
+    o.highway >= 200 ? ` · ${miles(o.highway)} mi highway sweeps` : '',
     o.blind ? h('span.warn', {}, ` · ⚠ ${o.blind}`) : '', o.back >= 400 ? h('span.warn', {}, ` · ↩ ${miles(o.back)} mi twice`) : ''),
   h('div.muted.small', {}, o.items.slice(1).flatMap((it, k) => [k ? ', ' : '', it.gen ? it.label : h('b.own', {}, it.label)])));
 }
@@ -849,7 +855,7 @@ function tripView() {
       rideTime('Generate a loop'),
       h('button.btn.primary.wide', { onclick: () => { go('plan'); generate(); }, disabled: gen.running },
         iconEl(icon.route), gen.running ? 'Working…' : ownStops().length ? 'Generate loops through these stops' : 'Generate loops from this start'),
-      h('p.muted.small', {}, 'Keeps your own stops and fills the time with the best roads nearby.')),
+      h('p.muted.small', {}, `Keeps your own stops and fills the time with the best roads nearby${trip.pref === '0' ? '' : ', sweeping highways included'}.`)),
     h('div.field', {}, h('label.switch', {},
       h('input', { type: 'checkbox', checked: trip.loop, onchange: e => { trip.loop = e.target.checked; tripChanged(); } }),
       h('span', {}, 'Return to start'))),
@@ -881,6 +887,7 @@ function routeSummary() {
       stat(fmtDuration(route.seconds), 'riding'),
       stat(info && info.curvy != null ? `${miles(info.curvy)} mi` : '…', 'on curvy roads'),
       stat(info && info.blind != null ? (info.blind ? `⚠ ${info.blind}` : 'None') : '…', 'blind crests')),
+    info && info.highway >= 200 ? h('p.muted.small', {}, `Plus ${miles(info.highway)} mi of highway sweeps and fast ramps.`) : '',
     route.fallback ? h('p.muted.small', {}, 'The back-roads router is busy, so this is the plain fastest route.') : '',
     doubleBack(),
     p ? h('div', {},

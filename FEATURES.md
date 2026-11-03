@@ -178,7 +178,7 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 | Interchanges | fast interchange ramps and highway sweeps (a different kind of riding) | 3 ramp tiers, 2 highway tiers |
 | Speed limits | roads with a posted limit only; county and residential roads hidden below zoom 11 | 9 speed bins (≤20 … 70+) |
 
-Ramps never appear in the curvy modes or the generator's candidates; they're one-way, so a ramp stop is ridden
+Ramps never appear in the curvy modes or the generator's candidates (highway sweeps do, see Generate loops); they're one-way, so a ramp stop is ridden
 in its own direction (no ⇄). Ramp cards show sweep, lanes, posted limit (never the town estimate) and length.
 Highway sweeps work the same way. They're named for the way they head, from first point to last ("I 435 heading
 south"), so the two directions are separate stretches, and they're hidden in Speed limits mode, where the plain
@@ -281,7 +281,8 @@ colored road), Add a stop here, Street View here.
   needing headings within ~37° (either way) and 400 m of route between passes. Shown from 0.25 mi as a note with the
   stretches dashed orange on the map, and **Try fixing**: each road is tried the other way round (one route request
   each), keeping a flip when it cuts the doubling back by 200 m+ without adding more than 15% to the ride.
-- Miles, riding time, miles on curvy roads, and the blind-crest count along the route.
+- Miles, riding time, miles on curvy roads, and the blind-crest count along the route; under them, miles on highway
+  sweeps and fast ramps when there are 200 m or more (matched on the same ~200 m grid as curvy roads).
 - **Elevation profile:** total climbing, low and high points, from Terrain Tiles z12 (~30 m pixels) read in the
   browser. Heights are read every ~60 m along the road (up to 3,000 reads), blended from the 4 pixels around each
   point, and averaged ±2 reads (~±120 m): the terrain grid beside a road (a hillside, a road cut) isn't the road's
@@ -359,6 +360,12 @@ colored road), Add a stop here, Street View here.
   - Loops head their way: straight at them, or swinging 35° or 70° to either side.
   - Without any, all 12 directions are tried.
 - Looks at roads within `hours × 80 / 2.6` km.
+- **Highway sweeps are candidates too**, unless Between roads is set to Back roads. One is a stop of its own
+  despite being short (the 2 km rule for main roads doesn't apply), ridden in its own direction, scored at half its
+  sweep (×1.25 with 3+ lanes), so a good back road still beats one. A loop takes only one direction of a bend:
+  one-way stops centered within 1 km are the two directions of the same bend. Never another way home.
+  From Lenexa at 1.5 h, loops pick up one or two bends (I-435, I-635, K-10) with the back roads; at 3 h they're
+  still mostly back roads.
 - For each direction (60° either side):
   - adds roads one at a time, taking the most score per extra hour of estimated riding (60 km/h on roads, 80 km/h
     between, ×1.3 road factor), up to the chosen time;
@@ -380,7 +387,8 @@ colored road), Add a stop here, Street View here.
   way with your filters"). From Greenwood at 1.5 h: west is the KC metro, and south's only other curvy road
   (South Amarugia Lane) is gravel, so with Paved on there's no south loop.
 - Roads are turned end for end to make the rides between them shortest over the whole loop (not nearest end first).
-- **Doubling back:** loops are ranked by curvy² / miles × (1 − 3 × share ridden twice), floor 0.1. A loop riding
+- **Doubling back:** loops are ranked by fun² / miles × (1 − 3 × share ridden twice), floor 0.1, where fun is the
+  miles on curvy roads plus the miles on highway sweeps and fast ramps (straight interstate counts nothing). A loop riding
   more than 4% twice (up to twice):
   - first tries **another way home**: the best-scoring road with an end or midpoint within 3 km of the stretch
     ridden twice, not mostly on it, and fitting the time left (estimate × how far the estimate ran off). Short
@@ -392,7 +400,7 @@ colored road), Add a stop here, Street View here.
 - The same loop reached from two directions is shown once. Loops riding more than 20% twice are
   left out when at least 3 others remain. Measured on Oct-31 data: the top loop from south KC went from 29% to 13%,
   from the Lake of the Ozarks from 28% to 1%.
-- Option cards show time, miles, curvy miles and %, blind crests, miles ridden twice, and the roads, with the
+- Option cards show time, miles, curvy miles and %, highway-sweep miles (from 200 m), blind crests, miles ridden twice, and the roads, with the
   rider's in bold.
   Hover previews a loop; tap loads it as the ride.
 
