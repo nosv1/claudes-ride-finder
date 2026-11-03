@@ -113,6 +113,51 @@ class TestRamps(unittest.TestCase):
         self.assertEqual(self.joined(crossing={11: 1}), [1])
 
 
+class TestHighwaySweeps(unittest.TestCase):
+    """Interstate pieces joined into one line per direction, with the sweeping stretches cut out of it."""
+
+    @staticmethod
+    def bend():
+        """1 km north, a 90-degree right curve of 900 m radius (~1.4 km), 1 km east: in local metres."""
+        return line(0, 0, 0, 1000) + arc(900, 1000, 900, math.pi, math.pi / 2)[1:] + line(900, 1900, 1900, 1900)[1:]
+
+    @staticmethod
+    def rows(pts, hw="motorway", mph=70, lanes=3, first_id=100, pieces=3):
+        """A highway drawn as several OSM pieces end to end, as finished tile rows."""
+        ll = to_latlon(pts)
+        cut = [round(i * (len(ll) - 1) / pieces) for i in range(pieces + 1)]
+        return [[first_id + k, hw, "", "I 435", mph, None, 0, 0, 0, 0, 0, bt.encode(ll[a:b + 1]), None, [], lanes]
+                for k, (a, b) in enumerate(zip(cut, cut[1:]))]
+
+    def sweeps(self, *row_lists):
+        tiles = defaultdict(list)
+        for rows in row_lists:
+            tiles["0_0"] += rows
+        bt.highway_sweeps(tiles)
+        return [r for rs in tiles.values() for r in rs if r[0] < 0]
+
+    def test_the_bend_across_pieces_is_one_sweep(self):
+        (row,) = self.sweeps(self.rows(self.bend()))
+        self.assertGreaterEqual(row[9], 1200)
+        self.assertEqual((row[1], row[3], row[4], row[14], row[12], row[13]), ("motorway", "I 435", 70, 3, None, []))
+        self.assertEqual(row[0], -100, "named after its first piece, negated so it never clashes with a way")
+        start, end = bt.decode(row[11])[0], bt.decode(row[11])[-1]
+        self.assertLess(start[0], to_latlon([(0, 1000)])[0][0], "starts on the straight before the curve")
+        self.assertGreater(end[1], to_latlon([(900, 1900)])[0][1], "ends on the straight after it")
+
+    def test_too_slow_or_too_straight_is_left_out(self):
+        self.assertEqual(self.sweeps(self.rows(self.bend(), mph=60)), [])
+        self.assertEqual(self.sweeps(self.rows(line(0, 0, 0, 5000))), [])
+
+    def test_a_trunk_counts_only_when_divided(self):
+        self.assertEqual(self.sweeps(self.rows(self.bend(), hw="trunk")), [], "a two-way road isn't one direction")
+        # The other carriageway, 30 m outside the curve and drawn the other way.
+        other = [(x - 30, y) for x, y in line(0, 0, 0, 1000)] + arc(900, 1000, 930, math.pi, math.pi / 2)[1:] \
+            + [(x, y + 30) for x, y in line(900, 1900, 1900, 1900)[1:]]
+        found = self.sweeps(self.rows(self.bend(), hw="trunk"), self.rows(other[::-1], hw="trunk", first_id=200))
+        self.assertEqual(sorted(r[0] for r in found), [-200, -100])
+
+
 class TestSpeedAndSurface(unittest.TestCase):
     def test_parse_mph(self):
         self.assertEqual(bt.parse_mph("45 mph"), 45)
@@ -272,6 +317,12 @@ class TestBuiltData(unittest.TestCase):
         self.assertEqual(mo150[3], "MO 150")
         self.assertGreaterEqual(mo150[9], 800, "must pass the app's sweeper rule")
         self.assertEqual(mo150[4] if mo150[4] is not None else mo150[5], 55)
+
+    def test_highway_sweeps_are_in_the_curvy_files(self):
+        rows = self.load_tile("-190_77")
+        sweeps = [r for r in rows if r[1] in bt.HIGHWAY_TYPES and r[9]]
+        self.assertTrue(any(r[3].startswith("I 435") for r in sweeps))
+        self.assertTrue(all(r[0] < 0 and r[4] >= bt.HIGHWAY_MIN_MPH and r[9] >= bt.HIGHWAY_MIN_SWEEP for r in sweeps))
 
     def test_fuel_and_search_files(self):
         fuel = self.load(os.path.join(TILES, "fuel.js"), "[", "]")

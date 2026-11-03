@@ -26,6 +26,11 @@ const settings = Object.assign({
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
   basemap: 'dark', hillshade: true, genHours: 3,
 }, load(SETTINGS_KEY));
+// Settings saved before the highway tiers existed list only the ramp tiers: show the new ones too.
+if (!settings.highwayTiers) {
+  settings.rampTiers = [...new Set([...settings.rampTiers, ...RAMP_TIERS.flatMap((t, i) => t.highway ? [i] : [])])];
+  settings.highwayTiers = true;
+}
 
 let trip = T.newTrip();
 let route = null;            // { path, meters, seconds, maneuvers, fallback }
@@ -600,7 +605,7 @@ function homeView() {
   const groups = speedMode || !store.roads.length || mapView.zoom() < LOAD_ZOOM ? [] : bestInView(store.roads, mapView.view(), filters());
   return [
     route ? rideBar() : null,
-    h('div.section-head', {}, h('h2', {}, speedMode ? 'Posted speed limits' : settings.mode === 'ramps' ? 'Fast ramps in view' : 'Best roads in view'),
+    h('div.section-head', {}, h('h2', {}, speedMode ? 'Posted speed limits' : settings.mode === 'ramps' ? 'Fast ramps and highways in view' : 'Best roads in view'),
       loadingCount() ? h('span.muted', {}, 'Loading…') : ''),
     legend(),
     speedMode
@@ -608,7 +613,7 @@ function homeView() {
       : groups.length
         ? h('div.cards', {}, groups.map(roadCard))
         : h('p.empty', {}, !store.roads.length || mapView.zoom() < LOAD_ZOOM ? 'Zoom in to see roads.'
-          : settings.mode === 'ramps' ? 'No fast ramps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
+          : settings.mode === 'ramps' ? 'No fast ramps or highway sweeps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
     h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
   ];
@@ -684,9 +689,9 @@ function rampFacts(g) {
 
 function rampView(g, r, links) {
   const tier = RAMP_TIERS[Math.max(0, g.rampTier)], lanes = Math.max(0, ...g.roads.map(x => x.lanes || 0));
-  const mph = g.roads.map(x => x.mph).find(v => v != null);
+  const mph = g.roads.map(x => x.mph).find(v => v != null), highway = g.roads.some(x => x.highway);
   return [
-    backBar(g.key, 'One-way interchange ramp'),
+    backBar(g.key, highway ? 'One direction of a 65+ mph highway' : 'One-way interchange ramp'),
     h('div.tag', { style: `--c:${tier.color}` }, tier.label),
     h('p.about', {}, tier.about),
     h('div.stats', {},
@@ -696,7 +701,7 @@ function rampView(g, r, links) {
       stat(`${miles(g.roads.reduce((s, x) => s + x.length, 0))} mi`, 'long')),
     h('div.actions', {},
       h('button.btn.primary.wide', { onclick: () => addRoad(g) }, iconEl(icon.plus), 'Add to ride'),
-      h('button.btn.wide', { onclick: () => planAround(g) }, iconEl(icon.route), 'Plan a loop with this ramp'),
+      h('button.btn.wide', { onclick: () => planAround(g) }, iconEl(icon.route), highway ? 'Plan a loop with this highway' : 'Plan a loop with this ramp'),
       ...links),
     h('p.fineprint', {}, `OSM way ${r.id} · ${r.hw.replace('_', ' ')}. Rides are routed the legal way round.`),
   ];

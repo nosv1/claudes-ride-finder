@@ -1,6 +1,6 @@
 // Roads: decoding tile rows, classifying them, filtering, and grouping pieces into stretches.
 // Pure: no DOM, no map library.
-import { CURVE_CLASSES, SPEED_BINS, HILLS, MINOR_TYPES, RAMP_TIERS, RAMP_TYPES } from './config.js';
+import { CURVE_CLASSES, SPEED_BINS, HILLS, MINOR_TYPES, RAMP_TIERS, RAMP_TYPES, HIGHWAY_TYPES, HIGHWAY_LANES_BONUS } from './config.js';
 import { decodeDeltas, boundsOf, extend, pad, intersects, contains, spotOnLine, distance } from './geo.js';
 
 // Row: [id, highway, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords, hill, blind, lanes]
@@ -10,8 +10,10 @@ export function decodeRow(row) {
   const blindPts = [];
   for (let i = 0; i < blind.length; i += 2) blindPts.push([blind[i] / 1e5, blind[i + 1] / 1e5]);
   const r = { id, hw, name, ref, mph, estMph, surface, score, curvy, sweep, length, hill, lanes, blind: blindPts, geom, bounds: boundsOf(geom) };
-  r.key = ref || name || '';
-  r.oneway = RAMP_TYPES.has(hw);
+  // A highway sweep is one direction of the highway, so it's named for the way it heads ("I 435 heading south").
+  r.highway = isHighwaySweep(r);
+  r.key = r.highway ? `${(ref || name || 'Highway').split(';')[0]} heading ${compass(geom[0], geom[geom.length - 1])}` : ref || name || '';
+  r.oneway = RAMP_TYPES.has(hw) || r.highway;
   r.rampTier = rampTier(r);
   // A short closed loop is a roundabout or a circle drive: all curve, but not a ride.
   const a = geom[0], b = geom[geom.length - 1];
@@ -25,11 +27,27 @@ export function decodeRow(row) {
 // Sweepers: a good run of wide curves, or a short road that's mostly curve.
 export const isSweeper = r => r.sweep >= 800 || (r.sweep >= 400 && r.sweep / r.length >= 0.5);
 
+// Highway sweeps: rows build_tiles.py made from 65+ mph highways (plain highway pieces have no sweep).
+export const isHighwaySweep = r => HIGHWAY_TYPES.has(r.hw) && r.sweep > 0;
+// Metres of sweep, with the bonus for 3+ lanes on a highway.
+export const highwaySweep = r => r.sweep * (r.lanes >= 3 ? HIGHWAY_LANES_BONUS : 1);
+
 // Fast ramps sweep for a few hundred metres and aren't mostly tight curve (cloverleaf loops are).
-// -1 not a fast ramp, else the RAMP_TIERS index.
+// Highway sweeps get the highway tiers. -1 neither, else the RAMP_TIERS index.
 export function rampTier(r) {
+  if (isHighwaySweep(r)) {
+    const s = highwaySweep(r);
+    return RAMP_TIERS.reduce((t, tier, i) => tier.highway && s >= tier.min ? i : t, -1);
+  }
   if (!RAMP_TYPES.has(r.hw) || r.sweep < RAMP_TIERS[0].min || r.curvy > 0.5 * r.sweep) return -1;
-  return RAMP_TIERS.reduce((t, tier, i) => r.sweep >= tier.min ? i : t, 0);
+  return RAMP_TIERS.reduce((t, tier, i) => !tier.highway && r.sweep >= tier.min ? i : t, 0);
+}
+
+const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+// Which way a line heads overall, from its first point to its last.
+export function compass(a, b) {
+  const deg = Math.atan2((b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), b[0] - a[0]) * 180 / Math.PI;
+  return COMPASS[Math.round(((deg + 360) % 360) / 45) % 8];
 }
 
 // -1 not curvy, 0 sweeper, 1..4 tight-curve bins (see CURVE_CLASSES).
@@ -50,7 +68,8 @@ export function visible(r, f) {
   if (f.mode === 'ramps') return r.rampTier >= 0 && f.rampTiers.has(r.rampTier);
   if (f.hideUnpaved && r.surface === 1) return false;
   if (f.mode === 'speed') {
-    return r.mph != null && f.speedBins.has(speedBin(r.mph)) && (!isMinor(r) || f.zoom >= 11);
+    // Highway sweeps repeat highway pieces from the speed-limit tiles, so they'd draw twice.
+    return r.mph != null && !r.highway && f.speedBins.has(speedBin(r.mph)) && (!isMinor(r) || f.zoom >= 11);
   }
   if (r.cls < 0 || !f.classes.has(r.cls) || (f.minHills > 0 && r.hillLevel < f.minHills)) return false;
   return f.mode !== 'ride' || r.speed >= f.minSpeed;
@@ -80,7 +99,7 @@ export function clusterRoads(list, near = 0.03) {
 // better: a very hilly one ranks about twice a flat one.
 export function summarize(c, key) {
   const g = { ...c, key };
-  g.score = c.roads.reduce((s, r) => s + (r.score + 0.5 * r.sweep) * (1 + (r.hill || 0) / 30), 0);
+  g.score = c.roads.reduce((s, r) => s + (r.score + 0.5 * (r.highway ? highwaySweep(r) : r.sweep)) * (1 + (r.hill || 0) / 30), 0);
   g.curvy = c.roads.reduce((s, r) => s + curveMeters(r), 0);
   const measured = c.roads.filter(r => r.hill != null), len = measured.reduce((s, r) => s + r.length, 0);
   g.hill = len ? measured.reduce((s, r) => s + r.hill * r.length, 0) / len : null;

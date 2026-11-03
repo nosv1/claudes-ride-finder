@@ -31,11 +31,9 @@ Ideas that came up, roughly in order of how much they'd help.
   87th St roundabouts, and back through the Grandview Triangle.
 - **Mixed rides: back roads plus interchanges**: a good loop can link curvy back roads with fun
   interchanges, as long as the highway parts sweep and aren't jammed.
-  - **Highway sweeps**: score interstate and trunk mainlines too, not just their ramps. Join each one's
-    pieces into a road per direction (by `ref` and direction), then count curves of 150–1,500 m radius like
-    ramps. Show them in Interchanges mode as their own tier. Example: I-435 swinging from north–south by Renner
-    Blvd to east–west across Lackman Rd in Lenexa has about 1.3 mi of sweep each way (measured from the tiles),
-    but no mode shows it today: back-road sweepers stop at 600 m radius and motorways are only kept for speed.
+  - **Highway sweeps**: done (Interchanges mode, 65+ mph, bonus for 3+ lanes). Two-lane trunk highways at
+    65 (US 83 in western Kansas) aren't curvy candidates at all yet; scoring them as ordinary roads would add
+    their sweepers to Best rides.
   - **Generator**: a "Mix in interchanges" option that links curvy roads through the best ramps and highway
     sweeps nearby, instead of the fastest or the flattest way between them. Highway miles count toward the
     ride only where they sweep; straight interstate is still just getting there.

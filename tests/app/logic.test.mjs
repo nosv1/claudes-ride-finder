@@ -5,6 +5,7 @@ import { readFileSync, existsSync } from 'node:fs';
 
 import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, nearestIndex } from '../../js/geo.js';
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
+import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
 import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
@@ -25,7 +26,7 @@ const loadSearch = () => {
 const FILTERS = { mode: 'ride', minSpeed: 45, minHills: 0, hideUnpaved: true, classes: new Set([0, 1, 2, 3, 4]), speedBins: new Set([...Array(9).keys()]), zoom: 12 };
 
 // A fake road row along a line of [lat, lon] points.
-function row({ id = 1, hw = 'secondary', name = '', ref = '', mph = null, est = 55, surface = 0, score = 0, curvy = 0, sweep = 0, length = 1000, pts = east(38, -93), hill = null }) {
+function row({ id = 1, hw = 'secondary', name = '', ref = '', mph = null, est = 55, surface = 0, score = 0, curvy = 0, sweep = 0, length = 1000, pts = east(38, -93), hill = null, lanes = null }) {
   const coords = [];
   let plat = 0, plon = 0;
   for (const [lat, lon] of pts) {
@@ -33,7 +34,7 @@ function row({ id = 1, hw = 'secondary', name = '', ref = '', mph = null, est = 
     coords.push(a - plat, b - plon);
     plat = a; plon = b;
   }
-  return decodeRow([id, hw, name, ref, mph, est, surface, score, curvy, sweep, length, coords, hill, []]);
+  return decodeRow([id, hw, name, ref, mph, est, surface, score, curvy, sweep, length, coords, hill, [], lanes]);
 }
 const east = (lat, lon0, n = 10, step = 0.001) => Array.from({ length: n }, (_, i) => [lat, lon0 + i * step]);
 
@@ -90,6 +91,39 @@ test('fast ramps: sweeping ones count, cloverleaf loops don’t, and they stay o
   addPoint(trip, flyover.geom.at(-1), 'Near the exit end');
   addRoad(trip, g);
   assert.deepEqual(trip.items[1].pts[0], flyover.geom[0].map(v => +v.toFixed(5)));
+});
+
+test('highway sweeps: their own tiers in Interchanges, a bonus for 3+ lanes, one way, never twice in Speed limits', () => {
+  const hwy = (sweep, lanes, id = -1) => row({ id, hw: 'motorway', ref: 'I 435;US 50', mph: 70, est: null, sweep, lanes, length: sweep + 400 });
+  const tier = label => RAMP_TIERS.findIndex(t => t.label === label);
+  assert.equal(hwy(700, 2).rampTier, tier('Highway sweep'));
+  assert.equal(hwy(1000, 2).rampTier, tier('Highway sweep'));
+  assert.equal(hwy(1000, 3).rampTier, tier('Big highway sweep'), '3 lanes count a quarter extra');
+  assert.equal(hwy(500, 3).rampTier, tier('Highway sweep'));
+  assert.equal(hwy(500, 2).rampTier, -1);
+  const h = hwy(800, 3);
+  assert.ok(h.highway && h.oneway);
+  assert.equal(h.cls, -1, 'not in the curvy modes');
+  assert.equal(h.key, 'I 435 heading east', 'named for the way it heads');
+  const all = { ...FILTERS, mode: 'ramps', rampTiers: new Set(RAMP_TIERS.map((_, i) => i)) };
+  assert.ok(visible(h, all));
+  assert.ok(!visible(h, { ...all, rampTiers: new Set([0, 1, 2]) }), 'its tier can be turned off');
+  // The speed-limit tiles have the plain highway pieces; the sweep would draw over them.
+  const speed = { ...FILTERS, mode: 'speed' }, piece = row({ id: 2, hw: 'motorway', ref: 'I 435', mph: 70, est: null, lanes: 3 });
+  assert.ok(!visible(h, speed) && visible(piece, speed));
+  assert.equal(piece.rampTier, -1, 'a plain highway piece is not a sweep');
+  // The two directions are separate stretches.
+  const back = row({ id: -3, hw: 'motorway', ref: 'I 435', mph: 70, est: null, sweep: 800, lanes: 3, pts: east(38.0003, -93).reverse() });
+  assert.equal(back.key, 'I 435 heading west');
+  assert.deepEqual(stretchOf([h, back], h).ids, [-1]);
+});
+
+test('the I-435 bend in Lenexa is a highway sweep both ways', { skip: !haveTiles }, () => {
+  const near = [38.946, -94.768];
+  const found = loadTile('-190_77').filter(r => r.highway && r.key.startsWith('I 435') && roadNear([r], near, () => true, 300));
+  assert.ok(found.length >= 2, `found ${found.map(r => r.key).join(', ')}`);
+  assert.ok(found.every(r => r.rampTier >= 0 && r.mph >= 65 && r.lanes >= 3));
+  assert.ok(new Set(found.map(r => r.key)).size >= 2, 'one per direction');
 });
 
 test('same-named pieces form stretches only when close', () => {

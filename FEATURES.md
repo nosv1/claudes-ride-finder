@@ -86,6 +86,22 @@ committed as `tiles/`. The app needs no OSM server at runtime.
 - The app's rule for a **fast ramp**: sweep ≥ 300 m and no more than half as much tight curve, which drops
   cloverleaf loops. Tiers: Sweeping ramp ≥ 300 m, Long sweep ≥ 600 m, Flyover ≥ 1,000 m.
 
+**Highway sweeps** (`motorway`, `trunk` posted ≥ 65 mph), added after everything else is built
+- OSM splits highways at every ramp, bridge and limit change, so pieces are joined end to end (each one-way
+  carriageway on its own) where the next piece carries straight on (< 30° turn; at a fork, the straightest).
+  A piece under 65 mph, or with no posted limit, ends the line.
+- Resample the joined line every 100 m and count radii of 150–1,500 m, as for ramps. Curves less than 300 m apart
+  are one stretch; a stretch is kept if it sweeps ≥ 600 m. 200 m of straight is kept either side.
+- Each stretch is a row in the curvy file of its midpoint's tile: id is minus its first piece's id (a negative
+  id never clashes with a way's); limit is the lowest posted along it; lanes the fewest recorded.
+- A `trunk` counts only where it's divided: another highway piece running the opposite way within 80 m along most
+  of it. A two-way trunk is one line for both directions, not a one-way sweep.
+- `python tools/add_highway_sweeps.py` reruns just this step on the built `tiles/` (replacing earlier highway
+  sweeps), since everything it needs is in the tiles. About 15 s; no state downloads or full rebuild.
+- Regression case: I-435 between Renner Blvd and Lackman Rd in Lenexa sweeps both ways (3 lanes, 65 mph).
+- In the app: Highway sweep ≥ 600 m and Big highway sweep ≥ 1,200 m, with 3+ lanes counting ×1.25 (so a 3-lane
+  stretch is Big from 960 m). The same bonus applies to their rank in the list.
+
 **Gas stations**
 - `amenity=fuel` nodes and ways (centroid). Diesel or truck-only pumps are skipped.
 - 90+ octane status:
@@ -159,11 +175,14 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 |---|---|---|
 | Best rides (default) | curvy and sweeper roads with a limit (posted or estimated) ≥ the chosen 35/40/45/50/55 mph | curviness |
 | All curvy roads | all curvy and sweeper roads | curviness |
-| Interchanges | fast interchange ramps only (a different kind of riding) | 3 ramp tiers |
+| Interchanges | fast interchange ramps and highway sweeps (a different kind of riding) | 3 ramp tiers, 2 highway tiers |
 | Speed limits | roads with a posted limit only; county and residential roads hidden below zoom 11 | 9 speed bins (≤20 … 70+) |
 
 Ramps never appear in the curvy modes or the generator's candidates; they're one-way, so a ramp stop is ridden
 in its own direction (no ⇄). Ramp cards show sweep, lanes, posted limit (never the town estimate) and length.
+Highway sweeps work the same way. They're named for the way they head, from first point to last ("I 435 heading
+south"), so the two directions are separate stretches, and they're hidden in Speed limits mode, where the plain
+highway pieces they're made from already draw.
 
 **Curve classes**, by score per metre:
 - Some curves ≥ 0.15

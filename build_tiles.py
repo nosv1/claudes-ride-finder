@@ -7,6 +7,7 @@ https://download.geofabrik.de/north-america/us.html (e.g. arkansas-latest.osm.pb
 put them in raw/, and re-run. Elevation tiles for curvy roads are downloaded once
 into raw/terrain/ (a few hundred MB per state).
 """
+import bisect
 import glob
 import json
 import math
@@ -520,7 +521,7 @@ def road_index(tiles, places):
     for rows in tiles.values():
         for row in rows:
             key = row[3] or row[2]
-            if key and (row[7] or row[9]) and row[1] not in RAMP_TYPES:
+            if key and (row[7] or row[9]) and row[1] not in RAMP_TYPES | HIGHWAY_TYPES:
                 by_key[key].append(row)
 
     out = []
@@ -546,6 +547,167 @@ def road_index(tiles, places):
             out.append([key, name, round(s, 4), round(w, 4), round(n, 4), round(e, 4), round(curves),
                         nearest_town((s + n) / 2, (w + e) / 2)])
     return out
+
+
+# Highway sweeps: interstates and divided highways posted 65+, where the road itself sweeps for a while
+# (the ramps are scored on their own above). OSM splits highways at every ramp and bridge, so pieces are
+# joined end to end into one line per direction first; then the stretches that sweep are cut out of it.
+HIGHWAY_TYPES = {"motorway", "trunk"}
+HIGHWAY_MIN_MPH = 65      # posted; an interstate with no limit on record isn't kept at all
+HIGHWAY_MIN_SWEEP = 600   # metres of sweeping curve in one stretch
+HIGHWAY_GAP = 300         # straight allowed between two curves of the same stretch
+HIGHWAY_LEAD = 200        # straight kept either side, so the stretch starts before the curve
+HIGHWAY_JOIN_TURN = math.radians(30)  # the next piece must carry straight on (not a fork off to the side)
+DIVIDED_NEAR = 80         # a divided highway's other carriageway runs the other way within this many metres
+
+
+def _metres(a, b):
+    k = math.cos(math.radians((a[0] + b[0]) / 2))
+    return math.hypot((b[0] - a[0]) * 110540, (b[1] - a[1]) * 111320 * k)
+
+
+def _bearing(a, b):
+    return math.atan2((b[1] - a[1]) * math.cos(math.radians(a[0])), b[0] - a[0])
+
+
+def _turn(h1, h2):
+    d = abs(h1 - h2) % (2 * math.pi)
+    return min(d, 2 * math.pi - d)
+
+
+def _radius(a, b, c):
+    """Turn radius in metres at b, projected around b (good over any length of highway)."""
+    kx, ky = 111320 * math.cos(math.radians(b[0])), 110540
+    pa, pb, pc = [((p[1] - b[1]) * kx, (p[0] - b[0]) * ky) for p in (a, b, c)]
+    return next(radii([pa, pb, pc]))
+
+
+def _point_at(pts, dist, d):
+    """The point d metres along a line whose points are dist[i] metres along it."""
+    i = max(1, min(len(pts) - 1, bisect.bisect_left(dist, d)))
+    seg = dist[i] - dist[i - 1]
+    t = 0 if seg <= 0 else max(0.0, min(1.0, (d - dist[i - 1]) / seg))
+    return (pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t), i
+
+
+def _divided(coords, others):
+    """Whether most of a line has another carriageway running the opposite way within DIVIDED_NEAR."""
+    step = max(1, len(coords) // 8)
+    pairs = [(coords[i], coords[min(i + step, len(coords) - 1)]) for i in range(0, len(coords) - 1, step)]
+    hits = 0
+    for p, q in pairs:
+        h = _bearing(p, q)
+        cy, cx = round(p[0] / 0.002), round(p[1] / 0.002)
+        near = (s for dy in (-1, 0, 1) for dx in (-1, 0, 1) for s in others.get((cy + dy, cx + dx), ()))
+        hits += any(_turn(h, sh) > math.radians(150) and _metres(p, sp) <= DIVIDED_NEAR for sp, sh in near)
+    return hits >= 0.6 * len(pairs)
+
+
+def highway_sweeps(tiles):
+    """Add a row for each stretch of 65+ mph highway that sweeps, to the tile of its midpoint.
+    Rows are one-way (one carriageway), with a negative id so they never clash with a way's."""
+    rows = sorted((r for rs in tiles.values() for r in rs if r[1] in HIGHWAY_TYPES and r[9] == 0), key=lambda r: r[0])
+    geom = {r[0]: decode(r[11]) for r in rows}
+    fast = {r[0]: r for r in rows if r[4] is not None and r[4] >= HIGHWAY_MIN_MPH}
+    starts, ends = defaultdict(list), defaultdict(list)
+    for wid in fast:
+        starts[geom[wid][0]].append(wid)
+        ends[geom[wid][-1]].append(wid)
+
+    # Every highway piece (any limit), sampled every ~100 m with its heading, to tell divided highways
+    # (two one-way carriageways) from two-way ones.
+    others = defaultdict(list)
+    for r in rows:
+        pts = geom[r[0]]
+        for a, b in zip(pts, pts[1:]):
+            h, n = _bearing(a, b), max(1, int(_metres(a, b) / 100))
+            for k in range(n + 1):
+                p = (a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n)
+                others[(round(p[0] / 0.002), round(p[1] / 0.002))].append((p, h))
+
+    used = set()
+
+    def straightest(options, heading, seq_of):
+        best = None
+        for w in options:
+            if w in used:
+                continue
+            t = _turn(heading, seq_of(w))
+            if t < HIGHWAY_JOIN_TURN and (best is None or t < best[0]):
+                best = (t, w)
+        return best and best[1]
+
+    chains = []
+    for wid in fast:
+        if wid in used:
+            continue
+        used.add(wid)
+        chain = [wid]
+        while True:  # forward: pieces starting where this one ends
+            pts = geom[chain[-1]]
+            nxt = straightest(starts[pts[-1]], _bearing(pts[-2], pts[-1]), lambda w: _bearing(geom[w][0], geom[w][1]))
+            if nxt is None:
+                break
+            used.add(nxt)
+            chain.append(nxt)
+        while True:  # backward: pieces ending where this one starts
+            pts = geom[chain[0]]
+            prv = straightest(ends[pts[0]], _bearing(pts[0], pts[1]), lambda w: _bearing(geom[w][-2], geom[w][-1]))
+            if prv is None:
+                break
+            used.add(prv)
+            chain.insert(0, prv)
+        chains.append(chain)
+
+    ids = {r[0] for rs in tiles.values() for r in rs}
+    added = 0
+    for chain in chains:
+        pts, src = [], []
+        for w in chain:
+            g = geom[w] if not pts else geom[w][1:]
+            pts += g
+            src += [w] * len(g)
+        dist = [0.0]
+        for a, b in zip(pts, pts[1:]):
+            dist.append(dist[-1] + _metres(a, b))
+        if dist[-1] < HIGHWAY_MIN_SWEEP:
+            continue
+        samples = [_point_at(pts, dist, d)[0] for d in range(0, int(dist[-1]) + 1, SWEEP_STEP)]
+        lo, hi = RAMP_SWEEP_RADIUS
+        sweeping = [i for i in range(1, len(samples) - 1) if lo <= _radius(*samples[i - 1:i + 2]) < hi]
+        groups = []
+        for i in sweeping:
+            if groups and (i - groups[-1][-1]) * SWEEP_STEP <= HIGHWAY_GAP:
+                groups[-1].append(i)
+            else:
+                groups.append([i])
+        for g in groups:
+            sweep = len(g) * SWEEP_STEP
+            if sweep < HIGHWAY_MIN_SWEEP:
+                continue
+            d0 = max(0.0, (g[0] - 1) * SWEEP_STEP - HIGHWAY_LEAD)
+            d1 = min(dist[-1], (g[-1] + 1) * SWEEP_STEP + HIGHWAY_LEAD)
+            (p0, i0), (p1, i1) = _point_at(pts, dist, d0), _point_at(pts, dist, d1)
+            coords = [p0]
+            for p in pts[i0:i1] + [p1]:
+                if p != coords[-1]:
+                    coords.append(p)
+            ways = [fast[w] for w in dict.fromkeys(src[max(0, i0 - 1):i1 + 1])]
+            mid = fast[src[min(len(src) - 1, (i0 + i1) // 2)]]
+            if mid[1] == "trunk" and not _divided(coords, others):
+                continue  # a two-way highway: one line for both directions, not a one-way sweep
+            lanes = [w[14] for w in ways if w[14]]
+            length, _, curvy, _ = analyze(coords)
+            rid = -ways[0][0]
+            while rid in ids:
+                rid -= 10 ** 10
+            ids.add(rid)
+            row = [rid, mid[1], mid[2], mid[3], min(w[4] for w in ways), None, 0, 0, round(curvy), sweep, round(length),
+                   encode(coords), None, [], min(lanes) if lanes else None]
+            m = coords[len(coords) // 2]
+            tiles[f"{math.floor(m[1] / TILE_SIZE)}_{math.floor(m[0] / TILE_SIZE)}"].append(row)
+            added += 1
+    return added
 
 
 def write_tiles(tiles, regions):
@@ -609,6 +771,7 @@ def main(args):
             curvy_road = (row[7] or row[9]) and row[1] not in RAMP_TYPES  # bare-earth elevation means nothing on a flyover
             row += hills_and_blind(decode(row[11]), elev) if curvy_road else (None, [])
             row.append(lanes.get(row[0]))
+    print(f"Highway sweeps: {highway_sweeps(tiles):,}", flush=True)
 
     regions = sorted(os.path.basename(p).replace("-latest.osm.pbf", "") for p in paths)
     write_tiles(tiles, regions)

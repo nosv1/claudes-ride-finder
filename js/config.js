@@ -19,9 +19,17 @@ export const RAMP_TIERS = [
   { label: 'Sweeping ramp', min: 300, color: '#a3e635', about: 'At least 1,000 ft of highway-speed curve.' },
   { label: 'Long sweep', min: 600, color: '#38bdf8', about: 'At least 2,000 ft of it.' },
   { label: 'Flyover', min: 1000, color: '#f472b6', about: 'Two-thirds of a mile or more: usually the big elevated flyovers.' },
+  // The highway itself (interstates and divided highways posted 65+), one direction at a time. `min` is metres of
+  // sweep, with 3+ lanes counting a quarter extra (HIGHWAY_LANES_BONUS).
+  { label: 'Highway sweep', min: 600, highway: true, color: '#fb923c',
+    about: 'A 65+ mph highway sweeping for at least 2,000 ft (1,600 ft with 3+ lanes), one direction.' },
+  { label: 'Big highway sweep', min: 1200, highway: true, color: '#a78bfa',
+    about: 'Three-quarters of a mile or more of it (just over half a mile with 3+ lanes).' },
 ];
-export const RAMP_ABOUT = 'One-way interchange ramps that sweep at speed (curves of about 500–5,000 ft radius). Tight cloverleaf loops are left out.';
+export const RAMP_ABOUT = 'One-way interchange ramps and stretches of 65+ mph highway that sweep at speed (curves of about 500–5,000 ft radius). Tight cloverleaf loops are left out.';
 export const RAMP_TYPES = new Set(['motorway_link', 'trunk_link']);
+export const HIGHWAY_TYPES = new Set(['motorway', 'trunk']);
+export const HIGHWAY_LANES_BONUS = 1.25;  // 3+ lanes: room to pick a line, and it's usually the main road
 
 export const SPEED_BINS = [
   { label: '≤20', max: 20, color: '#9b59d0' },

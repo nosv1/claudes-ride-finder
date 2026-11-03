@@ -25,7 +25,7 @@ function roadFilter(f) {
   if (f.mode === 'ramps') {
     all.push(['in', ['get', 'rt'], ['literal', [...f.rampTiers]]]);
   } else if (f.mode === 'speed') {
-    all.push(['==', ['get', 'posted'], 1], ['in', ['get', 'sbin'], ['literal', [...f.speedBins]]]);
+    all.push(['==', ['get', 'posted'], 1], ['!=', ['get', 'hwy'], 1], ['in', ['get', 'sbin'], ['literal', [...f.speedBins]]]);
     if (f.zoom < 11) all.push(['==', ['get', 'minor'], 0]);
   } else {
     all.push(['in', ['get', 'cls'], ['literal', [...f.classes]]]);
@@ -180,7 +180,7 @@ export class MapView {
   setRoads(roads) {
     const features = roads.map(r => r.feature || (r.feature = line(r.geom, {
       i: r.id, cls: r.cls, spd: r.speed ?? -1, posted: r.mph != null ? 1 : 0, sbin: speedBin(r.mph), hill: r.hillLevel,
-      surf: r.surface, minor: isMinor(r) ? 1 : 0, rt: r.rampTier, ...(r.ref && SHIELD_TYPES.has(r.hw) ? { ref: r.ref } : {}),
+      surf: r.surface, minor: isMinor(r) ? 1 : 0, rt: r.rampTier, hwy: r.highway ? 1 : 0, ...(r.ref && SHIELD_TYPES.has(r.hw) ? { ref: r.ref } : {}),
     })));
     this.map.getSource('roads').setData(fc(features));
     const crests = [];
