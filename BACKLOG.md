@@ -43,6 +43,11 @@ Ideas that came up, roughly in order of how much they'd help.
     thumb (weekend mornings, weekdays outside 6–9 am and 3–7 pm). Better is typical traffic by hour, if a free
     source turns up (state DOT counts, e.g. KDOT and MoDOT, give daily volume per segment, not by hour). Put
     it on the leave-time picker: "I-435 is usually quiet now".
+    TomTom's free tier looks like enough for one rider (checked 2026-11-03, from third-party price lists; TomTom
+    reportedly changed pricing in July 2026, so confirm): ~50,000 map tiles a day covers a live traffic-flow
+    overlay, and ~2,500 other requests a day covers expected traffic, by routing the highway parts with the
+    leave time and comparing against the empty-road time. Google (~$10 per 1,000 after 5,000 a month) and HERE
+    cost more; Mapbox traffic is quote-only. KC Scout has the I-435 sensors but no public feed found.
 - **Hide maybe-gravel roads**: an option to hide county roads whose surface isn't recorded
   (drawn dashed today). Many are gravel in the Ozarks.
 - **Generator avoids city traffic**: today loops through town only rank lower. Penalize
