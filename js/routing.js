@@ -53,8 +53,10 @@ async function valhalla(pts, useHighways, uTurns) {
     const req = {
       // A pin snaps to a street, not the driveway or parking lot nearest it (the route would
       // turn in and out). Through points are on our roads already.
-      locations: chunk.map(({ p, via }, j) => ({ lat: p[0], lon: p[1], type: type(via, j),
-        ...(via ? {} : { search_filter: { min_road_class: 'residential' } }) })),
+      // A heading (riding, re-routed from where you are) starts the route the way you're going, not with a U-turn.
+      locations: chunk.map(({ p, via, heading }, j) => ({ lat: p[0], lon: p[1], type: type(via, j),
+        ...(via ? {} : { search_filter: { min_road_class: 'residential' } }),
+        ...(heading != null ? { heading: Math.round(heading), heading_tolerance: 60 } : {}) })),
       costing: 'motorcycle',
       costing_options: { motorcycle: { use_highways: useHighways, use_trails: 0 } },
       units: 'miles',
@@ -66,6 +68,8 @@ async function valhalla(pts, useHighways, uTurns) {
         result.maneuvers.push({
           type: m.type, at: offset + m.begin_shape_index, end: offset + m.end_shape_index,
           km: m.length * 1.609, s: m.time, names: m.street_names || [], text: m.instruction || '',
+          // What Ride mode says: a heads-up a way off, and the call as the turn comes up.
+          alert: m.verbal_transition_alert_instruction || '', pre: m.verbal_pre_transition_instruction || '',
         });
       }
       result.path.push(...decodePolyline(leg.shape));

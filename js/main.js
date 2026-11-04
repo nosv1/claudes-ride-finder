@@ -9,12 +9,14 @@ import { fetchRoute, routeRefs, routerTrouble } from './routing.js';
 import { profile } from './elevation.js';
 import * as W from './weather.js';
 import { Fly } from './fly.js';
+import { Ride } from './ride.js';
+import { TAGS, allTags, tagOf, setTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged } from './tags.js';
 import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox, loadSignals } from './store.js';
 import { MapView } from './mapview.js';
 import { icon, h, elevationChart, Sheet, toast, menu, closeMenu } from './ui.js';
 
 const HOME = [39.0997, -94.5786];
-const SETTINGS_KEY = 'rf2-settings', TRIP_KEY = 'rf2-trip';
+const SETTINGS_KEY = 'rf2-settings', TRIP_KEY = 'rf2-trip', VOICE_KEY = 'rf2-voice';
 const $ = s => document.querySelector(s);
 const load = key => { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } };
 const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string' ? v : JSON.stringify(v)); } catch (e) { /* storage unavailable */ } };
@@ -50,6 +52,7 @@ let leaveAt = null;          // when the rider leaves (ms), for the weather; nul
 let weather = null;          // { route, points, hourly, at, loading, error }: the forecast along the route
 let tilted = false;
 let fly = null;               // the fly-through playing, if any
+let ride = null;              // Ride mode (turn by turn), if on
 
 const MODES = { ride: 'Best rides', curvy: 'All curvy roads', speed: 'Speed limits' };
 const highwaysOnly = () => settings.mode !== 'speed' && settings.roadType === 'highway';
@@ -70,7 +73,7 @@ const mapView = new MapView('map', {
     return { top: Sheet.wide() ? 0 : $('#topbar').getBoundingClientRect().bottom, right: 0, bottom: c.bottom, left: c.left };
   },
 });
-window.RF = { store, mapView, go: (v, arg) => go(v, arg), get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, get fly() { return fly; }, setRoute: r => { routeSeq++; clearTimeout(routeTimer); setRoute(r); }, settings };
+window.RF = { store, mapView, go: (v, arg) => go(v, arg), get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, get fly() { return fly; }, get ride() { return ride; }, setRoute: r => { routeSeq++; clearTimeout(routeTimer); setRoute(r); }, settings };
 
 async function start() {
   // The side panel starts below the top bar, whose height depends on how the chips wrap.
@@ -95,6 +98,8 @@ async function start() {
   mapView.updateInsets();
   addEventListener('resize', () => mapView.updateInsets());
   mapView.setStations(store.fuel);
+  mapView.setTags(tagsForMap());
+  onTagsChanged(() => { mapView.setTags(tagsForMap()); renderSoon(); });
   applySettings();
   loadSavedTrip();
   let lastZoom = mapView.zoom();
@@ -492,8 +497,12 @@ async function generateRun(run) {
   live();
   // The roads the map shows, by road type: curvy roads, highway sweeps or both (ramps aren't stops, yet).
   // Not the roller coasters: they're shown to be aware of, not to build rides on.
-  const f = filters(), worthy = r => !r.roller && visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
-  const options = P.buildOptions(P.candidateGroups(store.roads, s, reach, worthy, e), s, hours, required, e);
+  // Not roads you tagged Don't ride; your other tags rank a road lower (Rough, Gravel, Busy) or higher (Great).
+  const f = filters(), avoid = avoidedIds();
+  const worthy = r => !r.roller && !avoid.has(r.id) && visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
+  const groups = P.candidateGroups(store.roads, s, reach, worthy, e);
+  for (const g of groups) g.score *= weightOf(g.ids);
+  const options = P.buildOptions(groups, s, hours, required, e);
   if (!options.length) {
     gen = { options: [], index: -1, running: false, status: oneWay ? 'No good roads on the way. Try more extra time, or loosen the filters.'
       : 'No good roads within reach. Try a longer ride, or loosen the filters.' };
@@ -969,10 +978,43 @@ function roadCard(g) {
   },
   h('span.bar', { style: `background:${groupColor(g)}` }),
   h('div.card-main', {},
-    h('div.card-title', {}, g.key),
+    h('div.card-title', {}, g.key, tagMark(g.ids)),
     g.oneway ? h('div.card-sub', {}, rampFacts(g).join(' · ')) : h('div.card-sub', {}, g.roller ? `${miles(g.length)} mi, straight` : `${miles(g.curvy)} mi of curves`, hill && hill !== 'Flat' ? ` · ${hill.toLowerCase()}` : '',
       g.blind ? h('span.warn', {}, ` · ⚠ ${g.blind}`) : '')),
   h('button.icon-btn.add', { title: 'Add to ride', onclick: e => { e.stopPropagation(); addRoad(g); }, html: icon.plus }));
+}
+
+// A road's tags as a small colored mark after its name.
+function tagMark(ids) {
+  const t = tagOf(ids);
+  return t && t.tags.length ? h('span.tag-mark', { style: `--c:${TAGS.find(x => x.k === t.tags[0]).color}` }, tagWords(t)) : '';
+}
+
+// Tag a road for yourself: Rough, Don't ride... Great and the bad ones don't go together: picking one clears the other.
+const CLASHES = { great: ['avoid', 'rough'], avoid: ['great'], rough: ['great'] };
+const withTag = (tags, k) => [...new Set([...tags, k])].filter(x => !(CLASHES[k] || []).includes(x));
+
+function tagSection(g) {
+  const t = tagOf(g.ids), on = t ? t.tags : [], note = t ? t.note : '';
+  const toggle = k => setTags(g, on.includes(k) ? on.filter(x => x !== k) : withTag(on, k), note);
+  return h('div.section.tags-section', {},
+    h('h3', {}, iconEl(icon.tag), 'Your tags'),
+    h('div.tag-picks', {}, TAGS.map(x => h(`button.tag-pick${on.includes(x.k) ? '.on' : ''}`, { style: `--c:${x.color}`, onclick: () => toggle(x.k) }, x.label))),
+    h('input.tag-note', { type: 'text', placeholder: 'A note, like “potholes past the bridge”', value: note, maxlength: 200,
+      onchange: e => setTags(g, on, e.target.value) }),
+    h('p.fineprint', {}, 'Kept on this device. Loops made for you leave out roads tagged Don’t ride, and rank Rough, Gravel and Busy ones lower and Great ones higher. In Ride mode, Tag road tags the mile or so of road around you.'));
+}
+
+// Ride mode's Tag road: the road under you, about a mile either way (a rough patch, not all 20 miles of the road). Its
+// name, or null if there's no mapped road there.
+function tagHere(k, p, heading) {
+  const x = (heading != null && roadAlong(store.roads, p, heading, 30)) || roadNear(store.roads, p, () => true, 30);
+  if (!x) return null;
+  const near = pad([p[0], p[1], p[0], p[1]], 0.015);
+  const g = { key: x.key || 'Unnamed road', roads: x.key ? store.roads.filter(r => r === x || (r.key === x.key && intersects(near, r.bounds))) : [x] };
+  const t = tagOf(g.roads.map(r => r.id));
+  setTags(g, withTag(t ? t.tags : [], k), t ? t.note : '');
+  return g.key;
 }
 
 function rideBar() {
@@ -981,7 +1023,7 @@ function rideBar() {
       h('div.muted', {}, 'Your ride'),
       h('div.ride-stats', {}, `${miles(route.meters)} mi · ${fmtDuration(route.seconds)}`,
         info && info.curvy != null ? ` · ${miles(info.curvy)} curvy` : '', info && info.blind ? ` · ⚠ ${info.blind}` : '')),
-    h('button.btn.primary', { onclick: openGoogle }, iconEl(icon.go), 'Go'));
+    h('button.btn.primary', { onclick: startRide }, iconEl(icon.go), 'Ride'));
 }
 
 // Sweep, lanes and speed for a ramp (posted only: the town estimate means nothing on a ramp).
@@ -1007,6 +1049,7 @@ function rampView(g, r, links) {
       h('button.btn.primary.wide', { onclick: () => addRoad(g) }, iconEl(icon.plus), 'Add to ride'),
       h('button.btn.wide', { onclick: () => planAround(g) }, iconEl(icon.route), highway ? 'Plan a loop with this highway' : 'Plan a loop with this ramp'),
       ...links),
+    tagSection(g),
     h('p.fineprint', {}, `OSM way ${r.id} · ${r.hw.replace('_', ' ')}. Rides are routed the legal way round.`),
   ];
 }
@@ -1045,6 +1088,7 @@ function roadView() {
       stat(r.mph != null ? `${r.mph} mph` : `~${r.estMph} mph`, r.mph != null ? 'posted limit' : 'estimated limit'),
       stat(g.blind ? `⚠ ${g.blind}` : 'None', 'blind crest corners')),
     h('div.surface', { class: r.surface ? 'surface warn' : 'surface' }, `Surface: ${SURFACE[r.surface]}`),
+    tagSection(g),
     prof,
     h('div.actions', {},
       h('button.btn.primary.wide', { onclick: () => addRoad(g) }, iconEl(icon.plus), 'Add to ride'),
@@ -1273,6 +1317,23 @@ function lightUp(tag, id, pick, ...children) {
 }
 
 // The focus tags, a bar of the whole ride by kind of road, and the roads on it that fit the filters.
+// The roads you tagged that this ride uses, and how much of each.
+let tagMemo = null;
+function tagsOnRide(r) {
+  const list = allTags();
+  if (!tagMemo || tagMemo.route !== r || tagMemo.list !== list) {
+    const hits = list.filter(t => t.tags.length).map(t => {
+      const roads = t.pieces.map(x => ({ geom: x.g, bounds: boundsOf(x.g) }));
+      return { t, m: P.metersOn(r.path, roads, () => true) };
+    }).filter(x => x.m >= 200);
+    tagMemo = { route: r, list, hits };
+  }
+  if (!tagMemo.hits.length) return '';
+  const bad = tagMemo.hits.some(x => x.t.tags.includes('avoid') || x.t.tags.includes('rough'));
+  return h(`p.small.tags-on-ride${bad ? '.warn' : ''}`, {}, h('b', {}, 'Your tags on this ride: '),
+    tagMemo.hits.map(({ t, m }) => `${t.key} (${tagWords(t)}, ${miles(m)} mi)`).join(' · '));
+}
+
 function rideMixView(mix) {
   const focus = P.rideFocus(mix), total = mix.meters || 1;
   const parts = [...mix.byClass.map((m, k) => [k, m]), [-1, mix.highway], [-2, mix.roller]].filter(([, m]) => m > 0);
@@ -1320,6 +1381,7 @@ function routeSummary() {
       stat(info && info.blind != null ? (info.blind ? `⚠ ${info.blind}` : 'None') : '…', 'blind crests')),
     info && info.highway >= 200 ? h('p.muted.small', {}, `Plus ${miles(info.highway)} mi of highway sweeps and fast ramps.`) : '',
     info ? rideMixView(mixFor(route)) : '',
+    tagsOnRide(route),
     info && info.lights && info.lights.length ? h('p.muted.small', {}, lightsNote(info.lights)) : '',
     route.fallback ? h('p.muted.small', {}, 'The back-roads router is busy, so this is the plain fastest route.') : '',
     doubleBack(),
@@ -1328,6 +1390,36 @@ function routeSummary() {
         h('span', {}, `${Math.round(p.lo).toLocaleString()}–${Math.round(p.hi).toLocaleString()} ft`)),
       elevationChart(p, s => mapView.setDot(s && s.p))) : '',
     h('button.btn.wide', { onclick: flyRide }, iconEl(icon.play), 'Fly through the ride in 3D'));
+}
+
+// The road under someone at p heading that way, for a fly-through or Ride mode: its route numbers, name and speed limit.
+function roadAt(p, heading) {
+  const x = roadAlong(store.roads, p, heading);
+  // The estimate is a rule of thumb for ordinary roads (30 in town): none on highways or ramps.
+  const guess = /^(motorway|trunk)|_link$/.test(x && x.hw) ? null : x && x.estMph;
+  return x && { ref: (x.ref || '').replace(/;/g, ' / '), name: x.name, curvy: x.cls >= 0, limit: x.mph ?? guess, posted: x.mph != null };
+}
+
+// Turn by turn on this ride, in the app (ride.js): it follows the ride's line, so a skipped stop needs no removing.
+function startRide() {
+  if (!route || ride || fly) return;
+  closeMenu();
+  speedTap++;
+  showTag(null);
+  if (!navigator.geolocation) return toast('This browser can’t give your location, so it can’t guide you.', { label: 'Google Maps', run: openGoogle });
+  const r = route;
+  loadTilesAlong(r.path, { speed: true });  // speed limits for every road on it, and roads to tag
+  ride = new Ride(mapView, {
+    route: r, loop: trip.loop, roadAt, tagRoad: tagHere, crests: P.blindCrestsOn(r.path, store.roads),
+    voice: load(VOICE_KEY) !== false, onVoice: on => save(VOICE_KEY, on),
+    // The way back onto the ride: from where you are, the way you're going, onto it going its way. If the router
+    // can't match that (it falls back to the plain one, which has no turns to call), without the way at the end.
+    reroute: async (p, heading, to) => {
+      const r = await fetchRoute([{ p, via: false, heading }, { p: to.p, via: false, heading: to.heading }], +trip.pref);
+      return r && r.fallback ? (await fetchRoute([{ p, via: false, heading }, { p: to.p, via: false }], +trip.pref)) || r : r;
+    },
+    onClose: () => { ride = null; mapView.updateInsets(); mapView.fit(boundsOf(r.path)); renderSoon(); },
+  });
 }
 
 // Watch the ride from just behind the rider, at a multiple of its riding time.
@@ -1339,12 +1431,6 @@ function flyRide() {
   const r = route;
   mapView.setBasemap('satellite');  // the dark map is bleak from the seat
   loadTilesAlong(r.path, { speed: true });  // speed limits for every road on it, not just the curvy ones
-  const roadAt = (p, heading) => {
-    const x = roadAlong(store.roads, p, heading);
-    // The estimate is a rule of thumb for ordinary roads (30 in town): none on highways or ramps.
-    const guess = /^(motorway|trunk)|_link$/.test(x && x.hw) ? null : x && x.estMph;
-    return x && { ref: (x.ref || '').replace(/;/g, ' / '), name: x.name, curvy: x.cls >= 0, limit: x.mph ?? guess, posted: x.mph != null };
-  };
   loadWeather();
   // The forecast at the weather point nearest m, for the hour you'd pass: leaving time + s.
   const weatherAt = (m, s) => {
@@ -1519,13 +1605,15 @@ function exportSection() {
   const links = P.googleLinks(P.googlePoints(route, trip));
   return h('div.section', {},
     h('h3', {}, iconEl(icon.go), 'Ride it'),
-    h('button.cta', { onclick: openGoogle }, iconEl(icon.go), links.length > 1 ? `Open in Google Maps (${links.length} parts)` : 'Open in Google Maps'),
+    h('button.cta', { onclick: startRide }, iconEl(icon.go), 'Ride it here, turn by turn'),
+    h('p.muted.small', {}, 'Follows the ride itself, not its stops: skip a part and it picks you up where you rejoin; leave it and it finds a way back on ahead. Keep the screen on and Ride Finder in front (phone mounted and charging).'),
+    h('button.btn.wide', { onclick: openGoogle }, iconEl(icon.globe), links.length > 1 ? `Open in Google Maps (${links.length} parts)` : 'Open in Google Maps'),
     showGoogleParts && links.length > 1 ? h('div.parts', {}, links.map((l, i) =>
       h('a.btn', { href: l, target: '_blank', rel: 'noopener' }, `Part ${i + 1} of ${links.length}`))) : '',
     h('div.btn-row', {},
       h('button.btn', { onclick: downloadGpx }, iconEl(icon.download), 'GPX file'),
       h('button.btn', { onclick: shareTrip }, iconEl(icon.share), 'Share')),
-    h('p.fineprint', {}, 'Google Maps gets extra stops just past key turns so it sticks to this route. GPX keeps the exact route for riding apps (OsmAnd is free).'));
+    h('p.fineprint', {}, 'Google Maps gets extra stops just past key turns so it sticks to this route (skip one and it sends you back for it). GPX keeps the exact route for riding apps (OsmAnd is free).'));
 }
 
 function openGoogle() {

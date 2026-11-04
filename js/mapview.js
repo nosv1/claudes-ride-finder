@@ -3,6 +3,7 @@
 // works in [lat, lon]; MapLibre's [lon, lat] stays inside this file.
 /* global maplibregl */
 import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN, HIGHWAYS, ROLLER, tiersFor } from './config.js';
+import { TAGS } from './tags.js';
 import { speedBin, isMinor } from './roads.js';
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
@@ -108,6 +109,9 @@ export class MapView {
           fuel: { type: 'geojson', data: EMPTY },
           routeFuel: { type: 'geojson', data: EMPTY },
           rider: { type: 'geojson', data: EMPTY },
+          ridden: { type: 'geojson', data: EMPTY },
+          detour: { type: 'geojson', data: EMPTY },
+          tags: { type: 'geojson', data: EMPTY },
         },
         // Only seen when tilted: a hazy horizon instead of black.
         sky: { 'sky-color': '#3d5a80', 'horizon-color': '#9db4c8', 'fog-color': '#6f8296',
@@ -122,6 +126,13 @@ export class MapView {
             paint: { 'line-color': '#0b1d33', 'line-opacity': 0.75, 'line-width': zoomWidth(13) } },
           { id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' },
             paint: { 'line-color': '#4dabf7', 'line-opacity': 0.6, 'line-width': zoomWidth(8) } },
+          // Ride mode: the part already ridden, greyed, and the way back onto the ride after leaving it.
+          { id: 'ridden', type: 'line', source: 'ridden', layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#868e96', 'line-opacity': 0.9, 'line-width': zoomWidth(8) } },
+          { id: 'detour-casing', type: 'line', source: 'detour', layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#0b1d33', 'line-opacity': 0.8, 'line-width': zoomWidth(12) } },
+          { id: 'detour', type: 'line', source: 'detour', layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#e599f7', 'line-width': zoomWidth(7) } },
           { id: 'trip-roads', type: 'line', source: 'roads', filter: ['in', ['get', 'i'], ['literal', []]],
             layout: { 'line-join': 'round', 'line-cap': 'round' },
             paint: { 'line-color': '#4dabf7', 'line-opacity': 0.55, 'line-width': zoomWidth(12), 'line-blur': 2 } },
@@ -133,6 +144,10 @@ export class MapView {
             paint: { 'line-color': '#ffffff', 'line-opacity': 0.9, 'line-width': zoomWidth(14), 'line-blur': 1 } },
           { id: 'roads-solid', type: 'line', source: 'roads', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: {} },
           { id: 'roads-dashed', type: 'line', source: 'roads', layout: { 'line-join': 'round' }, paint: { 'line-dasharray': [2, 1.5] } },
+          // Roads you've tagged (tags.js): dots over the road in the tag's color, and its name along it up close.
+          { id: 'tags', type: 'line', source: 'tags', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: {
+            'line-color': ['match', ['get', 'k'], ...TAGS.flatMap(t => [t.k, t.color]), '#fff'],
+            'line-width': zoomWidth(5), 'line-dasharray': [0.6, 1.6] } },
           { id: 'retrace', type: 'line', source: 'retrace', layout: { 'line-join': 'round', 'line-cap': 'round' },
             paint: { 'line-color': '#ff922b', 'line-opacity': 0.9, 'line-width': zoomWidth(6), 'line-dasharray': [1.2, 1] } },
           { id: 'route-arrows', type: 'symbol', source: 'route', minzoom: 10, layout: {
@@ -155,6 +170,10 @@ export class MapView {
           { id: 'lights', type: 'symbol', source: 'lights', minzoom: 10, layout: {
             'icon-image': ['case', ['get', 'left'], 'light-left', 'light'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 14, 0.9],
             'icon-allow-overlap': true, 'icon-pitch-alignment': 'viewport', 'symbol-sort-key': ['case', ['get', 'left'], 1, 0] } },
+          { id: 'tags-label', type: 'symbol', source: 'tags', minzoom: 11, layout: {
+            'symbol-placement': 'line', 'symbol-spacing': 400, 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'],
+            'text-size': 11, 'text-offset': [0, -1.1] }, paint: {
+            'text-color': ['match', ['get', 'k'], ...TAGS.flatMap(t => [t.k, t.color]), '#fff'], 'text-halo-color': '#111', 'text-halo-width': 1.6 } },
           { id: 'blind', type: 'symbol', source: 'blind', minzoom: 11, layout: {
             'icon-image': 'blind', 'icon-size': 0.85, 'icon-allow-overlap': true, 'icon-pitch-alignment': 'viewport' } },
           { id: 'fuel', type: 'circle', source: 'fuel', minzoom: 9, layout: { visibility: 'none' }, paint: {
@@ -356,6 +375,27 @@ export class MapView {
   }
 
   setRider(p) { this.map.getSource('rider').setData(p ? fc([point(p)]) : EMPTY); }
+
+  // Ride mode: you, as an arrow pointing the way you're going (null: gone).
+  setNavArrow(p, heading = 0) {
+    if (!p) { if (this.navArrow) { this.navArrow.remove(); this.navArrow = null; } return; }
+    if (!this.navArrow) {
+      const el = document.createElement('div');
+      el.className = 'nav-arrow';
+      el.innerHTML = '<svg viewBox="0 0 40 40"><path d="M20 3 34 35 20 27 6 35Z"/></svg>';
+      this.navArrow = new maplibregl.Marker({ element: el, rotationAlignment: 'map', pitchAlignment: 'map' }).setLngLat(ll(p)).addTo(this.map);
+    }
+    this.navArrow.setLngLat(ll(p)).setRotation(heading);
+  }
+  setRidden(path) { this.map.getSource('ridden').setData(path && path.length > 1 ? fc([line(path)]) : EMPTY); }
+  setDetour(path) { this.map.getSource('detour').setData(path ? fc([line(path)]) : EMPTY); }
+
+  // Your road tags: each piece of each tagged stretch, in its main tag's color, with the tags' names.
+  setTags(list) {
+    const src = this.map.getSource('tags');
+    if (!src) return;
+    src.setData(fc(list.flatMap(t => t.geoms.map(g => line(g, { k: t.main, label: t.label })))));
+  }
   // Route numbers and arrows along the road crowd a low 3D view (a fly-through names the road itself).
   showRoadMarks(on) {
     for (const id of ['shields', 'route-shields', 'route-arrows']) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');

@@ -50,11 +50,11 @@ Ideas that came up, roughly in order of how much they'd help.
   a free tier (Stadia Maps; check its current limits and price). Either way, keep the motorcycle costing
   and point `valhalla` in `js/config.js` at it. Photon search and Open-Meteo weather are fine for a group
   of riders as they are.
-- **Turn-by-turn "Ride mode"** in the app, so it follows the planned route exactly (Google
-  re-plans between stops). Full-screen map following GPS, big next-turn banner, voice prompts
-  from Valhalla's turn instructions, screen kept awake, re-routing back onto the planned roads,
-  gas and blind-crest callouts. Limits: screen on and app in front (phone mounted on a charger),
-  no CarPlay/Android Auto, re-routing needs signal, iPhone voice can be finicky.
+- **Ride mode next** (Ride mode is in, 2026-11-04): gas callouts ("Casey's in 4 mi, next gas 38 mi"), the ridden track
+  saved (for Roads you've ridden), Valhalla avoiding roads tagged Don't ride between stops (`exclude_polygons` or
+  `avoid_locations`), and screen-off guidance, which needs a native app (see the Play Store / iPhone entry).
+- **Road tags with others**: tags are on the device now. With accounts (below), sync them across your devices, and
+  maybe let riders share them ("12 riders say rough") so a bad road warns everyone.
 - **Weather layer: ride or not, at a glance**. Not a weather app: only what decides a ride (wet roads, storms,
   wind, cold), shown on the map before there's a ride to plan. The ride weather already comes from Open-Meteo for
   points along a route; the layer (in the layers menu, off by default) would show the same over the whole map.
@@ -134,7 +134,6 @@ Ideas that came up, roughly in order of how much they'd help.
     pace on public roads are how people get hurt (and how the app gets blamed).
 - **Saved rides**: keep rides by name on the device (not just the last one), with the share link.
 - **Group rides**: a share link with the leave time and meeting spot, so everyone sees the same plan.
-- **Favorites**: star roads you've ridden and liked.
 - **Dead-end roads in the generator**: lake roads in the Ozarks often dead-end at the water, so a
   loop rides them out and back. The generator now drops them after routing; marking dead ends in
   `build_tiles.py` would skip them up front (and save routing requests).

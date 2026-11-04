@@ -539,6 +539,44 @@ colored road), Add a stop here, Street View here.
   - Links from the original app work too. Opening one loads the ride.
 - **Persistence:** the ride saves to localStorage on every change. A ride saved by the original app is picked up once.
 
+**Ride mode (turn by turn, `js/ride.js`, `js/nav.js`)**
+- **Ride it here, turn by turn** on the ride page (and **Ride** on the ride bar) rides the route in the app. Google
+  Maps stays as a button: it goes stop to stop, so a skipped stop has to be removed by hand while riding.
+- It follows the ride's **line, not its stops**. Each GPS fix is matched to the route near where you were (60 m back to
+  2 km ahead, 200 m when stopped, so an out-and-back doesn't jump to the way back), only stretches running your way
+  (within 90°) when moving. Within 35 m (plus up to 30 m of GPS error) is on it; 3 fixes in a row farther is off it.
+- **Skip a part**: back on the line anywhere further along, going its way (within 30 m and 50°), and it picks up from
+  there ("Picking up your ride from here"). Not on a loop's last 2 km before you're halfway round (that's the start).
+- **Leave it**: it asks the router for a way back from where you are, heading the way you're going, onto the ride going
+  its way, at the spot quickest to reach counting what it skips (each metre skipped counts 0.2 m; a spot behind you
+  1.5 km more), at least 300 m past where you left: never back to where you left or a stop you passed. Asked at most
+  every 15 s (or when you've moved 150 m). The way back draws in purple; leave it too and it asks again. **Skip ahead**
+  (while off) aims 3 km further on. No signal: the banner says how far the ride is and points to it.
+- **Turns**: the router's maneuvers, minus "continue"/"becomes"/arrivals at stops; leaving a stop counts as a turn when
+  the road turns there (25 m either side, 35°+; 150°+ is a U-turn). Banner: arrow, distance, road (and "then …" when
+  the next is within 400 m). **Voice** (on by default, the setting kept): a heads-up about 35 s ahead (at least
+  700 m: "In half a mile, turn right onto Missouri D") and the call about 9 s ahead (at least 120 m), each once, plus
+  "Blind crest ahead", off/back/rejoined, and the arrival. Spoken in the tap that starts it (iPhones need that).
+- **The map**: heading-up, tilted 50°, you low on the screen as a blue arrow gliding between fixes, closer in slowly and
+  further out at speed (a pinch is kept); the part ridden greys out. A drag stops following: **Recenter**.
+  **Overview** shows the whole ride.
+- **The bar**: the road you're on (route number and name), your speed, the speed limit (dashed: estimated), miles
+  left and when you'd be back (or there). **Tag road** (big buttons: Rough, Gravel, Don't ride, Great) tags the mile
+  or so of the road around you. **End** takes two taps (a bump on the mount doesn't end it). At the end: miles ridden
+  and time.
+- The screen is kept awake (Wake Lock, again on coming back). A web app only runs in front: screen on, phone mounted
+  and charging. No background or screen-off guidance (that needs a native app: BACKLOG.md).
+
+**Your road tags (`js/tags.js`)**
+- On a road's page, **Your tags**: Don't ride, Rough, Gravel, Busy, Great (Great and Don't ride/Rough clear each
+  other), and a note. Tagged in Ride mode too. Kept on this device (`rf2-tags`), with each piece's line, so the map
+  shows it before that area's roads load.
+- The map dots each tagged road in its main tag's color (worst first: Don't ride red, Rough orange, Gravel tan, Busy
+  blue, Great green) with the tags' names along it up close; road cards show them after the name.
+- **Generate** leaves out roads tagged Don't ride, and counts a road at Rough ×0.5, Gravel ×0.6, Busy ×0.7, Great ×1.3.
+  The router itself doesn't know them: it can still pass along one between stops.
+- The ride page lists **Your tags on this ride** (roads with 200 m or more on it), in yellow if Don't ride or Rough.
+
 **Location**
 - A quick, rough fix first (or one the phone already has), then a precise GPS fix.
 - Errors say which problem it was: blocked permission (with iPhone steps), no fix, a timeout, or a non-https page.

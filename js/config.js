@@ -3,7 +3,7 @@
 export const DATA_URL = 'tiles/';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.04.1';
+export const APP_VERSION = '2026.11.04.2';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
@@ -125,6 +125,21 @@ export const FLY = {
   speeds: [5, 10, 20, 40], speed: 10, zoom: 16.2, pitch: 78, pitchTall: 72,
   exaggeration: 2.2, flatExaggeration: 1.2, liftS: 1.5,
   aheadM: 250, turnS: 0.6, crestM: 400, maxDip: 35, dipBack: 6,
+};
+
+// Ride mode (js/nav.js): within onM of the ride's line (plus up to slackM of GPS error) is on it; offFixes fixes in a
+// row farther off is off it. On it, your spot is looked for from backM behind to aheadM ahead (200 m when stopped, so a
+// road ridden out and back doesn't jump to the way back). Off it, you're back on wherever you're within rejoinM of the
+// line going its way (within rejoinAngle), anywhere ahead: skip a part and it picks you up there. A way back is asked
+// for at most every rerouteS (unless you've moved rerouteMovedM), to the spot on the ride (every stepM, at least skipM
+// past where you left, so never back to it) quickest to reach, each metre it skips costing `sooner` metres and a spot
+// behind you behindM more. Skip ahead moves that skipAheadM further on. Turns are called out twice: a heads-up about
+// headsUpS (at least headsUpM) before, and the call callS (at least callM) before.
+export const NAV = {
+  onM: 35, slackM: 30, offFixes: 3, backM: 60, aheadM: 2000, stoppedAheadM: 200, movingMps: 3,
+  rejoinM: 30, rejoinAngle: 50, finishM: 2000, arriveM: 60,
+  rerouteS: 15, rerouteMovedM: 150, stepM: 100, skipM: 300, sooner: 0.2, behindM: 1500, skipAheadM: 3000,
+  headsUpS: 35, headsUpM: 700, callS: 9, callM: 120, crestM: 400,
 };
 
 export const GOOGLE = { perPart: 9, parts: 2, pastTurn: 200, minSpacing: 800, maxGap: 25000 };

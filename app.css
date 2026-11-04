@@ -411,3 +411,65 @@ button.link:hover { text-decoration: underline; }
 button.link .i, button.link svg { width: 14px; height: 14px; }
 .credits { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.5; }
 .credits li { margin-bottom: 4px; }
+
+/* ---------- Ride mode (turn by turn) ---------- */
+body.riding #topbar, body.riding .fabs, body.riding #sheet, body.riding .maplibregl-ctrl-bottom-right,
+body.riding .stop-marker { display: none; }
+.ride-banner {
+  position: fixed; z-index: 30; top: calc(var(--top) + 10px); left: 10px; right: 10px; max-width: 560px; margin: 0 auto;
+  background: #0b5394; color: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 14px;
+}
+.ride-banner.off { background: #8a4b08; }
+.ride-next { display: flex; align-items: center; gap: 14px; }
+.ride-arrow { flex: none; width: 56px; font-size: 52px; line-height: 1; font-weight: 700; text-align: center; transition: transform .3s; }
+.ride-words { min-width: 0; }
+.ride-dist { font-size: 30px; font-weight: 800; line-height: 1.1; }
+.ride-onto { font-size: 18px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.ride-then { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.25); font-size: 15px; font-weight: 600; }
+.ride-skip { margin-top: 10px; background: rgba(255,255,255,.15); border-color: rgba(255,255,255,.35); color: #fff; }
+.ride-panel {
+  position: fixed; z-index: 30; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  width: min(560px, calc(100% - 20px)); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 10px 12px;
+}
+.ride-above {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 10px);
+  display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 100%;
+}
+.ride-recenter { box-shadow: var(--shadow); }
+.ride-status { display: flex; align-items: center; gap: 12px; }
+.ride-here { flex: 1; min-width: 0; }
+.ride-road { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 16px; }
+.ride-left { font-size: 14px; color: var(--muted); }
+.ride-speed { flex: none; text-align: center; line-height: 1; }
+.ride-speed b { display: block; font-size: 30px; font-weight: 800; }
+.ride-speed small { font-size: 11px; color: var(--muted); }
+.ride-limit { width: 56px; }
+.ride-limit b { font-size: 24px; }
+.ride-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.ride-btn { flex-direction: column; gap: 3px; min-height: 58px; padding: 6px 4px; font-size: 13px; justify-content: center; }
+.ride-btn.end.sure { background: #c92a2a; border-color: #c92a2a; color: #fff; }
+.ride-tags {
+  position: fixed; z-index: 35; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  width: min(560px, calc(100% - 20px)); background: var(--panel-solid); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 14px;
+}
+.ride-tags-title { font-weight: 700; font-size: 17px; margin-bottom: 10px; }
+.ride-tag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.ride-tag { min-height: 64px; border-radius: 12px; border: 2px solid var(--c); background: var(--raise); font-size: 18px; font-weight: 700; color: var(--c); }
+.ride-done {
+  position: fixed; z-index: 36; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(380px, calc(100% - 40px));
+  background: var(--panel-solid); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 18px; display: flex; flex-direction: column; gap: 10px; text-align: center; font-size: 17px;
+}
+.nav-arrow { width: 40px; height: 40px; }
+.nav-arrow svg { width: 40px; height: 40px; fill: #1c7ed6; stroke: #fff; stroke-width: 3; stroke-linejoin: round; filter: drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
+@media (min-width: 900px) { .ride-banner { left: 20px; right: auto; width: 420px; } }
+
+/* ---------- your road tags ---------- */
+.tag-picks { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.tag-pick { padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--border); background: var(--raise); font-size: 14px; }
+.tag-pick.on { border-color: var(--c); color: var(--c); font-weight: 700; box-shadow: inset 0 0 0 1px var(--c); }
+.tag-note { width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
+.tag-mark { margin-left: 8px; font-size: 12px; font-weight: 700; color: var(--c); }
+.tags-on-ride.warn { color: var(--warn); }

@@ -723,3 +723,146 @@ test('the app says the same version as version.json (tools/bump_version.mjs sets
   assert.equal(APP_VERSION, version);
   assert.match(version, /^\d{4}\.\d{2}\.\d{2}\.\d+$/);
 });
+
+// ---------- Ride mode (nav.js) and road tags (tags.js) ----------
+import { Track, Guide, rejoinTarget, turnsOf, callout, spoken, shown } from '../../js/nav.js';
+import { setTags, tagOf, weightOf, avoidedIds, restoreTags, allTags, thin, tagsForMap } from '../../js/tags.js';
+
+// An L: ~2.2 km north, then ~2.2 km east, with a stop at the corner (the router ends a leg there and starts the next
+// with "head east", which is really a right turn).
+const ell = () => {
+  const path = [];
+  for (let i = 0; i <= 100; i++) path.push([39 + i * 0.0002, -94]);
+  for (let i = 1; i <= 100; i++) path.push([39.02, -94 + i * 0.00026]);
+  return { path, meters: 4400, seconds: 300, maneuvers: [
+    { type: 1, at: 0, names: ['MO D'], text: 'Head north on MO D.' },
+    { type: 4, at: 100, names: [], text: 'You have arrived at your stop.' },
+    { type: 1, at: 100, names: ['MO Y'], text: 'Head east on MO Y.' },
+    { type: 4, at: 200, names: [], text: 'You have arrived.' },
+  ] };
+};
+const fixAt = (p, heading, speed = 20) => ({ p, heading, speed, accuracy: 5 });
+
+test('Ride mode: a stop where the road turns is a turn; the arrival is called only at the end', () => {
+  const turns = turnsOf(ell());
+  assert.deepEqual(turns.map(t => [t.type, t.text]), [[10, 'Turn right onto MO Y'], [4, 'You have arrived.']]);
+  assert.ok(Math.abs(turns[0].m - 2224) < 20);
+  assert.deepEqual(turnsOf(ell(), false).map(t => t.type), [10], 'a way back onto the ride doesn’t arrive anywhere');
+});
+
+test('Ride mode: following the ride, leaving it, and picking it up again further on', () => {
+  const t = new Track(ell().path);
+  t.update(fixAt([39.004, -94.0001], 0));
+  assert.ok(t.on && Math.abs(t.m - 445) < 15, `${t.m}`);
+  // A stretch away from the line: off after three fixes, not one.
+  t.update(fixAt([39.006, -93.995], 90));
+  assert.equal(t.on, true);
+  t.update(fixAt([39.007, -93.995], 0));
+  t.update(fixAt([39.008, -93.995], 0));
+  assert.equal(t.on, false);
+  assert.ok(Math.abs(t.m - 445) < 15, 'where you left it stays put');
+  // Back on it on the east leg, going east: picked up there, skipping the rest of the north leg.
+  t.update(fixAt([39.02, -93.98], 90));
+  assert.ok(t.on && t.jumped > 2000 && Math.abs(t.m - 2224 - 1730) < 30, `${t.m}`);
+  // The same spot going the other way isn't the ride.
+  const back = new Track(ell().path);
+  back.update(fixAt([39.004, -94.0001], 0));
+  for (let i = 0; i < 3; i++) back.update(fixAt([39.008, -93.995], 0));
+  back.update(fixAt([39.02, -93.98], 270));
+  assert.equal(back.on, false);
+});
+
+test('Ride mode: the way back goes on ahead, never back to where you left', () => {
+  const t = new Track(ell().path);
+  t.update(fixAt([39.004, -94], 0));
+  // Just off to the side near where you left: back on a little past it.
+  const near = rejoinTarget(t, [39.005, -93.999], 0, t.m);
+  assert.ok(near.m >= t.m + 300 && near.m < t.m + 700, `${near.m}`);
+  // Off east, nearer the far leg: onto that leg near you, not back down the north one.
+  const far = rejoinTarget(t, [39.017, -93.985], 90, t.m);
+  assert.ok(far.m > 2224 + 1000, `${far.m}`);
+});
+
+test('Ride mode: off the ride it asks for a way back, follows it, and says when you’re back on', async () => {
+  let asked = null, now = 0;
+  const g = new Guide(ell(), { now: () => now, reroute: async (p, heading, to) => {
+    asked = { p, heading, to };
+    return { path: [p, [39.012, -93.996], to.p], maneuvers: [] };
+  } });
+  assert.equal(g.fix(fixAt([39.004, -94], 0)), null);
+  assert.equal(g.state, 'on');
+  const next = g.upcoming(1)[0];
+  assert.equal(next.turn.type, 10);
+  assert.ok(Math.abs(next.inM - (2224 - 445)) < 20);
+  let event;
+  for (const lat of [39.006, 39.007, 39.008]) { now += 1000; event = g.fix(fixAt([lat, -93.996], 0)) || event; }
+  assert.equal(event, 'off');
+  assert.equal(g.state, 'off');
+  await g.asking;
+  assert.ok(asked && asked.to.m > 445 + 300 && asked.heading === 0);
+  assert.equal(g.state, 'detour');
+  // No asking again a moment later.
+  const first = asked;
+  now += 1000;
+  g.fix(fixAt([39.0085, -93.996], 0));
+  assert.equal(asked, first);
+  // Back on the line, going its way.
+  now += 1000;
+  assert.equal(g.fix(fixAt([39.012, -94], 0)), 'back');
+  assert.equal(g.state, 'on');
+  // Skip ahead while off asks for a spot further on.
+  for (const lat of [39.013, 39.0135, 39.014]) { now += 20000; g.fix(fixAt([lat, -93.99], 0)); }
+  await g.asking;
+  const before = asked.to.m;
+  now += 1000;
+  g.skip();
+  await g.asking;
+  assert.ok(asked.to.m > before + 2500, `${before} → ${asked.to.m}`);
+});
+
+test('Ride mode: a loop’s last stretch isn’t where you are at the start', () => {
+  const path = [...ell().path, [39.01, -93.974], [39.0001, -93.98], [39.0001, -93.999]];
+  const t = new Track(path);
+  for (let i = 0; i < 3; i++) t.update(fixAt([39.0001, -93.99], 270));  // on the way home's line, at the very start
+  assert.equal(t.on, false, 'not picked up at the end');
+  t.update(fixAt([39.004, -94], 0));
+  assert.ok(t.on && t.m < 500);
+});
+
+test('Ride mode: the end of the ride is the end', () => {
+  const g = new Guide(ell(), { reroute: async () => null });
+  g.fix(fixAt([39.02, -93.99], 90));
+  assert.equal(g.fix(fixAt([39.02, -93.9741], 90)), 'done');
+  assert.equal(g.state, 'done');
+});
+
+test('Ride mode: a heads-up, then the call, each once', () => {
+  const turn = { type: 10, text: 'Turn right onto MO Y', alert: 'Turn right onto Missouri Y.', pre: 'Turn right onto Missouri Y. Then turn left.' };
+  assert.equal(callout(turn, 3000, 20), null, 'too far yet');
+  assert.equal(callout(turn, 650, 20), 'In half a mile, turn right onto Missouri Y.');
+  assert.equal(callout(turn, 600, 20), null);
+  assert.equal(callout(turn, 170, 20), 'Turn right onto Missouri Y. Then turn left.');
+  assert.equal(callout(turn, 100, 20), null);
+  assert.deepEqual([spoken(100), spoken(1609), spoken(5000), spoken(20000)], ['300 feet', '1 mile', '3 miles', '12 miles']);
+  assert.deepEqual([shown(90), shown(800), shown(30000)], ['300 ft', '0.5 mi', '19 mi']);
+});
+
+test('road tags: a stretch tagged, found by any of its pieces, left out or ranked by its tags, and undone', () => {
+  const geom = east(38, -93, 40, 0.0001);
+  const g = { key: 'MO D', roads: [{ id: 1, geom }, { id: 2, geom: east(38, -92.996, 10) }] };
+  assert.ok(thin(geom).length < geom.length / 2, 'the kept line is thinned');
+  const was = setTags(g, ['rough']);
+  assert.equal(tagOf([2]).key, 'MO D');
+  assert.equal(weightOf([1]), 0.5);
+  assert.equal(avoidedIds().size, 0);
+  // Tagging part of it again replaces the tag but keeps the other piece.
+  setTags({ key: 'MO D', roads: [g.roads[0]] }, ['avoid', 'rough']);
+  assert.equal(allTags().length, 1);
+  assert.deepEqual([...avoidedIds()].sort(), [1, 2]);
+  assert.equal(weightOf([2]), 0);
+  assert.deepEqual(tagsForMap().map(t => [t.main, t.label, t.geoms.length]), [['avoid', 'Don’t ride · Rough', 2]]);
+  setTags(g, []);
+  assert.equal(tagOf([1]), null, 'no tags left: no record');
+  restoreTags(was);
+  assert.equal(allTags().length, 0);
+});

@@ -76,12 +76,30 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   on the map; tapping keeps them lit, tapping again turns them off. Check on the phone too.
 - "Try fixing" on a ride that doubles back either helps or says why not.
 - Fuel stops are planned within the tank range.
-- Go opens Google Maps with the stops in order; GPX downloads; Share gives a link that reopens the same ride,
+- Open in Google Maps opens it with the stops in order; GPX downloads; Share gives a link that reopens the same ride,
   including a one-way ride's end.
 - Reloading the page keeps the ride and the settings.
 - The fly-through plays, shows the road sign, speed limit and next turn, and Esc / ✕ ends it.
 - ✱ The blue rider dot stays in sight the whole way, over hills and crests (the camera looks down more steeply
   for a moment rather than lose it behind one).
+
+## Ride mode (on the phone, outside: it needs real GPS)
+
+- Ride it here (or Ride on the ride bar) asks for location once, says "Starting your ride", and the screen doesn't
+  dim. Heading-up map, blue arrow on the line, the next turn in the banner with its distance.
+- Each turn: a heads-up about half a mile out at 45+, the call just before it. Through a helmet headset too.
+- Skip a stop or a road on purpose: no "make a U-turn", no going back for it. Back on the line further along it says
+  "Picking up your ride from here". Ride off the route: within a few seconds "off the ride", a purple way back, and
+  it never sends you back to where you left. Skip ahead aims further on.
+- Tag road while riding (big buttons, gloves) tags about a mile of the road you're on; it shows on the map after.
+- Speed and speed limit look right; miles left goes down; End needs two taps; the arrival says miles and time.
+- Switch apps and back: it picks up where you are. ✱ How the battery holds up over a 2-hour ride, on a charger.
+
+## Your road tags
+
+- A road's page: tap Don't ride, add a note; the road gets red dots on the map and "Don't ride" in the road list.
+  Reload: still there. Generate near it: no loop uses it. Untag: the dots go.
+- A ride over a tagged road says so under the ride summary.
 
 ## Roller coasters
 

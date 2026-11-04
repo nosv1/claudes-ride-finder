@@ -500,6 +500,85 @@ test('fly-through: rides the route low in 3D, plays and pauses, seeks, and puts 
   assert.equal(await page.eval("RF.mapView.map.getLayoutProperty('sat', 'visibility')"), 'none');
 });
 
+// Ride mode on MO-150: a fake GPS (the test hands the app each fix) and a voice that writes down what it says.
+test('Ride mode: follows you along the ride, says the turn, notices you left it, tags the road you’re on, and ends', async () => {
+  await page.eval(pointTrip);
+  await page.eval(`(() => {
+    const g = RF.store.byId.get(${MO150}).geom, mid = Math.floor(g.length / 2);
+    RF.setRoute({ path: g, meters: 5000, seconds: 300, maneuvers: [
+      { type: 1, at: 0, end: mid, s: 150, km: 2.5, names: ['MO 150'], text: 'Head east on MO 150.' },
+      { type: 10, at: mid, end: g.length - 1, s: 150, km: 2.5, names: ['MO Y'], text: 'Turn right onto MO Y.', alert: 'Turn right onto Missouri Y.', pre: 'Turn right onto Missouri Y.' },
+      { type: 4, at: g.length - 1, end: g.length - 1, s: 0, km: 0, names: [], text: 'You have arrived.' }] });
+    window.__said = [];
+    speechSynthesis.speak = u => __said.push(u.text);
+    navigator.geolocation.watchPosition = ok => { window.__gps = ok; return 7; };
+    navigator.geolocation.clearWatch = id => { window.__cleared = id; };
+    RF.go('trip');
+  })()`);
+  await page.waitFor("[...document.querySelectorAll('#sheetBody button')].some(b => /Ride it here/.test(b.textContent))", 10000);
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Ride it here/.test(b.textContent)).click()");
+  assert.ok(await page.eval("RF.ride && document.body.classList.contains('riding')"));
+  assert.equal(await page.eval("getComputedStyle(document.getElementById('sheet')).display"), 'none', 'the panel steps aside');
+  assert.match(await page.eval("document.querySelector('.ride-banner').innerText"), /Finding you/);
+  assert.ok(await page.eval("__said.includes('Starting your ride.')"));
+  // GPS fixes riding along the road, at 50 mph.
+  const gps = (k, off = 0) => page.eval(`(() => {
+    const g = RF.store.byId.get(${MO150}).geom, i = Math.min(g.length - 2, ${k});
+    const [a, b] = [g[i], g[i + 1]], hd = (Math.atan2((b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), b[0] - a[0]) * 180 / Math.PI + 360) % 360;
+    __gps({ coords: { latitude: a[0] + ${off}, longitude: a[1], heading: hd, speed: 22, accuracy: 5 }, timestamp: Date.now() });
+  })()`);
+  const n = await page.eval(`RF.store.byId.get(${MO150}).geom.length`), mid = Math.floor(n / 2);
+  await gps(1);
+  await gps(2);
+  assert.equal(await page.eval('RF.ride.guide.state'), 'on');
+  assert.match(await page.eval("document.querySelector('.ride-banner').innerText"), /↱[\s\S]*(mi|ft)[\s\S]*MO Y/);
+  assert.match(await page.eval("document.querySelector('.ride-panel').innerText"), /mi left · (back|there) about \d+:\d\d/);
+  await sleep(600);
+  assert.ok(Math.abs(await page.eval('RF.mapView.map.getPitch()') - 50) < 1, 'heading-up, tilted');
+  // Coming up on the turn, it's called out.
+  for (let k = Math.max(3, mid - 3); k < mid; k++) await gps(k);
+  assert.ok(await page.eval("__said.includes('Turn right onto Missouri Y.')"), await page.eval('JSON.stringify(__said)'));
+  // Off the road (about 300 m north) for a few fixes: off the ride, with Skip ahead.
+  for (let i = 0; i < 3; i++) await gps(mid + 1, 0.003);
+  assert.equal(await page.eval('RF.ride.guide.state === "on"'), false);
+  assert.match(await page.eval("document.querySelector('.ride-banner').innerText"), /Off your ride|back on your ride/);
+  assert.ok(await page.eval("!document.querySelector('.ride-skip').hidden"));
+  assert.ok(await page.eval("__said.some(t => /off the ride/.test(t))"));
+  // Back on it further along: picked up there.
+  await gps(mid + 4);
+  assert.equal(await page.eval('RF.ride.guide.state'), 'on');
+  assert.ok(await page.eval("__said.some(t => /Back on your ride|Picking up your ride/.test(t))"));
+  // Tag road: Rough, on the road you're on.
+  await page.eval("[...document.querySelectorAll('.ride-btn')].find(b => /Tag road/.test(b.textContent)).click()");
+  await page.eval("[...document.querySelectorAll('.ride-tag')].find(b => b.textContent === 'Rough').click()");
+  assert.match(await page.eval("document.getElementById('toast').innerText"), /MO 150 tagged Rough/);
+  assert.deepEqual(await page.eval(`import('./js/tags.js').then(T => T.tagOf([${MO150}]).tags)`), ['rough']);
+  // End takes two taps; then the map and panel are back, the GPS let go.
+  await page.eval("document.querySelector('.ride-btn.end').click()");
+  assert.ok(await page.eval('!!RF.ride'), 'one tap doesn’t end it');
+  await page.eval("document.querySelector('.ride-btn.end').click()");
+  assert.ok(await page.eval("!RF.ride && !document.body.classList.contains('riding') && !document.querySelector('.ride-banner') && window.__cleared === 7"));
+  await page.eval("import('./js/tags.js').then(T => T.restoreTags([]))");
+});
+
+test('road tags: tag a road on its card, see it on the map and in the list, and loops leave Don’t ride roads out', async () => {
+  await showMo150();
+  await page.eval(`(() => { const r = RF.store.byId.get(${MO150}); RF.mapView.emit('road', r.id, r.geom[2]); })()`);
+  await page.waitFor("!!document.querySelector('.tag-pick')", 5000);
+  await page.eval("[...document.querySelectorAll('.tag-pick')].find(b => b.textContent === 'Don’t ride').click()");
+  await page.waitFor("document.querySelector('.tag-pick.on')?.textContent === 'Don’t ride'", 5000);
+  const note = "document.querySelector('.tag-note')";
+  await page.eval(`(() => { const i = ${note}; i.value = 'Bumpy as hell'; i.dispatchEvent(new Event('change')); })()`);
+  const saved = JSON.parse(await page.eval("localStorage.getItem('rf2-tags')"));
+  assert.ok(saved.length === 1 && saved[0].tags[0] === 'avoid' && saved[0].note === 'Bumpy as hell' && saved[0].pieces.some(x => x.id === MO150), 'kept on the device');
+  await page.waitFor("RF.mapView.map.getSource('tags').serialize().data.features.length > 0", 5000);
+  await page.eval("RF.go('home')");
+  await page.waitFor("[...document.querySelectorAll('.road-card')].some(c => /MO 150\s*Don’t ride/.test(c.innerText))", 10000);
+  // The generator's roads: MO-150 isn't one of them now.
+  assert.equal(await page.eval(`import('./js/tags.js').then(T => T.avoidedIds().has(${MO150}))`), true);
+  await page.eval("import('./js/tags.js').then(T => T.restoreTags([]))");
+});
+
 test('pop-ups go away on their own in a few seconds, or at a tap', async () => {
   await page.eval("import('./js/ui.js').then(u => u.toast('Short note'))");
   assert.equal(await page.eval("document.getElementById('toast').hidden"), false);
