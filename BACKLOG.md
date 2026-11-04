@@ -11,6 +11,15 @@ Ideas that came up, roughly in order of how much they'd help.
   is normal for Esri; restrict it to the site's address). A key-free alternative is OpenFreeMap's vector styles
   (already used for the fonts), but they look different and have no satellite. Fine to leave as is while it's a
   handful of friends.
+- **Short share links** (waiting on a free Cloudflare account; the rider will set it up): links are packed now
+  (`#r=`, ~380 characters for a 3 h ride, ~780 for 6 h) but still fill a Discord box or an iMessage. Plan: a
+  Cloudflare Worker with KV (free tier: 1,000 writes and 100,000 reads a day) stores the packed ride under a
+  10-character id made from its hash (same ride, same link; too long to guess, which matters since a start is often
+  someone's home). Share posts the ride and copies `…/claudes-ride-finder/#s=<id>`; opening it fetches the ride.
+  If the service doesn't answer in ~3 s, Share falls back to the `#r=` link. Allow only the site's origin, cap a
+  ride at 8 KB, and add the link service to the About page's "Your data". Deploying needs `npx wrangler login`
+  (the rider approves it in the browser) and permission to run wrangler. A free is.gd short link was ruled out:
+  its codes can be guessed and it would hold the whole ride. Pairs with moving tiles to Cloudflare R2 (below).
 - **A proper app, still on PC**: one codebase for all three. Android: wrap the web app for the Play Store
   (Trusted Web Activity via Bubblewrap; $25 once). iPhone: Capacitor wrapper ($99/yr developer account,
   built on a Mac or a cloud build). PC keeps using the website or the installed web app. Worth it mainly for
