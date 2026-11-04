@@ -175,7 +175,8 @@ export class Sheet {
 let toastTimer = null;
 export function toast(msg, action) {
   const el = document.getElementById('toast'), actions = [action || []].flat();
-  el.replaceChildren(h('span', {}, msg), ...actions.map(a => h('button', { onclick: e => { e.stopPropagation(); el.hidden = true; a.run(); } }, a.label)));
+  el.replaceChildren(h('span', {}, msg), actions.length ? h('div.toast-actions', {},
+    actions.map(a => h('button', { onclick: e => { e.stopPropagation(); el.hidden = true; a.run(); } }, a.label))) : '');
   el.hidden = false;
   el.onclick = () => { el.hidden = true; };  // tap it to close it early
   clearTimeout(toastTimer);

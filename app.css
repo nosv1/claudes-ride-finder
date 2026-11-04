@@ -295,10 +295,15 @@ select { min-height: 38px; padding: 0 8px; border-radius: 10px; border: 1px soli
 .menu-item.on::after { content: "✓"; margin-left: auto; }
 .toast {
   position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); top: calc(var(--app-h, 100dvh) - 200px);
-  display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); padding: 12px 16px; border-radius: 12px;
-  background: #f1f3f5; color: #111; box-shadow: var(--shadow); font-size: 14px; cursor: pointer;
+  /* Centred from the middle, it would only get half the screen to fit in: size it to its text, up to the screen. */
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: 4px; row-gap: 2px;
+  width: max-content; max-width: min(520px, calc(100vw - 32px)); padding: 10px 8px 10px 16px; border-radius: 12px;
+  background: #f1f3f5; color: #111; box-shadow: var(--shadow); font-size: 14px; line-height: 1.35; cursor: pointer;
 }
-.toast button { border: 0; background: none; color: var(--blue); font-weight: 700; }
+/* Beside a short message the buttons share its line; under a long one they go together, on the right. */
+.toast span { flex: 1 1 auto; min-width: 0; padding: 4px 8px 4px 0; }
+.toast-actions { display: flex; margin-left: auto; }
+.toast button { padding: 8px 10px; border: 0; background: none; color: var(--blue); font-weight: 700; white-space: nowrap; }
 @media (min-width: 900px) { .toast { top: auto; bottom: 24px; left: calc(50% + var(--side-w) / 2); } }
 
 /* ---------- map markers ---------- */
