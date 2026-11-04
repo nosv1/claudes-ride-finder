@@ -5,7 +5,7 @@ import { visible, stretchOf, bestInView, clusterRoads, summarize, roadNear, road
 import * as T from './trip.js';
 import * as P from './plan.js';
 import { localResults, photonResults } from './search.js';
-import { fetchRoute, routeRefs } from './routing.js';
+import { fetchRoute, routeRefs, routerTrouble } from './routing.js';
 import { profile } from './elevation.js';
 import * as W from './weather.js';
 import { Fly } from './fly.js';
@@ -183,7 +183,7 @@ async function computeRoute() {
   const r = await fetchRoute(pts, +trip.pref);
   if (seq !== routeSeq) return;
   if (!r) {
-    info = { error: 'Couldn’t reach the routing servers. Try again in a minute.' };
+    info = { error: routerTrouble() };
     return renderSoon();
   }
   setRoute(r);
@@ -339,6 +339,7 @@ async function fixDoubleBack() {
   const roads = trip.items.filter(it => it.type === 'road' && !it.oneway);
   let best = { r: route, back: info.back.meters };
   const flipped = [];
+  let failed = false;
   clearTimeout(routeTimer);
   const seq = ++routeSeq;
   for (const it of roads) {
@@ -347,6 +348,7 @@ async function fixDoubleBack() {
     renderSoon();
     const r = await fetchRoute(T.routablePoints(trip), +trip.pref);
     if (seq !== routeSeq) { it.pts.reverse(); fixing = ''; return; }  // the ride changed meanwhile
+    if (!r) failed = true;
     const back = r && !r.fallback ? P.retrace(r.path).meters : Infinity;
     if (back < best.back - 200 && r.meters < best.r.meters * 1.15) {
       best = { r, back };
@@ -357,7 +359,7 @@ async function fixDoubleBack() {
   }
   fixing = '';
   if (!flipped.length) {
-    toast('Riding the roads the other way doesn’t help. Try dragging the stops into another order.');
+    toast(failed ? routerTrouble() : 'Riding the roads the other way doesn’t help. Try dragging the stops into another order.');
     return renderSoon();
   }
   tripChanged({ reroute: false });
@@ -402,7 +404,7 @@ async function generate() {
   if (oneWay) {
     const direct = await fetchRoute([{ p: s, via: false }, { p: e, via: false }], +trip.pref);
     if (!direct) {
-      gen = { options: [], index: -1, running: false, status: 'Couldn’t reach the router right now. Try again in a minute.' };
+      gen = { options: [], index: -1, running: false, status: routerTrouble() };
       return renderSoon();
     }
     hours = direct.seconds / 3600 + settings.genExtra;
@@ -433,6 +435,10 @@ async function generate() {
   };
   progress();
   await Promise.all([worker(), worker()]);
+  if (!options.some(o => o.route)) {
+    gen = { options: [], index: -1, running: false, status: routerTrouble() };
+    return renderSoon();
+  }
   // Only loops within 80–120% of the chosen time; if none came out that close, the nearest.
   const worth = o => o.route ? o.worth : -1, twice = o => o.route && o.back > GEN.hideBack * o.route.meters;
   const target = hours * 3600, fits = o => o.route && o.route.seconds >= GEN.under * target && o.route.seconds <= GEN.overrun * target;
@@ -735,7 +741,7 @@ function renderSoon() {
 
 function render() {
   if (dragging) return;
-  const views = { home: homeView, road: roadView, station: stationView, place: placeView, plan: planView, trip: tripView };
+  const views = { home: homeView, road: roadView, station: stationView, place: placeView, plan: planView, trip: tripView, about: aboutView };
   $('#sheetBody').replaceChildren(...[(views[view] || homeView)()].flat(Infinity).filter(Boolean));
 }
 
@@ -763,6 +769,56 @@ function homeView() {
           : highwaysOnly() ? 'No fast ramps or highway sweeps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
     h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
+    h('div.foot-links', {},
+      h('button.link', { onclick: () => go('about') }, 'About, credits and riding safe'),
+      canInstall() ? h('button.link', { onclick: install }, iconEl(icon.download), 'Install app') : ''),
+  ];
+}
+
+// ---------- about & installing ----------
+
+// Chrome, Edge and Android offer an install prompt (beforeinstallprompt), kept for the Install button; iPhones
+// have none, only Share → Add to Home Screen. Installed and opened from the icon, there's nothing to offer.
+let installPrompt = null;
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const iPhone = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const canInstall = () => !standalone() && (!!installPrompt || iPhone());
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; renderSoon(); });
+addEventListener('appinstalled', () => { installPrompt = null; toast('Installed. Open Ride Finder from its icon from now on.'); renderSoon(); });
+
+async function install() {
+  if (!installPrompt) return toast('On iPhone: tap Share (the square with the arrow), then Add to Home Screen.');
+  const p = installPrompt;
+  installPrompt = null;  // a prompt can only be shown once
+  await p.prompt();
+  renderSoon();
+}
+
+function aboutView() {
+  const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
+  const credit = (what, ...who) => h('li', {}, h('b', {}, what), ': ', ...who);
+  return [
+    backBar('About Ride Finder'),
+    h('p', {}, 'A map for finding motorcycle roads worth riding (curvy roads, fast sweepers and hills) and planning a ride on them for the time you have. Free, with no account and no ads.'),
+    h('div.section', {}, h('h3', {}, iconEl(icon.warn), 'Ride safe'),
+      h('p.small', {}, 'Everything here comes from open map data and free services, and it can be wrong or out of date. Roads close, surfaces change, gravel and leaves wash onto curves, and many of the rural speed limits shown are estimates, not posted limits. A road marked Twisty is a description, not a dare.'),
+      h('p.small', {}, h('b', {}, 'Always check conditions before you ride'), ', go by the posted signs and limits, and ride within your ability. Plan before you leave, not on the move. How and where you ride is up to you.')),
+    canInstall() || standalone() ? h('div.section', {}, h('h3', {}, iconEl(icon.download), 'Install it'),
+      standalone() ? h('p.small', {}, 'Installed. It opens full screen from its icon and works offline on the roads you’ve looked at.')
+        : [h('p.small', {}, 'Put it on your home screen or apps list to open it like an app, full screen, and to use it offline on roads you’ve looked at.'),
+          h('button.btn', { onclick: install }, iconEl(icon.download), installPrompt ? 'Install Ride Finder' : 'How to install on iPhone')]) : '',
+    h('div.section', {}, h('h3', {}, iconEl(icon.globe), 'Credits'),
+      h('ul.credits', {},
+        credit('Road data', '© ', link('https://www.openstreetmap.org/copyright', 'OpenStreetMap contributors'), ', under the Open Database License'),
+        credit('Basemap and imagery', '© Esri and its data providers'),
+        credit('Elevation and 3D terrain', link('https://registry.opendata.aws/terrain-tiles/', 'AWS Terrain Tiles'), ', from USGS and other public sources'),
+        credit('Routing', link('https://valhalla.github.io/valhalla/', 'Valhalla'), ' on the free ', link('https://www.fossgis.de/', 'FOSSGIS'), ' server, with ', link('https://project-osrm.org/', 'OSRM'), '’s demo server as a backup'),
+        credit('Place search', link('https://photon.komoot.io/', 'Photon'), ' by Komoot'),
+        credit('Weather', link('https://open-meteo.com/', 'Weather data by Open-Meteo.com'), ' (CC BY 4.0)'),
+        credit('Map', link('https://maplibre.org/', 'MapLibre GL JS'), ', with fonts from ', link('https://openfreemap.org/', 'OpenFreeMap')))),
+    h('div.section', {}, h('h3', {}, iconEl(icon.person), 'Your data'),
+      h('p.small', {}, 'No account and no analytics. Your rides and settings stay in this browser. To plan, a ride’s stops go to the routing server, searches to Photon and points along the ride to Open-Meteo for the weather. Your location is used only when you ask for it (My location, or generating a ride with no start set). A share link carries the ride in the link itself.')),
+    h('p.fineprint', {}, 'Ride Finder is open source: ', link('https://github.com/nosv1/claudes-ride-finder', 'github.com/nosv1/claudes-ride-finder'), '.'),
   ];
 }
 

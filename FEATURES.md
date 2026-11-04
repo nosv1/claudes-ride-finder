@@ -292,9 +292,12 @@ colored road), Add a stop here, Street View here.
   or parking lot: a pin by Oldham Road in Swope Park routed in and out of a private drive.
 - **The public server takes at most 10 locations per request.** Longer trips are sent in overlapping chunks and joined.
 - **No U-turns at stops** (Valhalla `break_through`; the start and finish stay `break`), so a route doesn't ride
-  back down a road it just finished. If Valhalla answers with no route that way (a dead end), it's asked again
-  allowing them.
+  back down a road it just finished. If Valhalla answers with no route that way (a dead end; HTTP 400), it's asked
+  again allowing them. Not when it's busy (429, 502–504, or no answer in 30 s): that would double the load.
 - Falls back to OSRM (fastest only, with a note shown) if Valhalla fails. OSRM can't avoid motorways.
+- **When neither answers**, the message says why, judged by Valhalla's failure: offline ("Planning a route needs
+  signal"), busy ("The free route server is busy right now… Give it a minute"), or just unreachable. The same
+  message shows for a ride, for the generator (when no loop at all could be routed) and for Try fixing.
 - Arrows along the route line show the direction of travel (zoom 10+).
 
 **Summary**
@@ -487,8 +490,22 @@ colored road), Add a stop here, Street View here.
 - A quick, rough fix first (or one the phone already has), then a precise GPS fix.
 - Errors say which problem it was: blocked permission (with iPhone steps), no fix, a timeout, or a non-https page.
 
+**About**
+- "About, credits and riding safe" under the home list opens the About page: what the app is, **Ride safe** (map
+  data can be wrong, rural limits are estimates, always check conditions, plan before you leave), credits for
+  every data source and service, what data leaves the device, and the source link.
+
+**Link preview**
+- Open Graph and Twitter card tags in `index.html`, so a pasted link shows a card with `preview.png` (1200×630,
+  `node tools/make_preview.mjs`: the curvy roads around Branson from the built tiles, in the map's colors).
+- A shared ride is in the link's `#fragment`, which preview fetchers never see, so every link shows the same card.
+  The image URL is absolute (`https://nosv1.github.io/claudes-ride-finder/preview.png`); a new address needs it changed.
+
 **Installable and offline**
 - Web app manifest and icons (`tools/make_icons.py`).
+- **Install app** (under the home list, and on the About page) when the browser offers to install (Chrome, Edge,
+  Android: the `beforeinstallprompt` prompt is kept and shown on the tap). On iPhone it says how instead (Share →
+  Add to Home Screen). Hidden once opened as the installed app.
 - The service worker serves app files network-first, so updates show at once and the cache covers offline use.
 - Map imagery, terrain and fonts are cached as you browse (cache-first), up to ~4,000 tiles.
 
@@ -506,7 +523,8 @@ colored road), Add a stop here, Street View here.
 - Elements with the `hidden` attribute need `[hidden] { display: none !important }`, because `display: flex` rules override it.
 - **Hosts and access:**
   - Terrain Tiles, Photon, OpenFreeMap fonts, FOSSGIS Valhalla and OSRM allow cross-origin reads.
-  - Esri tiles need no key.
+  - Esri tiles need no key, but no published Esri terms clearly allow keyless use in a public app (checked
+    2026-11-04; see BACKLOG.md).
 - **Google Maps URLs:** the reliable forms are `/maps/@?api=1&map_action=pano&viewpoint=…&heading=…` (Street View)
   and `/maps/dir/?api=1&…&waypoints=a|b` (directions).
   - "No Street View" means Google has no imagery near that spot, and it offers no way to search farther.

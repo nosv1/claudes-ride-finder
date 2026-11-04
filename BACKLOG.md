@@ -2,10 +2,15 @@
 
 Ideas that came up, roughly in order of how much they'd help.
 
-- **Ready to share** (before handing the link around): an About page with credits and "check conditions"
-  wording; check Esri's terms for keyless basemap use in a public app (else switch to a keyed free tier);
-  a link preview (title, image) so a shared ride looks good in a text; a friendly message when the free
-  router is busy. Then a small "Install" button in the app (it's already installable from the browser).
+- **Esri basemap: keyless or keyed?** (the one open part of Ready to share; the About page, link preview, busy
+  message and Install button are done). Checked 2026-11-04: the `server.arcgisonline.com` tiles load without a key,
+  but no published Esri terms clearly allow keyless use in a public app. Esri forum answers say the keyless basemaps
+  need an ArcGIS subscription or license; nothing official says otherwise. The keyed route is ArcGIS Location Platform's
+  free tier: 2,000,000 basemap tiles a month free, then $0.15 per 1,000 (Esri's numbers; they say these change, so
+  check location.arcgis.com/pricing). It needs an account and an API key in `js/mapview.js` (a key in a public site
+  is normal for Esri; restrict it to the site's address). A key-free alternative is OpenFreeMap's vector styles
+  (already used for the fonts), but they look different and have no satellite. Fine to leave as is while it's a
+  handful of friends.
 - **A proper app, still on PC**: one codebase for all three. Android: wrap the web app for the Play Store
   (Trusted Web Activity via Bubblewrap; $25 once). iPhone: Capacitor wrapper ($99/yr developer account,
   built on a Mac or a cloud build). PC keeps using the website or the installed web app. Worth it mainly for

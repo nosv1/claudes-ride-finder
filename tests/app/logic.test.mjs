@@ -11,6 +11,7 @@ import { planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidate
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
+import { fetchRoute, routerTrouble } from '../../js/routing.js';
 
 const TILES = new URL('../../tiles/', import.meta.url);
 const haveTiles = existsSync(new URL('index.js', TILES));
@@ -626,4 +627,37 @@ test('fly-through: the turn tag names the road turned onto, with an arrow the ri
   assert.equal(turnArrow(15), '↰');
   assert.equal(turnArrow(10), '↱');
   assert.equal(turnArrow(22), '↑');
+});
+
+// The routers stubbed: Valhalla answers with status `valhalla` (an HTML error page, as a busy server sends), OSRM with `osrm`.
+async function routeWith(valhalla, osrm) {
+  const asked = { valhalla: 0, osrm: 0 }, real = globalThis.fetch, warn = console.warn;
+  globalThis.fetch = async url => {
+    const which = String(url).includes('osrm') ? 'osrm' : 'valhalla';
+    asked[which]++;
+    return new Response('<html>error</html>', { status: which === 'osrm' ? osrm : valhalla });
+  };
+  console.warn = () => {};
+  try {
+    // Fresh points each time, so the answer cache doesn't hide a request.
+    const r = await fetchRoute([{ p: [38.9, -94.3 + Math.random()], via: false }, { p: [38.95, -94.2], via: false }], 0.5);
+    return { r, asked };
+  } finally {
+    globalThis.fetch = real;
+    console.warn = warn;
+  }
+}
+
+test('a busy router gets a friendly message, and isn\'t asked again allowing U-turns', async () => {
+  const busy = await routeWith(503, 429);
+  assert.equal(busy.r, null);
+  assert.equal(busy.asked.valhalla, 1);
+  assert.match(routerTrouble(), /busy right now/);
+  const tooMany = await routeWith(429, 429);
+  assert.equal(tooMany.asked.valhalla, 1);
+  assert.match(routerTrouble(), /busy right now/);
+  // No route without a U-turn (Valhalla says 400): asked again allowing one. Any other failure is just a failure.
+  const noRoute = await routeWith(400, 500);
+  assert.equal(noRoute.asked.valhalla, 2);
+  assert.match(routerTrouble(), /Couldn’t reach the routing servers/);
 });

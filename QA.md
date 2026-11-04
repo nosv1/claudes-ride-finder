@@ -75,6 +75,18 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - ✱ The blue rider dot stays in sight the whole way, over hills and crests (the camera looks down more steeply
   for a moment rather than lose it behind one).
 
+## Ready to share
+
+- Under the home list: "About, credits and riding safe" opens the About page; Back returns home.
+- The About page's links open in a new tab, and every service the app uses is credited.
+- Chrome or Edge on a PC, or Chrome on Android: "Install app" shows under the home list; tapping it brings up the
+  browser's install prompt. Opened from the installed icon, it doesn't show.
+- iPhone Safari: "Install app" shows how (Share → Add to Home Screen).
+- Paste the site's link into a text or Discord: the card shows the title, the line under it and the roads image.
+  (Previews are cached, so a changed image can take a while to show.)
+- With the router down or busy (DevTools → Network → block `valhalla1.openstreetmap.de` and `router.project-osrm.org`),
+  a ride says why it couldn't route, and so does Generate.
+
 ## Looks and layout
 
 - Nothing wraps awkwardly or gets cut off in the side panel (buttons, chips, card text), on desktop or phone.

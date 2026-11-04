@@ -13,9 +13,9 @@ Screen on a phone, the install button in the address bar in Chrome or Edge) to u
 - **Fly through it in 3D**: watch the ride from just behind the bike, with the road sign, speed limit, next turn,
   weather and blind crests as they come up.
 - **Ride it**: open in Google Maps (with extra stops so it sticks to the route), download a GPX for riding apps,
-  or share a link.
+  or share a link (it shows a preview card in texts and chats).
 
-See [FEATURES.md](FEATURES.md) for the full feature list and requirements, [tests/README.md](tests/README.md)
+The app's About page has the credits and the riding-safe wording. See [FEATURES.md](FEATURES.md) for the full feature list and requirements, [tests/README.md](tests/README.md)
 for the tests, and [BACKLOG.md](BACKLOG.md) for what's next.
 
 ## Data
@@ -35,3 +35,5 @@ Elevation comes from AWS Terrain Tiles (USGS), basemaps from Esri, routing from 
 For just the traffic lights (stoplight counts on rides), `python tools/add_signals.py` reads only the nodes of the
 state files in a minute or two. To change only the highway-sweep rules, `python tools/add_highway_sweeps.py` redoes that step on the built `tiles/`
 in about 15 seconds, without the downloads.
+
+The link preview image (`preview.png`) is drawn from the built tiles: `node tools/make_preview.mjs` redraws it.
