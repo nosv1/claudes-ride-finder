@@ -271,7 +271,7 @@ export class MapView {
 
   // ---------- markers ----------
 
-  // stops: [{ p, label, n, draggable }]
+  // stops: [{ p, label, n, draggable, index }]. Tapping one (not dragging it) emits 'stop' with its index.
   setStops(stops, onDrag) {
     this.markers.forEach(m => m.remove());
     this.markers = stops.map(s => {
@@ -280,7 +280,12 @@ export class MapView {
       el.textContent = s.n;
       el.title = s.label;
       const m = new maplibregl.Marker({ element: el, draggable: s.draggable }).setLngLat(ll(s.p)).addTo(this.map);
-      if (s.draggable) m.on('dragend', () => { const { lat, lng } = m.getLngLat(); onDrag(s.index, [lat, lng]); });
+      let dragged = false;
+      if (s.draggable) {
+        m.on('dragstart', () => { dragged = true; });
+        m.on('dragend', () => { const { lat, lng } = m.getLngLat(); onDrag(s.index, [lat, lng]); });
+      }
+      el.addEventListener('click', e => { e.stopPropagation(); if (!dragged) this.emit('stop', s.index); dragged = false; });
       return m;
     });
   }
@@ -321,10 +326,13 @@ export class MapView {
     this.tapTag.setLngLat(ll(p)).addTo(this.map);
   }
 
+  // The searched-for place. Tapping it emits 'pin'.
   setPin(p) {
     if (!this.pin) {
       const el = document.createElement('div');
       el.className = 'search-pin';
+      el.title = 'Tap for this place';
+      el.addEventListener('click', e => { e.stopPropagation(); this.emit('pin'); });
       this.pin = new maplibregl.Marker({ element: el });
     }
     p ? this.pin.setLngLat(ll(p)).addTo(this.map) : this.pin.remove();

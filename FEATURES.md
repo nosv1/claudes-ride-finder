@@ -251,10 +251,14 @@ colored road), Add a stop here, Street View here.
   - Short query words (≤ 2 characters) must match whole words, so "y" doesn't match "york".
   - Queries that look like route numbers list roads first.
 - **Online results:** Photon (photon.komoot.io) after 350 ms, biased to the map center and limited to the covered area plus 1°.
-- **Picking a result:**
+- **Picking a result** puts its name in the box (✕ clears the box, the pin and the place card):
   - a road frames its bounds, then opens that stretch's card once its tiles load;
-  - a place flies there and drops a pin;
-  - **Start** makes it the ride's start and opens Plan a ride.
+  - a place flies there, drops a pin and opens the place's card: **Add to ride as a stop** (where the route
+    passes it, never after a one-way ride's end), **Start here**, **End here** (one way), Street View and
+    Directions. Tapping the pin opens the card again. (A rider expected this and got a dot that did nothing.)
+  - **Start** in the list makes it the ride's start and opens Plan a ride.
+- Tapping a numbered stop marker on the map opens the ride (dragging one still moves it).
+- An end set before the start stays the end (it used to become the start).
 - Picking a result drops online results still on their way, so they don't reopen the list (and push the side
   panel down) after the pick.
 - **Keys:** Enter picks the first result, Esc clears.

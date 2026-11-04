@@ -157,6 +157,30 @@ test('search finds a route number and opens the road', async () => {
   await page.waitFor("/MO 7/.test(document.getElementById('sheetBody').innerText) && /Add to ride/.test(document.getElementById('sheetBody').innerText)", 30000);
 });
 
+test('a searched place fills the box, opens its card, and its pin opens it again', async () => {
+  await page.eval("RF.go('home')");
+  await page.eval("(() => { const q = document.getElementById('q'); q.value = 'greenwood'; q.dispatchEvent(new Event('input')); })()");
+  await page.waitFor("[...document.querySelectorAll('#results .result')].some(r => /^Greenwood/.test(r.innerText))", 10000);
+  await page.eval("[...document.querySelectorAll('#results .result')].find(r => /^Greenwood/.test(r.innerText)).click()");
+  await sleep(300);
+  assert.match(await page.eval("document.getElementById('q').value"), /^Greenwood/);
+  assert.match(await sheetText(), /Greenwood[\s\S]*Add to ride as a stop[\s\S]*Start here[\s\S]*End here/);
+  // Away and back by tapping the pin, with real mouse input.
+  await page.eval("RF.go('home')");
+  await sleep(1200);  // the fly to the place
+  const { x, y } = await page.eval("(() => { const r = document.querySelector('.search-pin').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+  await page.mouse('mousePressed', x, y);
+  await page.mouse('mouseReleased', x, y);
+  await sleep(400);
+  assert.match(await sheetText(), /Add to ride as a stop/);
+  const before = await page.eval('RF.trip.items.length');
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Add to ride as a stop/.test(b.textContent)).click()");
+  assert.equal(await page.eval('RF.trip.items.length'), before + 1);
+  assert.match(await page.eval("document.getElementById('toast').innerText"), /Added Greenwood/);
+  await page.eval("document.getElementById('qClear').click()");
+  assert.equal(await page.eval("!!document.querySelector('.search-pin')"), false, 'clearing the search removes the pin');
+});
+
 // Drag a stop row by its grip with real mouse or touch input, from row `from` to row `to`.
 async function dragRow(p, from, to, kind = 'mouse') {
   // Let any route that's being fetched land first: it adds the summary above the list.
@@ -183,6 +207,18 @@ const pointTrip = `(async () => {
   ['A', 'B', 'C'].forEach((l, i) => T.addPoint(RF.trip, [38.86 + i * 0.01, -94.3], l));
   RF.go('trip');
 })()`;
+
+test('tapping a stop marker on the map opens the ride', async () => {
+  await page.eval(pointTrip);
+  await page.eval("RF.go('home')");
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.32, 38.87], zoom: 12 })");
+  await sleep(500);
+  const { x, y } = await page.eval("(() => { const r = [...document.querySelectorAll('.stop-marker')].find(m => m.textContent === '2').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
+  await page.mouse('mousePressed', x, y);
+  await page.mouse('mouseReleased', x, y);
+  await sleep(400);
+  assert.match(await sheetText(), /Stops \(4\)/);
+});
 
 test('stops can be dragged into a new order', async () => {
   await page.eval(pointTrip);

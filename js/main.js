@@ -39,6 +39,7 @@ let route = null;            // { path, meters, seconds, maneuvers, fallback }
 let info = null;             // what's along the route: { curvy, blind, fuel, profile }
 let selected = null;         // { group, piece, at }: the road picked on the map or in a list
 let view = 'home', viewArg = null;
+let place = null;            // the place last picked in search, { label, sub, at }: its pin opens its card
 let picking = null;          // 'start' | 'stop' | 'road' while waiting for a map tap
 let dragging = false;        // a stop row is being dragged: hold re-renders until it's dropped
 let showKey = false;         // the map key's explanations are open
@@ -105,6 +106,8 @@ async function start() {
   });
   mapView.on('road', onRoadTap);
   mapView.on('station', k => { if (!usePick(null)) go('station', store.fuel[k]); });
+  mapView.on('pin', () => { if (place && !usePick(place.at)) go('place', place); });
+  mapView.on('stop', () => { if (!picking) go('trip'); });
   mapView.on('empty', at => { if (!usePick(at)) { clearSelection(); speedAt(at); } });
   mapView.on('hover', onHover);
   mapView.on('menu', spotMenu);
@@ -282,13 +285,16 @@ function planAround(g) {
   go('plan');
 }
 
-function addStation(s) {
-  const stop = { type: 'point', label: `Gas: ${s.name}`, pts: [[s.lat, s.lon]] };
-  const at = route ? T.indexAlongRoute(trip, stop.pts[0], route.path) : trip.items.length;
+// A point as a stop where the route passes it (else last), never after the end of a one-way ride.
+function addPlace(p, label, name = label) {
+  const stop = { type: 'point', label, pts: [[+p[0].toFixed(5), +p[1].toFixed(5)]] }, last = trip.items.length - (T.endOf(trip) ? 1 : 0);
+  const at = Math.min(last, route ? T.indexAlongRoute(trip, stop.pts[0], route.path) : last);
   trip.items.splice(at, 0, stop);
   tripChanged();
-  toast(`Added ${s.name} as stop ${at + 1}`);
+  toast(`Added ${name} as stop ${at + 1}`);
 }
+
+const addStation = s => addPlace([s.lat, s.lon], `Gas: ${s.name}`, s.name);
 
 function setStartAt(p, label) {
   T.setStart(trip, p, label);
@@ -652,7 +658,7 @@ function selectGroup(g) {
 function clearSelection() {
   selected = null;
   mapView.highlight(null);
-  if (view === 'road' || view === 'station') go('home');
+  if (view === 'road' || view === 'station' || view === 'place') go('home');
 }
 
 function onHover(id) {
@@ -713,8 +719,8 @@ function go(v, arg = null) {
   const changed = v !== view;
   view = v;
   viewArg = arg;
-  if (v === 'station') selected = null;
-  if (v === 'home' || v === 'station') mapView.highlight(selected && v !== 'station' ? selected.group.ids : null);
+  if (v === 'station' || v === 'place') selected = null;
+  if (v === 'home' || v === 'station' || v === 'place') mapView.highlight(selected && v === 'home' ? selected.group.ids : null);
   render();
   if (changed) $('#sheetBody').scrollTop = 0;
   if (!Sheet.wide() && sheet.snap === 'peek') sheet.set('half');
@@ -729,7 +735,7 @@ function renderSoon() {
 
 function render() {
   if (dragging) return;
-  const views = { home: homeView, road: roadView, station: stationView, plan: planView, trip: tripView };
+  const views = { home: homeView, road: roadView, station: stationView, place: placeView, plan: planView, trip: tripView };
   $('#sheetBody').replaceChildren(...[(views[view] || homeView)()].flat(Infinity).filter(Boolean));
 }
 
@@ -907,6 +913,23 @@ function stationView() {
     h('div.actions', {},
       h('button.btn.primary.wide', { onclick: () => addStation(s) }, iconEl(icon.plus), 'Add to ride'),
       h('a.btn', { href: `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}`, target: '_blank', rel: 'noopener' }, iconEl(icon.go), 'Directions')),
+  ];
+}
+
+// A place found in search: ride to it, from it, or through it.
+function placeView() {
+  const p = viewArg;
+  if (!p) return homeView();
+  const [lat, lon] = p.at.map(v => +v.toFixed(6)), gm = 'https://www.google.com/maps/';
+  return [
+    backBar(p.label, p.sub || null),
+    h('div.actions', {},
+      h('button.btn.primary.wide', { onclick: () => addPlace(p.at, p.label) }, iconEl(icon.plus), 'Add to ride as a stop'),
+      h('button.btn', { onclick: () => { setStartAt(p.at, `Start: ${p.label}`); go('plan'); } }, iconEl(icon.pin), 'Start here'),
+      h('button.btn', { onclick: () => { setEndAt(p.at, `End: ${p.label}`); go('plan'); } }, iconEl(icon.flag), 'End here'),
+      h('a.btn', { href: `${gm}@?api=1&map_action=pano&viewpoint=${lat},${lon}`, target: '_blank', rel: 'noopener' }, iconEl(icon.person), 'Street View'),
+      h('a.btn', { href: `${gm}dir/?api=1&destination=${lat},${lon}`, target: '_blank', rel: 'noopener' }, iconEl(icon.go), 'Directions')),
+    h('p.muted.small', {}, 'Start here or End here opens Plan a ride: with an end, it finds fun ways there.'),
   ];
 }
 
@@ -1350,11 +1373,16 @@ function closeSearch() {
 
 async function pickResult(r) {
   closeSearch();
+  q.value = r.label;
+  $('#qClear').hidden = false;
   if (r.at) {
+    place = { label: r.label, sub: r.sub, at: r.at };
     mapView.setPin(r.at);
     mapView.flyTo(r.at, r.kind === 'town' ? 12 : 14);
+    go('place', place);
     return;
   }
+  place = null;
   mapView.setPin(null);
   mapView.fit(r.bounds);
   loadTiles(pad(r.bounds, 0.05));
@@ -1372,7 +1400,14 @@ q.addEventListener('keydown', e => {
   if (e.key === 'Escape') { q.value = ''; runSearch(); q.blur(); }
   if (e.key === 'Enter' && shown.length) pickResult(shown[0]);
 });
-$('#qClear').addEventListener('click', () => { q.value = ''; runSearch(); mapView.setPin(null); q.focus(); });
+$('#qClear').addEventListener('click', () => {
+  q.value = '';
+  runSearch();
+  place = null;
+  mapView.setPin(null);
+  if (view === 'place') go('home');
+  q.focus();
+});
 document.addEventListener('keydown', e => {
   if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); }
   if (e.key === 'Escape') closeMenu();

@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, nearestIndex } from '../../js/geo.js';
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
-import { newTrip, addRoad, insertRoad, setEnd, endOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
+import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
 import { planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
@@ -345,6 +345,12 @@ test('one way: ways there that keep left, right or near the straight line, endin
     const ts = o.stops.map(st => alongLine(start, end, st.pts[0]).t);
     assert.deepEqual(ts, [...ts].sort((a, b) => a - b));
   });
+  // An end set before the start stays the end.
+  const early = setEnd(newTrip(), end, 'End: Warsaw');
+  assert.equal(startOf(early), null);
+  assert.equal(endOf(early).label, 'End: Warsaw');
+  setStart(early, start, 'Start');
+  assert.deepEqual(early.items.map(it => it.label), ['Start', 'End: Warsaw']);
   // A one-way trip keeps its end last.
   const trip = newTrip();
   setStart(trip, start, 'Start');

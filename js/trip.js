@@ -137,14 +137,14 @@ export function setStart(trip, at, label) {
 
 export const startOf = trip => {
   const first = trip.items[0];
-  return first && first.type === 'point' ? first : null;
+  return first && first.type === 'point' && !first.end ? first : null;
 };
 
-// Where a one-way ride finishes: its last stop, a pinned point marked `end`. Setting it makes the
-// ride one way.
+// Where a one-way ride finishes: its last stop, a pinned point marked `end` (which can come before
+// the start is set). Setting it makes the ride one way.
 export const endOf = trip => {
   const last = trip.items[trip.items.length - 1];
-  return !trip.loop && last && last.type === 'point' && last.end && trip.items.length > 1 ? last : null;
+  return !trip.loop && last && last.type === 'point' && last.end ? last : null;
 };
 
 export function setEnd(trip, at, label) {
