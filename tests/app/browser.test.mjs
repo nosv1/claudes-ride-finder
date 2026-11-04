@@ -277,6 +277,27 @@ test('the ride page can generate loops through its stops', async () => {
   await page.waitFor('!RF.gen.running', 180000);
 });
 
+test('one way: pick an end, and the planner finds fun ways there that finish at it', async () => {
+  await page.eval("RF.go('plan')");
+  await page.eval("RF.mapView.emit('menu', [38.88956, -94.38724], { x: 700, y: 400 })");
+  await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Start a ride here/.test(b.textContent)).click()");
+  await page.eval("RF.mapView.emit('menu', [38.2431, -93.3819], { x: 700, y: 400 })");
+  await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /End a ride here/.test(b.textContent)).click()");
+  await sleep(300);
+  assert.match(await sheetText(), /One way[\s\S]*Start[\s\S]*End[\s\S]*Extra time for fun roads[\s\S]*Find fun ways there/);
+  assert.deepEqual(await page.eval('[RF.trip.loop, RF.trip.items[RF.trip.items.length - 1].end, RF.settings.genShape]'), [false, true, 'oneway']);
+  if (NETWORK) {
+    await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Find fun ways there/.test(b.textContent)).click()");
+    await page.waitFor('!RF.gen.running', 300000);
+    const opts = await page.eval('RF.gen.options.filter(o => o.route).map(o => [o.oneWay, o.items[o.items.length - 1].label, o.curvy > 0])');
+    assert.ok(opts.length > 0, await page.eval('RF.gen.status'));
+    opts.forEach(o => assert.deepEqual(o, [true, 'End', true]));
+    assert.equal(await page.eval('RF.trip.loop'), false, 'the chosen way stays one way');
+  }
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => b.textContent === 'Loop').click()");
+  assert.equal(await page.eval('RF.settings.genShape'), 'loop');
+});
+
 test('the ride page shows the weather along the route, for the time you leave', async () => {
   // Open-Meteo stubbed: dry for the next day, then rain.
   await page.eval(`(() => {

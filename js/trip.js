@@ -66,20 +66,25 @@ const lastPoint = trip => {
   return last && last.pts[last.pts.length - 1];
 };
 
+// New stops go last, or just before the end of a one-way ride.
+const append = (trip, stop) => { const end = endOf(trip); trip.items.splice(end ? trip.items.length - 1 : trip.items.length, 0, stop); };
+
 export function addRoad(trip, g) {
-  trip.items.push(orientFrom(roadStop(g), lastPoint(trip)));
+  const end = endOf(trip), before = end ? { items: trip.items.slice(0, -1) } : trip;
+  append(trip, orientFrom(roadStop(g), lastPoint(before)));
   return trip;
 }
 
 // Add a road where it fits best: the place in the ride, and the direction, that add the least
-// distance (counting the ride back to the start on a loop). Never before the start. Returns its index.
+// distance (counting the ride back to the start on a loop). Never before the start or after the end.
+// Returns its index.
 export function insertRoad(trip, g) {
   const stop = roadStop(g), items = trip.items, n = items.length, wrap = trip.loop && n;
   const dist = (a, b) => a && b ? Math.sqrt(d2(a, b)) : 0;
   const entry = it => it.pts[0], exit = it => it.pts[it.pts.length - 1];
   let best = null;
   // From the end backwards, so a tie keeps the old behaviour of adding it last.
-  for (let i = n; i >= (startOf(trip) ? 1 : 0); i--) {
+  for (let i = endOf(trip) ? n - 1 : n; i >= (startOf(trip) ? 1 : 0); i--) {
     const prev = i > 0 ? exit(items[i - 1]) : wrap ? exit(items[n - 1]) : null;
     const next = i < n ? entry(items[i]) : wrap ? entry(items[0]) : null;
     const nearer = orientFrom({ ...stop, pts: [...stop.pts] }, prev).pts;
@@ -114,7 +119,7 @@ export const ends = stop => {
 
 export function addPoint(trip, at, label, atStart = false) {
   const stop = { type: 'point', label, pts: [round5(at)] };
-  atStart ? trip.items.unshift(stop) : trip.items.push(stop);
+  atStart ? trip.items.unshift(stop) : append(trip, stop);
   return trip;
 }
 
@@ -134,6 +139,25 @@ export const startOf = trip => {
   const first = trip.items[0];
   return first && first.type === 'point' ? first : null;
 };
+
+// Where a one-way ride finishes: its last stop, a pinned point marked `end`. Setting it makes the
+// ride one way.
+export const endOf = trip => {
+  const last = trip.items[trip.items.length - 1];
+  return !trip.loop && last && last.type === 'point' && last.end && trip.items.length > 1 ? last : null;
+};
+
+export function setEnd(trip, at, label) {
+  const end = endOf(trip) || trip.items.find(it => it.end);
+  if (end) {
+    trip.items.splice(trip.items.indexOf(end), 1);
+    end.pts = [round5(at)];
+    end.label = label;
+  }
+  trip.items.push(end || { type: 'point', end: true, label, pts: [round5(at)] });
+  trip.loop = false;
+  return trip;
+}
 
 export function moveStop(trip, from, to) {
   const [it] = trip.items.splice(from, 1);
@@ -171,6 +195,7 @@ export function decodeTrip(s) {
       type: t === 'r' ? 'road' : 'point', label, curvy, pts, ...(ids ? { ids } : {}), ...(gen ? { gen: true } : {}),
       ...(oneway ? { oneway: true } : {}),
       ...(t !== 'r' && i === 0 && /^Start/.test(label) ? { start: true } : {}),
+      ...(t !== 'r' && i > 0 && i === d.s.length - 1 && !d.l && /^End/.test(label) ? { end: true } : {}),
     })),
   };
 }

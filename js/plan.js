@@ -188,11 +188,16 @@ export function planFuel(path, stations, rangeMi, need90) {
 // For each direction, add roads one at a time, each time taking the most fun per extra hour of
 // riding, so a great road an hour of highway away loses to a good one just down the road.
 // Roads are ordered by angle across the direction so the loop goes out one side, back the other.
+// One way (with an `end`): the same, but roads come from an oval around the start and end, are
+// ordered along the way, and the options keep to one side of the straight line there, or near it.
 
-export function candidateGroups(roads, start, maxKm, isWorthy) {
+// Within maxKm of the start, or with an end, within 2 × maxKm there and on to the end.
+const inReach = (p, start, maxKm, end) => end ? km(start, p) + km(p, end) <= 2 * maxKm : km(start, p) <= maxKm;
+
+export function candidateGroups(roads, start, maxKm, isWorthy, end = null) {
   const byKey = new Map();
   for (const r of roads) {
-    if (!r.key || !isWorthy(r) || km(start, r.geom[0]) > maxKm) continue;
+    if (!r.key || !isWorthy(r) || !inReach(r.geom[0], start, maxKm, end)) continue;
     if (!byKey.has(r.key)) byKey.set(r.key, []);
     byKey.get(r.key).push(r);
   }
@@ -210,19 +215,29 @@ export function candidateGroups(roads, start, maxKm, isWorthy) {
   return groups;
 }
 
+// How far along the straight line from start to end p is (0 at the start, 1 at the end), and how
+// far off it in km (+ to the right going that way).
+export function alongLine(start, end, p) {
+  const k = Math.cos(start[0] * Math.PI / 180), ex = (end[1] - start[1]) * k, ey = end[0] - start[0];
+  const px = (p[1] - start[1]) * k, py = p[0] - start[0], len2 = ex * ex + ey * ey || 1e-12;
+  return { t: (px * ex + py * ey) / len2, off: (px * ey - py * ex) / Math.sqrt(len2) * 111.2 };
+}
+
 // Stops the generator added are marked `gen`, so the next generate swaps them out but keeps the
 // rider's own.
-export function orderLoop(start, groups, dir) {
+export function orderLoop(start, groups, dir, end = null) {
+  const key = end ? g => alongLine(start, end, g.center).t : g => relAngle(bearing(start, g.center), dir);
   const stops = [...groups]
-    .sort((a, b) => relAngle(bearing(start, a.center), dir) - relAngle(bearing(start, b.center), dir))
+    .sort((a, b) => key(a) - key(b))
     .map(g => ({ ...g.stop, pts: g.stop.pts.map(p => [...p]), ...(g.required ? {} : { gen: true }) }));
-  return orientStops(start, stops);
+  return orientStops(start, stops, !end, end);
 }
 
 // Turn road stops end for end so the rides between them (and back to the start) are as short as
 // possible, looking at the whole loop rather than one stop at a time, so a road isn't entered at
-// the end that leaves you riding back down it. Changes the stops in place.
-export function orientStops(start, stops, loop = true) {
+// the end that leaves you riding back down it. With an end, the ride finishes there. Changes the
+// stops in place.
+export function orientStops(start, stops, loop = true, end = null) {
   const ends = s => [s.pts[0], s.pts[s.pts.length - 1]];
   let best = [{ cost: 0, at: start, flips: [] }];
   for (const s of stops) {
@@ -232,20 +247,21 @@ export function orientStops(start, stops, loop = true) {
       return { cost: from.cost + km(from.at, entry), at: exit, flips: [...from.flips, flip] };
     });
   }
-  const last = best.reduce((a, b) => b.cost + (loop ? km(b.at, start) : 0) < a.cost + (loop ? km(a.at, start) : 0) ? b : a);
+  const home = end || (loop ? start : null), tail = b => b.cost + (home ? km(b.at, home) : 0);
+  const last = best.reduce((a, b) => tail(b) < tail(a) ? b : a);
   last.flips.forEach((flip, i) => { if (flip) stops[i].pts.reverse(); });
   return stops;
 }
 
-// Rough riding hours for a loop, and how many of them are on the chosen roads.
-export function estimate(start, stops) {
+// Rough riding hours for a loop (or a ride on to `end`), and how many of them are on the chosen roads.
+export function estimate(start, stops, end = null) {
   let link = 0, road = 0, prev = start;
   for (const s of stops) {
     link += km(prev, s.pts[0]) * GEN.roadFactor / GEN.linkKmh;
     for (let i = 1; i < s.pts.length; i++) road += km(s.pts[i - 1], s.pts[i]) * GEN.roadFactor / GEN.roadKmh;
     prev = s.pts[s.pts.length - 1];
   }
-  link += km(prev, start) * GEN.roadFactor / GEN.linkKmh;
+  link += km(prev, end || start) * GEN.roadFactor / GEN.linkKmh;
   return { hours: link + road, roadHours: road };
 }
 
@@ -261,16 +277,16 @@ export const maxRoadsFor = hours => Math.min(GEN.maxRoadsCap, Math.max(GEN.maxRo
 // pick is the most score per extra hour, but every road is charged at least its share of the
 // time still to fill, so a long ride reaches out to good roads farther away instead of
 // stacking up short ones by the start and coming home early.
-export function fillLoop(start, pool, dir, hours, chosen, maxRoads) {
+export function fillLoop(start, pool, dir, hours, chosen, maxRoads, end = null) {
   chosen = [...chosen];
-  let stops = orderLoop(start, chosen, dir), est = estimate(start, stops);
+  let stops = orderLoop(start, chosen, dir, end), est = estimate(start, stops, end);
   while (chosen.length < maxRoads) {
     const share = (hours - est.hours) / (maxRoads - chosen.length);
     let best = null;
     for (const g of pool) {
       if (chosen.includes(g) || g.small || chosen.some(c => twins(c, g))) continue;
-      const trial = orderLoop(start, [...chosen, g], dir);
-      const e = estimate(start, trial);
+      const trial = orderLoop(start, [...chosen, g], dir, end);
+      const e = estimate(start, trial, end);
       if (e.hours > hours) continue;
       const extra = e.hours - est.hours, gain = g.score / Math.max(extra, share, 0.05);
       // Near ties go to the road that uses more of the time.
@@ -287,7 +303,9 @@ export function fillLoop(start, pool, dir, hours, chosen, maxRoads) {
 // required: the rider's own stops (roads or points) every loop must include. With some, loops
 // head their way (straight at them, or swinging out to either side) and fill the remaining time.
 // Each option keeps its direction, road pool and chosen roads so it can be filled again.
-export function buildOptions(groups, start, hours, required = []) {
+// With an end, the options are ways there: keeping left of the straight line, right of it, near it
+// (within a quarter of its length), or anywhere; `dir` is the compass way of that side.
+export function buildOptions(groups, start, hours, required = [], end = null) {
   const req = required.map(stop => ({
     key: stop.label, score: stop.score || 0, stop, required: true,
     center: center(boundsOf([stop.pts[0], stop.pts[stop.pts.length - 1]])),
@@ -295,24 +313,32 @@ export function buildOptions(groups, start, hours, required = []) {
   const taken = new Set(req.flatMap(r => r.stop.ids || []));
   const free = groups.filter(g => !(g.ids || []).some(id => taken.has(id)));
   let dirs = Array.from({ length: 12 }, (_, i) => i * 30);
-  if (req.length) {
+  let ways = null;
+  if (end) {
+    const axis = bearing(start, end), len = km(start, end), off = g => alongLine(start, end, g.center).off;
+    ways = [[(axis + 270) % 360, g => off(g) < 0, 'left'], [(axis + 90) % 360, g => off(g) > 0, 'right'],
+      [axis, g => Math.abs(off(g)) <= len / 4, 'near'], [axis, () => true, 'any']];
+    dirs = ways.map(w => w[0]);
+  } else if (req.length) {
     const mid = [req.reduce((s, r) => s + r.center[0], 0) / req.length, req.reduce((s, r) => s + r.center[1], 0) / req.length];
     const toward = bearing(start, mid);
     dirs = [0, -35, 35, -70, 70].map(d => (toward + d + 360) % 360);
   }
   const maxRoads = req.length + Math.max(1, maxRoadsFor(hours) - req.length);
   const options = [], seen = new Set();
-  for (const dir of dirs) {
-    const pool = free.filter(g => Math.abs(relAngle(bearing(start, g.center), dir)) <= GEN.spread);
-    const { chosen, stops, est } = fillLoop(start, pool, dir, hours, req, maxRoads);
+  for (const [i, dir] of dirs.entries()) {
+    const pool = free.filter(ways ? ways[i][1] : g => Math.abs(relAngle(bearing(start, g.center), dir)) <= GEN.spread);
+    const { chosen, stops, est } = fillLoop(start, pool, dir, hours, req, maxRoads, end);
     const sig = chosen.map(g => g.key + g.center).sort().join('|');
     if (!chosen.length || seen.has(sig)) continue;
     seen.add(sig);
     const fun = chosen.reduce((s, g) => s + g.score, 0);
     // Loops short of the time rank lower: one filling 3/4 of it counts about half.
     const fit = Math.min(1, est.hours / hours) ** 2;
-    options.push({ dir, pool, free, chosen, stops, maxRoads, value: fun * est.roadHours / (est.hours || 1) * fit, required: req.length });
+    options.push({ dir, pool, free, chosen, stops, maxRoads, value: fun * est.roadHours / (est.hours || 1) * fit, required: req.length,
+      ...(ways ? { way: ways[i][2] } : {}) });
   }
+  if (end) return options.sort((a, b) => b.value - a.value);
   // The best few, but each side of the start (N, E, S, W) gets its best loop in when that's at
   // least sideMin as good as the best, so the choice isn't all one way.
   options.sort((a, b) => b.value - a.value);

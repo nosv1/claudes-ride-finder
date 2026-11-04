@@ -24,6 +24,7 @@ export const icon = {
   warn: svg('<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17v.5"/>'),
   mountain: svg('<path d="m3 20 6-11 4 6 3-4 5 9H3Z"/>'),
   route: svg('<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h7"/>'),
+  flag: svg('<path d="M5 21V4"/><path d="M5 4h12l-2.5 4 2.5 4H5"/>'),
   pin: svg('<path d="M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/>'),
   chevron: svg('<path d="m6 9 6 6 6-6"/>'),
   help: svg('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17v.5"/>'),

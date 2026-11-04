@@ -6,8 +6,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, nearestIndex } from '../../js/geo.js';
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
-import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn } from '../../js/plan.js';
+import { newTrip, addRoad, insertRoad, setEnd, endOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
+import { planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
@@ -322,6 +322,42 @@ test('a long ride fills its time instead of stopping at a few roads by the start
     assert.ok(est[0] >= 0.8 * hours, `best ${hours} h loop estimated at ${est[0].toFixed(2)} h`);
     est.forEach(h => assert.ok(h >= 0.7 * hours && h <= hours, `${hours} h loop estimated at ${h.toFixed(2)} h`));
   }
+});
+
+test('one way: ways there that keep left, right or near the straight line, ending at the end', () => {
+  // 100 km east. Roads either side of the line, near it, and some behind the start or past the end.
+  const start = [38.5, -94], end = [38.5, -92.85];
+  const along = alongLine(start, end, [38.6, -93.425]);
+  assert.ok(Math.abs(along.t - 0.5) < 0.01 && Math.abs(along.off + 11.1) < 0.2, `halfway, 11 km left: ${JSON.stringify(along)}`);
+  const road = (key, lat, lon) => ({ key, score: 2000, curvy: 5000, ids: [key], stop: { type: 'road', label: key, pts: [[lat, lon], [lat, lon + 0.03]] }, center: [lat, lon + 0.015] });
+  const groups = [road('N1', 38.65, -93.7), road('N2', 38.7, -93.3), road('S1', 38.35, -93.6), road('S2', 38.3, -93.2),
+    road('M1', 38.5, -93.5), road('BEHIND', 38.5, -94.6)];
+  const options = buildOptions(groups, start, 2.5, [], end);
+  const by = Object.fromEntries(options.map(o => [o.way, o]));
+  const keys = o => o.chosen.map(g => g.key);
+  assert.ok(keys(by.left).every(k => k.startsWith('N')), `left (north going east): ${keys(by.left)}`);
+  assert.ok(keys(by.right).every(k => k.startsWith('S')), `right: ${keys(by.right)}`);
+  assert.equal(by.left.dir, 0, 'the left side heading east is north');
+  options.forEach(o => {
+    assert.ok(!keys(o).includes('BEHIND'));
+    assert.ok(estimate(start, o.stops, end).hours <= 2.5);
+    // Ordered along the way.
+    const ts = o.stops.map(st => alongLine(start, end, st.pts[0]).t);
+    assert.deepEqual(ts, [...ts].sort((a, b) => a - b));
+  });
+  // A one-way trip keeps its end last.
+  const trip = newTrip();
+  setStart(trip, start, 'Start');
+  setEnd(trip, end, 'End: Warsaw');
+  assert.equal(trip.loop, false);
+  assert.equal(endOf(trip).label, 'End: Warsaw');
+  addPoint(trip, [38.6, -93.4], 'Stop');
+  insertRoad(trip, { key: 'R', curvy: 1, score: 1, ids: [9], roads: [{ geom: [[38.5, -93], [38.51, -92.99]] }] });
+  assert.equal(trip.items[trip.items.length - 1].label, 'End: Warsaw');
+  setEnd(trip, [38.4, -92.9], 'End');
+  assert.equal(trip.items.filter(it => it.end).length, 1);
+  assert.deepEqual(endOf(trip).pts[0], [38.4, -92.9]);
+  assert.deepEqual(decodeTrip(encodeTrip(trip)).items.map(it => !!it.end), trip.items.map(it => !!it.end));
 });
 
 test('generator builds every loop through the rider’s own road', () => {

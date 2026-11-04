@@ -448,11 +448,24 @@ colored road), Add a stop here, Street View here.
   MO 7 rode straight past MO FF, a sweeper running the same way, which only has 950 m of curves (under the 2 km
   for main roads), so it was highlighted but never picked.
 - The same loop reached from two directions is shown once. Loops riding more than 20% twice are
-  left out when at least 3 others remain. Measured on Oct-31 data: the top loop from south KC went from 29% to 13%,
+  left out when at least 2 others remain (it was 3). Measured on Oct-31 data: the top loop from south KC went from 29% to 13%,
   from the Lake of the Ozarks from 28% to 1%.
 - Option cards show time, miles, curvy miles and %, highway-sweep miles (from 200 m), blind crests, miles ridden twice, and the roads, with the
   rider's in bold.
   Hover previews a loop; tap loads it as the ride.
+
+**One way** (Plan a ride → One way): from the start to an end, the fun way, instead of a loop.
+- The end is a pinned stop marked `end`, always last (stops added later go before it; share links keep it). Set it
+  with Pick on map under End, or right-click / long-press a spot → **End a ride here** (which switches to One way).
+- Instead of a ride time, **extra time for fun roads**: +30 min to +4 h on top of the straight way there, which is
+  routed first (Lee's Summit → Warsaw: 86 mi, 91 min).
+- Candidate roads come from an oval: within 2 × reach of the start and end added up (reach as for a loop of that
+  time). They're ordered by how far along the straight line they are, and the last leg goes to the end, not home.
+- Four options, each from its own pool: roads left of the straight line, right of it, within a quarter of its length
+  of it, or anywhere; named "North side", "South side", "Near the straight way", "Best roads, any side". They're
+  routed and fixed like loops (time, doubling back, "Another way", stoplights, roads on the way), and the chosen
+  one rides as a one-way trip. Lee's Summit → Warsaw with +2 h: 148 mi, 3 h 20 min, 47 mi curvy (MO TT, MO OO,
+  MO BB), found in 46 s.
 
 **Export**
 - **Go / Open in Google Maps:** directions links (9 waypoints each, split into parts).

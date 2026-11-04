@@ -219,7 +219,7 @@ h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0 0 
 .start-row.must { padding: 4px 4px 4px 12px; margin-bottom: 6px; }
 .own { color: var(--text); }
 .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 6px; }
-.seg button { min-height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
+.seg button { min-height: 38px; padding: 0 10px; white-space: nowrap; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
 .seg button.on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
 .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
 .switch input { width: 20px; height: 20px; accent-color: var(--blue); }

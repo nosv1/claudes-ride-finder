@@ -24,7 +24,7 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 const settings = Object.assign({
   mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, showBlind: true, showFuel: false,
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
-  basemap: 'dark', hillshade: true, genHours: 3,
+  basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1,
 }, load(SETTINGS_KEY));
 // Settings saved before the highway tiers existed list only the ramp tiers: show the new ones too.
 if (!settings.highwayTiers) {
@@ -295,6 +295,13 @@ function setStartAt(p, label) {
   tripChanged();
 }
 
+// Where a one-way ride finishes; the planner switches to one way.
+function setEndAt(p, label) {
+  T.setEnd(trip, p, label);
+  if (settings.genShape !== 'oneway') setSetting({ genShape: 'oneway' });
+  tripChanged();
+}
+
 // A quick, rough fix first (or a recent one the phone already has); if that fails for any
 // reason other than permission, try once more for a precise GPS fix.
 function locate() {
@@ -359,7 +366,8 @@ async function fixDoubleBack() {
 let genRoutes = new Map();
 
 async function generate() {
-  const hours = settings.genHours;
+  const oneWay = settings.genShape === 'oneway';
+  let hours = settings.genHours;
   genRoutes = new Map();
   let start = T.startOf(trip);
   if (!start) {
@@ -374,27 +382,45 @@ async function generate() {
       return renderSoon();
     }
   }
-  const required = ownStops();
-  const s = start.pts[0], reach = P.reachKm(hours);
-  const dLat = reach / 111, dLon = reach / (111 * Math.cos(s[0] * Math.PI / 180));
+  const end = oneWay ? T.endOf(trip) : null;
+  if (oneWay && !end) {
+    gen = { options: [], index: -1, running: false, status: 'Set where you’re headed first: Pick on map, or right-click (long-press) a spot and choose “End a ride here”.' };
+    return renderSoon();
+  }
+  const required = ownStops(), s = start.pts[0], e = end && end.pts[0];
+  const kind = oneWay ? 'ways there' : 'loops';
   gen = { options: [], index: -1, running: true,
-    status: required.length ? `Building loops through ${required.map(r => r.label).join(', ')}…` : 'Loading roads around your start…' };
+    status: required.length ? `Building ${kind} through ${required.map(r => r.label).join(', ')}…` : oneWay ? 'Finding the straight way there…' : 'Loading roads around your start…' };
   renderSoon();
-  loadTiles([s[0] - dLat, s[1] - dLon, s[0] + dLat, s[1] + dLon]);
+  // One way: the time is the straight way there plus the extra the rider will spend on fun roads.
+  if (oneWay) {
+    const direct = await fetchRoute([{ p: s, via: false }, { p: e, via: false }], +trip.pref);
+    if (!direct) {
+      gen = { options: [], index: -1, running: false, status: 'Couldn’t reach the router right now. Try again in a minute.' };
+      return renderSoon();
+    }
+    hours = direct.seconds / 3600 + settings.genExtra;
+  }
+  // Roads within reach: around the start, or one way, in an oval around the start and end.
+  const reach = P.reachKm(hours), c = e ? [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2] : s;
+  const dLat = reach / 111, dLon = reach / (111 * Math.cos(c[0] * Math.PI / 180));
+  loadTiles([c[0] - dLat, c[1] - dLon, c[0] + dLat, c[1] + dLon]);
   await Promise.all([tilesSettled(), loadSignals()]);  // the lights, to rank loops by stoplights
   // The roads the map shows, by road type: curvy roads, highway sweeps or both (ramps aren't stops, yet).
   const f = filters(), worthy = r => visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
-  const options = P.buildOptions(P.candidateGroups(store.roads, s, reach, worthy), s, hours, required);
+  const options = P.buildOptions(P.candidateGroups(store.roads, s, reach, worthy, e), s, hours, required, e);
   if (!options.length) {
-    gen = { options: [], index: -1, running: false, status: 'No good roads within reach. Try a longer ride, or loosen the filters.' };
+    gen = { options: [], index: -1, running: false, status: oneWay ? 'No good roads on the way. Try more extra time, or loosen the filters.'
+      : 'No good roads within reach. Try a longer ride, or loosen the filters.' };
     return renderSoon();
   }
+  options.forEach(o => { o.oneWay = oneWay; });
   // Two at a time: about twice as fast, and still gentle on the public router.
   let next = 0, done = 0;
-  const progress = () => { gen.status = `Routing loops: ${done} of ${options.length} done…`; renderSoon(); };
+  const progress = () => { gen.status = `Routing ${kind}: ${done} of ${options.length} done…`; renderSoon(); };
   const worker = async () => {
     while (next < options.length) {
-      await routeOption(options[next++], start, hours);
+      await routeOption(options[next++], start, hours, end);
       done++;
       progress();
     }
@@ -408,7 +434,8 @@ async function generate() {
   if (!shown.length && options.some(o => o.route)) {
     const off = o => Math.abs(Math.log(o.route.seconds / target));
     shown = options.filter(o => o.route).sort((a, b) => off(a) - off(b)).slice(0, 3);
-    status = `Couldn’t fit a loop close to ${hours === 1.5 ? '1½' : hours} h here, so these are the nearest. Try another time or loosen the filters.`;
+    status = oneWay ? `Couldn’t fit a way there close to ${fmtDuration(hours * 3600)}, so these are the nearest. Try another extra time or loosen the filters.`
+      : `Couldn’t fit a loop close to ${hours === 1.5 ? '1½' : hours} h here, so these are the nearest. Try another time or loosen the filters.`;
   }
   // The same loop can come out of two directions once fixed: keep one.
   const sigs = new Set(), sig = o => o.items.slice(1).map(it => (it.ids || [it.label]).join(',')).sort().join('|');
@@ -419,7 +446,7 @@ async function generate() {
   // Say which ways have nothing, so an all-north list doesn't look like a bug.
   const sides = ['north', 'east', 'south', 'west'], has = new Set(shown.filter(o => o.route).map(o => Math.floor(((o.dir + 45) % 360) / 90)));
   const none = sides.filter((_, q) => !has.has(q));
-  if (!required.length && shown.length && none.length && none.length < 4) {
+  if (!oneWay && !required.length && shown.length && none.length && none.length < 4) {
     status = `${status ? status + ' ' : ''}No loops to the ${none.join(none.length > 2 ? ', ' : ' or ').replace(/, (\w+)$/, ', or $1')}: not enough good roads that way with your filters.`;
   }
   gen = { options: (shown.length ? shown : options).sort((a, b) => worth(b) - worth(a)), index: -1, running: false, status };
@@ -448,18 +475,27 @@ function rate(r) {
 // stretch to ride through instead; and the loop without the generated road most to blame (the
 // one the doubled-back miles are on, like a lake road that dead-ends, or else the one nearest
 // them). The best is kept if the loop ranks higher and stays in 80–120%.
-async function routeOption(opt, start, hours) {
+// One way (with an `end`), the same, riding on to the end instead of home.
+async function routeOption(opt, start, hours, end = null) {
   let items = [start, ...opt.stops];
+  const e = end && end.pts[0], finish = list => end ? [...list, end] : list;
+  const copy = list => list.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
+  // With road g added where it fits best, marked as the generator's.
+  const withRoad = (list, g) => {
+    const t = { items: finish(copy(list)), loop: !end };
+    t.items[T.insertRoad(t, g)].gen = true;
+    return end ? t.items.slice(0, -1) : t.items;
+  };
   const routeOf = list => {
-    P.orientStops(start.pts[0], list.slice(1));
-    const pts = T.routablePoints({ ...trip, items: list, loop: true }), key = JSON.stringify([pts, trip.pref]);
+    P.orientStops(start.pts[0], list.slice(1), !end, e);
+    const pts = T.routablePoints({ ...trip, items: finish(list), loop: !end }), key = JSON.stringify([pts, trip.pref]);
     if (!genRoutes.has(key)) genRoutes.set(key, fetchRoute(pts, +trip.pref));
     return genRoutes.get(key);
   };
   let r = await routeOf(items);
   for (let tries = 0; r && r.seconds < hours * 3600 * GEN.under && tries < 2; tries++) {
-    const estHours = P.estimate(start.pts[0], items.slice(1)).hours;
-    const more = P.fillLoop(start.pts[0], opt.pool, opt.dir, hours * estHours / (r.seconds / 3600), opt.chosen, opt.maxRoads + 2);
+    const estHours = P.estimate(start.pts[0], items.slice(1), e).hours;
+    const more = P.fillLoop(start.pts[0], opt.pool, opt.dir, hours * estHours / (r.seconds / 3600), opt.chosen, opt.maxRoads + 2, e);
     if (more.chosen.length === opt.chosen.length) break;  // nothing more fits this way
     opt.chosen = more.chosen;
     items = [start, ...more.stops];
@@ -472,21 +508,19 @@ async function routeOption(opt, start, hours) {
     r = await routeOf(items);
   }
   let best = rate(r);
-  const copy = list => list.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
   for (let tries = 0; tries < GEN.backTries && best && best.back > GEN.maxBack * best.route.meters; tries++) {
     const twice = P.retrace(best.route.path), lines = twice.lines, spots = lines.flat(), attempts = [];
     // Another way home: the best road near the stretch ridden twice that fits the time left.
-    const estOf = list => P.estimate(start.pts[0], list.slice(1)).hours;
+    const estOf = list => P.estimate(start.pts[0], list.slice(1), e).hours;
     const scale = best.route.seconds / 3600 / estOf(items), room = hours * GEN.overrun - best.route.seconds / 3600;
     for (const g of P.wayHomeRoads(opt.free, items, lines)) {
-      const more = { items: items.map(it => ({ ...it, pts: it.pts.map(p => [...p]) })), loop: true };
-      more.items[T.insertRoad(more, g)].gen = true;
-      if ((estOf(more.items) - estOf(items)) * scale <= room) { attempts.push(more.items); break; }
+      const more = withRoad(items, g);
+      if ((estOf(more) - estOf(items)) * scale <= room) { attempts.push(more); break; }
     }
     // Or through a spot off to one side of it, so the second pass is on another road.
     for (const d of P.detours(twice)) {
       const list = copy(items);
-      list.splice(P.stopIndexAt(best.route.path, items, d.m), 0, { type: 'point', label: 'Another way back', pts: [d.p], gen: true });
+      list.splice(P.stopIndexAt(best.route.path, items, d.m), 0, { type: 'point', label: end ? 'Another way' : 'Another way back', pts: [d.p], gen: true });
       attempts.push(list);
     }
     // Or without the generated road most to blame.
@@ -535,15 +569,14 @@ async function routeOption(opt, start, hours) {
     const g = P.onTheWay(opt.free, items, best.route.path).find(x => !tried.has(x));
     if (!g) break;
     tried.add(g);
-    const more = { items: copy(items), loop: true };
-    more.items[T.insertRoad(more, g)].gen = true;
-    const other = rate(await routeOf(more.items));
+    const more = withRoad(items, g);
+    const other = rate(await routeOf(more));
     if (keeps(other)) {
-      items = more.items;
+      items = more;
       best = other;
     }
   }
-  Object.assign(opt, { items, route: best && best.route }, best ? { curvy: best.curvy, highway: best.highway, blind: best.blind, back: best.back, turns: best.turns.length,
+  Object.assign(opt, { items: finish(items), route: best && best.route }, best ? { curvy: best.curvy, highway: best.highway, blind: best.blind, back: best.back, turns: best.turns.length,
     lights: best.lights.length, lefts: best.lefts.length, worth: best.worth } : {});
 }
 
@@ -551,7 +584,7 @@ function selectOption(i) {
   const opt = gen.options[i];
   gen.index = i;
   trip.items = opt.items.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
-  trip.loop = true;
+  trip.loop = !opt.oneWay;
   routeSeq++;
   clearTimeout(routeTimer);
   tripChanged({ reroute: false });
@@ -634,6 +667,7 @@ function spotMenu(at, pt) {
   menu([
     { heading: `${at[0].toFixed(4)}, ${at[1].toFixed(4)}` },
     { label: 'Start a ride here', icon: icon.pin, run: () => { setStartAt(at, 'Start'); go('plan'); } },
+    { label: 'End a ride here', icon: icon.flag, run: () => { setEndAt(at, 'End'); go('plan'); } },
     g ? { label: `Ride ${g.key} end to end`, icon: icon.route, run: () => addRoad(g) } : null,
     { label: 'Add a stop here', icon: icon.plus, run: () => { T.addPoint(trip, at, 'Stop'); tripChanged(); toast('Stop added. Drag its pin to adjust.'); } },
     { label: 'Street View here', icon: icon.person, run: () => window.open(sv, '_blank', 'noopener') },
@@ -650,6 +684,7 @@ function usePick(at, roadId = null) {
   const kind = picking;
   stopPicking();
   if (kind === 'start') setStartAt(at, 'Start');
+  else if (kind === 'end') setEndAt(at, 'End');
   else if (roadId != null) {
     const g = stretchOf(store.roads, store.byId.get(roadId));
     kind === 'road' ? addRoad(g) : addStopOn(at, g);
@@ -658,7 +693,7 @@ function usePick(at, roadId = null) {
   return true;
 }
 
-const PICK_PROMPTS = { start: 'Tap the map to set your start', stop: 'Tap the map to add a stop', road: 'Tap a road to add it to your ride' };
+const PICK_PROMPTS = { start: 'Tap the map to set your start', end: 'Tap the map where you’re headed', stop: 'Tap the map to add a stop', road: 'Tap a road to add it to your ride' };
 function startPicking(kind) {
   picking = kind;
   const banner = $('#pickBanner');
@@ -876,22 +911,28 @@ function stationView() {
 }
 
 function planView() {
-  const start = T.startOf(trip);
+  const start = T.startOf(trip), oneWay = settings.genShape === 'oneway', end = oneWay && T.endOf(trip);
+  const place = it => it ? it.label.replace(/^(Start|End):?\s*/, '') || 'Pinned on the map' : 'Not set yet';
   return [
-    backBar('Plan a ride', 'A loop from your start through the best roads'),
+    backBar('Plan a ride', oneWay ? 'From your start to where you’re headed, the fun way' : 'A loop from your start through the best roads'),
+    h('div.seg.shape', {}, [['loop', 'Loop'], ['oneway', 'One way']].map(([v, l]) =>
+      h(`button${settings.genShape === v ? '.on' : ''}`, { onclick: () => setSetting({ genShape: v }) }, l))),
     h('div.field', {}, h('label', {}, 'Start'),
-      h('div.start-row', {}, iconEl(icon.pin), h('span.grow', {}, start ? start.label.replace(/^Start:?\s*/, '') || 'Pinned on the map' : 'Not set yet'))),
+      h('div.start-row', {}, iconEl(icon.pin), h('span.grow', {}, place(start)))),
     h('div.btn-row', {},
       h('button.btn', { onclick: async () => {
         try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'My location'),
       h('button.btn', { onclick: () => startPicking('start') }, iconEl(icon.pin), 'Pick on map')),
+    oneWay ? h('div.field', {}, h('label', {}, 'End'),
+      h('div.start-row', {}, iconEl(icon.flag), h('span.grow', {}, place(end))),
+      h('div.btn-row', {}, h('button.btn', { onclick: () => startPicking('end') }, iconEl(icon.pin), 'Pick on map'))) : '',
     mustInclude(),
-    rideTime(),
-    h('button.cta', { onclick: generate, disabled: gen.running }, iconEl(icon.route), gen.running ? 'Working…' : 'Generate loops'),
+    oneWay ? extraTime() : rideTime(),
+    h('button.cta', { onclick: generate, disabled: gen.running }, iconEl(icon.route), gen.running ? 'Working…' : oneWay ? 'Find fun ways there' : 'Generate loops'),
     gen.status ? h('p.muted', {}, gen.status) : '',
     gen.options.length ? h('div.cards', {}, gen.options.map(optionCard)) : '',
-    gen.index >= 0 ? h('button.btn.wide', { onclick: () => go('trip') }, 'Ride this loop →') : '',
+    gen.index >= 0 ? h('button.btn.wide', { onclick: () => go('trip') }, gen.options[gen.index] && gen.options[gen.index].oneWay ? 'Ride this way →' : 'Ride this loop →') : '',
     h('p.fineprint', {}, 'Uses the filters at the top (speed, hills, paved). Riding time doesn’t include stops. Or build your own: tap roads on the map and Add to ride.'),
   ];
 }
@@ -900,8 +941,13 @@ const rideTime = (label = 'Ride time') => h('div.field', {}, h('label', {}, labe
   h('div.seg', {}, [1, 1.5, 2, 3, 4, 5, 6, 8].map(t => h(`button${settings.genHours === t ? '.on' : ''}`,
     { onclick: () => setSetting({ genHours: t }) }, t === 1.5 ? '1½ h' : `${t} h`))));
 
+// One way: how much longer than the straight way there to spend on fun roads.
+const extraTime = () => h('div.field', {}, h('label', {}, 'Extra time for fun roads'),
+  h('div.seg', {}, [0.5, 1, 1.5, 2, 3, 4].map(t => h(`button${settings.genExtra === t ? '.on' : ''}`,
+    { onclick: () => setSetting({ genExtra: t }) }, t === 0.5 ? '+30 min' : t === 1.5 ? '+1½ h' : `+${t} h`))));
+
 // The rider's own stops: every generated loop goes through them.
-const ownStops = () => trip.items.filter((it, i) => !(i === 0 && T.startOf(trip)) && !it.gen);
+const ownStops = () => trip.items.filter((it, i) => !(i === 0 && T.startOf(trip)) && !it.gen && !it.end);
 
 function mustInclude() {
   const own = ownStops();
@@ -912,25 +958,31 @@ function mustInclude() {
           h('span.grow', {}, it.label, it.type === 'road' && it.curvy ? h('span.muted.small', {}, ` · ${miles(it.curvy)} mi of curves`) : ''),
           h('button.icon-btn', { title: 'Remove', html: icon.x, onclick: () => { T.removeStop(trip, trip.items.indexOf(it)); tripChanged(); } }))),
         h('p.muted.small', {}, 'Loops will go through these and fill the rest of your time with the best roads nearby.'))
-      : h('p.muted.small', {}, 'Nothing yet. To build a loop around a road, tap it on the map and choose “Plan a loop with this road”.'));
+      : h('p.muted.small', {}, 'Nothing yet. To build a ride around a road, tap it on the map and choose “Plan a loop with this road”.'));
+}
+
+// "Northeast", or one way: "North side", "Near the straight way", "Best roads, any side".
+function optionName(o) {
+  const compass = P.heading(o.dir)[0].toUpperCase() + P.heading(o.dir).slice(1);
+  return o.way === 'near' ? 'Near the straight way' : o.way === 'any' ? 'Best roads, any side' : o.way ? `${compass} side` : compass;
 }
 
 function optionCard(o, i) {
-  if (!o.route) return h('div.card.option.failed', {}, `${P.heading(o.dir)}: couldn’t route right now`);
+  if (!o.route) return h('div.card.option.failed', {}, `${optionName(o)}: couldn’t route right now`);
   const pct = Math.round(100 * o.curvy / o.route.meters);
   return h(`div.card.option${i === gen.index ? '.on' : ''}`, {
     onclick: () => selectOption(i),
     onmouseenter: () => mapView.setPreview(o.route.path),
     onmouseleave: () => mapView.setPreview(null),
   },
-  h('div.option-head', {}, h('span.num', {}, i + 1), h('b', {}, P.heading(o.dir)[0].toUpperCase() + P.heading(o.dir).slice(1)),
+  h('div.option-head', {}, h('span.num', {}, i + 1), h('b', {}, optionName(o)),
     h('span.muted.push', {}, fmtDuration(o.route.seconds))),
   h('div.option-stats', {}, `${miles(o.route.meters)} mi · `, h('b', {}, `${miles(o.curvy)} mi curvy`), ` (${pct}%)`,
     o.highway >= 200 ? ` · ${miles(o.highway)} mi highway sweeps` : '',
     o.blind ? h('span.warn', {}, ` · ⚠ ${o.blind}`) : '', o.back >= 400 ? h('span.warn', {}, ` · ↩ ${miles(o.back)} mi twice`) : '',
     o.turns ? h('span.warn', {}, ` · ↺ turns around${o.turns > 1 ? ` ${o.turns}×` : ''}`) : '',
     o.lights ? ` · 🚦 ${o.lights}${o.lefts ? ` (${o.lefts} left)` : ''}` : ''),
-  h('div.muted.small', {}, o.items.slice(1).flatMap((it, k) => [k ? ', ' : '', it.gen ? it.label : h('b.own', {}, it.label)])));
+  h('div.muted.small', {}, o.items.slice(1).filter(it => !it.end).flatMap((it, k) => [k ? ', ' : '', it.gen ? it.label : h('b.own', {}, it.label)])));
 }
 
 function tripView() {
