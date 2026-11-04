@@ -2,7 +2,7 @@
 // show up straight away; version.json says which is the latest) and from cache when there isn't;
 // map imagery, terrain and fonts are kept as you browse (up to a limit), so areas you've looked
 // at keep working without signal. Routing and place search always need the network.
-const VERSION = 'v9';
+const VERSION = 'v10';
 const APP = `rf-app-${VERSION}`, MAP = `rf-map-${VERSION}`;
 const MAP_LIMIT = 4000;   // map tiles to keep (~150 MB at most)
 const SHELL = [
