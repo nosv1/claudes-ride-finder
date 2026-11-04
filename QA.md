@@ -75,6 +75,14 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - ✱ The blue rider dot stays in sight the whole way, over hills and crests (the camera looks down more steeply
   for a moment rather than lose it behind one).
 
+## Roller coasters
+
+- Off by default: no tan roads until the Roller coasters chip in the key is on.
+- On, around Branson or the Lake of the Ozarks: tan roads appear, "Roller coasters in view" lists up to 3, and a
+  tapped one says Roller coaster with its length and hills. Its elevation chart should actually go up and down.
+- They never show in Best roads in view, and Generate doesn't build loops around them.
+- Spot-check a few on Street View or the 3D view: straight, and hilly? Not a bridge or a single long grade?
+
 ## Ready to share
 
 - Under the home list: "About, credits and riding safe" opens the About page; Back returns home.

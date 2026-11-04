@@ -65,12 +65,24 @@ committed as `tiles/`. The app needs no OSM server at runtime.
     **60 mph** on everything else, county roads (`CR`) included. The region comes from the `.pbf` file name.
   - Regression case: the Twisted Sisters (RM 335/336/337 by Leakey) top Best roads in the Hill Country.
 
-**Hills and blind crests** (curvy roads and sweepers only)
+**Hills and blind crests** (curvy roads, sweepers and straight back roads)
 - **Hill:** total climbing plus descending in m per km, using a 2 m hysteresis.
 - **Hill levels:** flat <12, rolling ≥12, hilly ≥22, very hilly ≥35.
   - Calibrated on real roads: western Kansas ≈11, around KC ≈18, Ozarks ≈30.
 - **Blind crest corner:** a point ≥ 3 m above the average of the points 75 m before and after it, a local maximum, with a turn of radius < 120 m within 25 m before to 75 m after it.
   - One flag per crest.
+
+**Roller coasters** (straight back roads that go up and down a lot)
+- Every `primary`/`secondary`/`tertiary`/`unclassified` road over 1 km that isn't curvy or a sweeper is measured
+  too. Hilly or more (≥ 22 m/km, 115 ft/mi) makes it a roller coaster, kept in the main `x_y` tiles; the rest
+  stay speed-only (or are dropped when they have no posted limit, as before).
+  - Under 1 km is mostly bridges (the bare-earth terrain has the valley under them) and corners. Highways are left
+    out: road cuts and fills make the terrain beside them hillier than the road.
+- The build has to keep unposted straight back roads until it has measured them, so a full build reads elevation
+  for nearly every rural road, not only the curvy ones.
+- `python tools/add_hills.py` does this on the built tiles without the raw files, for the straight roads in them:
+  only those with a posted limit (the build drops the others), so a full build finds more.
+- Same numbers in `build_tiles.py` (`ROLLER_*`) and `js/config.js` (`ROLLER`).
 
 **Fast ramps** (`motorway_link`, `trunk_link`)
 - OSM splits ramps into short pieces, so pieces are joined end to end where nothing merges or splits, then
@@ -209,6 +221,13 @@ Tapping a class in the key toggles it. **What's this?** at the end of the key op
 class (from `about` in `config.js`), plus dashed lines, blind crests and hill levels in ft/mi (rolling 60+, hilly 115+,
 very hilly 185+). Desktop also shows each class's rule as a tooltip. The road and ramp cards repeat their class's rule
 under the tag, and the Hills chip lists ft/mi.
+
+**Roller coasters** (a chip in the key, off by default, not in Highways)
+- Draws the roller coasters in tan (`#c08457`). The hills, mph, Paved and blind-crest filters apply to them too.
+- Under Best roads in view: "Roller coasters in view", the top 3 by hills × length. They're never in Best roads,
+  and the loop generator doesn't build loops around them (to be aware of, not to ride for). They can still be
+  added to a ride by hand.
+- Their card says Roller coaster, with the rule, its length and its hills instead of curve miles.
 
 **Filters**
 - **Hills:** any / rolling+ / hilly+ / very hilly, in the curvy modes. Only applied when set above "any".

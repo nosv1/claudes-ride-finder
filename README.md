@@ -34,6 +34,7 @@ Elevation comes from AWS Terrain Tiles (USGS), basemaps from Esri, routing from 
 
 For just the traffic lights (stoplight counts on rides), `python tools/add_signals.py` reads only the nodes of the
 state files in a minute or two. To change only the highway-sweep rules, `python tools/add_highway_sweeps.py` redoes that step on the built `tiles/`
-in about 15 seconds, without the downloads.
+in about 15 seconds, without the downloads. `python tools/add_hills.py` measures hills on the straight roads already in
+`tiles/` to find the roller coasters (downloads the terrain it needs the first time).
 
 The link preview image (`preview.png`) is drawn from the built tiles: `node tools/make_preview.mjs` redraws it.

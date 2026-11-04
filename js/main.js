@@ -1,7 +1,7 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, tiersFor } from './config.js';
+import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
-import { visible, stretchOf, bestInView, clusterRoads, summarize, roadNear, roadAlong } from './roads.js';
+import { visible, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong } from './roads.js';
 import * as T from './trip.js';
 import * as P from './plan.js';
 import { localResults, photonResults } from './search.js';
@@ -22,7 +22,7 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 // ---------- state ----------
 
 const settings = Object.assign({
-  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, showBlind: true, showFuel: false,
+  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, showBlind: true, showFuel: false, rollers: false,
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
   basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1,
 }, load(SETTINGS_KEY));
@@ -415,7 +415,8 @@ async function generate() {
   loadTiles([c[0] - dLat, c[1] - dLon, c[0] + dLat, c[1] + dLon]);
   await Promise.all([tilesSettled(), loadSignals()]);  // the lights, to rank loops by stoplights
   // The roads the map shows, by road type: curvy roads, highway sweeps or both (ramps aren't stops, yet).
-  const f = filters(), worthy = r => visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
+  // Not the roller coasters: they're shown to be aware of, not to build rides on.
+  const f = filters(), worthy = r => !r.roller && visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
   const options = P.buildOptions(P.candidateGroups(store.roads, s, reach, worthy, e), s, hours, required, e);
   if (!options.length) {
     gen = { options: [], index: -1, running: false, status: oneWay ? 'No good roads on the way. Try more extra time, or loosen the filters.'
@@ -767,6 +768,7 @@ function homeView() {
         ? h('div.cards', {}, groups.map(roadCard))
         : h('p.empty', {}, !store.roads.length || mapView.zoom() < LOAD_ZOOM ? 'Zoom in to see roads.'
           : highwaysOnly() ? 'No fast ramps or highway sweeps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
+    rollerList(),
     h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
     h('div.foot-links', {},
@@ -822,6 +824,15 @@ function aboutView() {
   ];
 }
 
+// With the Roller coasters chip on: the ones in view, the most up and down first.
+function rollerList() {
+  if (!settings.rollers || settings.mode === 'speed' || highwaysOnly() || mapView.zoom() < LOAD_ZOOM) return null;
+  const groups = rollersInView(store.roads, mapView.view(), filters());
+  return h('div.section', {}, h('h3', {}, h('span.swatch', { style: `background:${ROLLER.color}` }), 'Roller coasters in view'),
+    groups.length ? h('div.cards', {}, groups.map(roadCard))
+      : h('p.muted.small', {}, 'None here. They’re mostly in the Ozarks and the river bluffs.'));
+}
+
 // The map key: tap a class to hide or show it; "What's this?" explains what puts a road in each.
 function legend() {
   if (settings.mode === 'speed') {
@@ -835,6 +846,7 @@ function legend() {
     h('div.legend', {},
       classes.map((c, i) => legendChip(c, on.includes(i), () => toggleIn(ramps ? 'rampTiers' : 'classes', i))),
       settings.roadType === 'all' ? legendChip(HIGHWAYS, anyHighways, () => setSetting({ rampTiers: anyHighways ? [] : allTiers })) : null,
+      ramps ? null : legendChip(ROLLER, settings.rollers, () => setSetting({ rollers: !settings.rollers })),
       h(`button.legend-chip.key-btn${showKey ? '.on' : ''}`, { title: 'What do these mean?', 'aria-expanded': showKey ? 'true' : 'false',
         onclick: () => { showKey = !showKey; render(); } }, iconEl(icon.help), showKey ? 'Hide' : 'What’s this?')),
     showKey ? keyHelp(classes, ramps, settings.roadType === 'all') : null,
@@ -848,13 +860,14 @@ function keyHelp(classes, ramps, withHighways) {
     h('p', {}, ramps ? RAMP_ABOUT : CORNER_ABOUT),
     classes.map(c => row(sw(c.color), c.label, c.about)),
     withHighways ? row(sw(HIGHWAYS.color), HIGHWAYS.label, HIGHWAYS.about) : '',
+    ramps ? '' : row(sw(ROLLER.color), ROLLER.label, `${ROLLER.about} Off unless you turn them on; loops aren’t built around them.`),
     ramps ? '' : [
       row(h('span.swatch.dashed'), 'Dashed', 'Surface not recorded, so it could be gravel.'),
       row(h('span.key-icon', {}, '⚠'), 'Blind crest', 'A tight turn at or just past the top of a rise, so you can’t see through it.'),
       row(iconEl(icon.mountain, 'key-icon'), 'Hills', `Feet of up and down per mile: ${HILLS.slice(1).map(l => `${l.label.toLowerCase()} ${l.ft}+`).join(', ')}. Around KC is about 95, the Ozarks about 160.`),
     ]);
 }
-const groupColor = g => g.rampTier >= 0 ? (highwaysOnly() ? RAMP_TIERS[g.rampTier].color : HIGHWAYS.color) : CURVE_CLASSES[Math.max(0, g.cls)].color;
+const groupColor = g => g.rampTier >= 0 ? (highwaysOnly() ? RAMP_TIERS[g.rampTier].color : HIGHWAYS.color) : g.roller ? ROLLER.color : CURVE_CLASSES[Math.max(0, g.cls)].color;
 const legendChip = (c, on, onclick) => h(`button.legend-chip${on ? '' : '.off'}`, {
   onclick, title: `${c.about ? `${c.label}: ${c.about}\n` : ''}Tap to ${on ? 'hide' : 'show'} these`,
 }, h('span.swatch', { style: `background:${c.color}` }), c.label);
@@ -873,7 +886,7 @@ function roadCard(g) {
   h('span.bar', { style: `background:${groupColor(g)}` }),
   h('div.card-main', {},
     h('div.card-title', {}, g.key),
-    g.oneway ? h('div.card-sub', {}, rampFacts(g).join(' · ')) : h('div.card-sub', {}, `${miles(g.curvy)} mi of curves`, hill && hill !== 'Flat' ? ` · ${hill.toLowerCase()}` : '',
+    g.oneway ? h('div.card-sub', {}, rampFacts(g).join(' · ')) : h('div.card-sub', {}, g.roller ? `${miles(g.length)} mi, straight` : `${miles(g.curvy)} mi of curves`, hill && hill !== 'Flat' ? ` · ${hill.toLowerCase()}` : '',
       g.blind ? h('span.warn', {}, ` · ⚠ ${g.blind}`) : '')),
   h('button.icon-btn.add', { title: 'Add to ride', onclick: e => { e.stopPropagation(); addRoad(g); }, html: icon.plus }));
 }
@@ -940,10 +953,10 @@ function roadView() {
     : h('div.muted.small', {}, 'Elevation unavailable right now.')));
   return [
     backBar(g.key, r.name && r.name !== g.key ? r.name : (r.ref && r.ref !== g.key ? r.ref : null)),
-    h('div.tag', { style: `--c:${cls.color}` }, g.cls >= 0 ? cls.label : 'Mostly straight'),
-    g.cls >= 0 ? h('p.about', {}, cls.about) : '',
+    h('div.tag', { style: `--c:${g.roller ? ROLLER.color : cls.color}` }, g.cls >= 0 ? cls.label : g.roller ? 'Roller coaster' : 'Mostly straight'),
+    g.cls >= 0 ? h('p.about', {}, cls.about) : g.roller ? h('p.about', {}, ROLLER.about) : '',
     h('div.stats', {},
-      stat(`${miles(g.curvy)} mi`, 'of curves'),
+      g.roller ? stat(`${miles(g.length)} mi`, 'long, straight') : stat(`${miles(g.curvy)} mi`, 'of curves'),
       stat(hillWord(g.hill) || '—', g.hill != null ? `${Math.round(g.hill * 5.28)} ft/mi up & down` : 'hills'),
       stat(r.mph != null ? `${r.mph} mph` : `~${r.estMph} mph`, r.mph != null ? 'posted limit' : 'estimated limit'),
       stat(g.blind ? `⚠ ${g.blind}` : 'None', 'blind crest corners')),
