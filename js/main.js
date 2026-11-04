@@ -1,7 +1,7 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
 import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
-import { visible, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong } from './roads.js';
+import { visible, hillLevel, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong } from './roads.js';
 import * as T from './trip.js';
 import * as P from './plan.js';
 import { localResults, photonResults } from './search.js';
@@ -132,7 +132,13 @@ function applySettings() {
   renderChips();
 }
 
+// Settings that change which roads a generated ride is built from.
+const ROAD_FILTERS = ['mode', 'roadType', 'minSpeed', 'minHills', 'hideUnpaved', 'classes', 'rampTiers'];
+
 function setSetting(patch) {
+  if (gen.running && ROAD_FILTERS.some(k => k in patch && JSON.stringify(patch[k]) !== JSON.stringify(settings[k]))) {
+    stopGenerating('Stopped: the filters changed. Generate again for rides on the roads they show.');
+  }
   Object.assign(settings, patch);
   saveSettings();
   applySettings();
@@ -164,8 +170,7 @@ function loadSavedTrip() {
 let routeTimer = null, routeSeq = 0;
 function tripChanged({ reroute = true } = {}) {
   save(TRIP_KEY, T.encodeTrip(trip));
-  mapView.setStops(trip.items.map((it, i) => ({ p: it.pts[0], label: it.label, n: i + 1, draggable: it.type === 'point', index: i })),
-    (i, p) => { trip.items[i].pts[0] = [+p[0].toFixed(5), +p[1].toFixed(5)]; tripChanged(); });
+  mapView.setStops(trip.items.map((it, i) => ({ p: it.pts[0], label: it.label, n: i + 1, index: i })), dropStop);
   mapView.showTripRoads(trip.items.flatMap(it => it.ids || []));
   showGoogleParts = false;
   if (reroute) {
@@ -239,6 +244,24 @@ function addStopOn(at, g) {
     T.addPoint(trip, at, 'Stop');
     tripChanged();
   } });
+}
+
+// A stop pin dropped on the map. A stop moves there; a road stop dropped on another colored road becomes that road,
+// and anywhere else goes back (it rides its whole road, so there's no "there" to move it to).
+function dropStop(i, p) {
+  const it = trip.items[i], at = [+p[0].toFixed(5), +p[1].toFixed(5)];
+  if (it.type === 'point') {
+    it.pts[0] = at;
+    return tripChanged();
+  }
+  const g = desiredRoadAt(at);
+  if (g && !(it.ids || []).some(id => g.ids.includes(id))) {
+    const was = it.label, now = T.replaceWithRoad(trip, i, g);
+    tripChanged();
+    return toast(`Swapped ${was} for ${now.label}`, [{ label: 'Undo', run: () => { trip.items[i] = it; tripChanged(); } }]);
+  }
+  tripChanged();  // puts the pin back
+  toast(g ? `Still ${it.label}` : 'Drop a road stop on another colored road to swap it for that road');
 }
 
 // The stretch of colored road (as the map shows it now) a spot is on, or null.
@@ -373,7 +396,27 @@ async function fixDoubleBack() {
 // the same, and so do their fixes.
 let genRoutes = new Map();
 
+// Each run has a number; stopping bumps it, and a run that sees another number gives up at its next step.
+let genRun = 0;
+const STOPPED = new Error('stopped');
+function stopGenerating(status = 'Stopped.') {
+  genRun++;
+  gen = { options: [], index: -1, running: false, status };
+  renderSoon();
+}
+
 async function generate() {
+  if (gen.running) return stopGenerating();
+  const run = ++genRun;
+  try {
+    await generateRun(run);
+  } catch (e) {
+    if (e !== STOPPED) throw e;
+  }
+}
+
+async function generateRun(run) {
+  const live = () => { if (run !== genRun) throw STOPPED; };
   const oneWay = settings.genShape === 'oneway';
   let hours = settings.genHours;
   genRoutes = new Map();
@@ -382,7 +425,9 @@ async function generate() {
     try {
       gen.status = 'Finding your location for the start…';
       renderSoon();
-      setStartAt(await locate(), 'Start: my location');
+      const here = await locate();
+      live();
+      setStartAt(here, 'Start: my location');
       start = T.startOf(trip);
     } catch (e) {
       locationError(e);
@@ -403,6 +448,7 @@ async function generate() {
   // One way: the time is the straight way there plus the extra the rider will spend on fun roads.
   if (oneWay) {
     const direct = await fetchRoute([{ p: s, via: false }, { p: e, via: false }], +trip.pref);
+    live();
     if (!direct) {
       gen = { options: [], index: -1, running: false, status: routerTrouble() };
       return renderSoon();
@@ -414,6 +460,7 @@ async function generate() {
   const dLat = reach / 111, dLon = reach / (111 * Math.cos(c[0] * Math.PI / 180));
   loadTiles([c[0] - dLat, c[1] - dLon, c[0] + dLat, c[1] + dLon]);
   await Promise.all([tilesSettled(), loadSignals()]);  // the lights, to rank loops by stoplights
+  live();
   // The roads the map shows, by road type: curvy roads, highway sweeps or both (ramps aren't stops, yet).
   // Not the roller coasters: they're shown to be aware of, not to build rides on.
   const f = filters(), worthy = r => !r.roller && visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
@@ -429,13 +476,15 @@ async function generate() {
   const progress = () => { gen.status = `Routing ${kind}: ${done} of ${options.length} done…`; renderSoon(); };
   const worker = async () => {
     while (next < options.length) {
-      await routeOption(options[next++], start, hours, end);
+      await routeOption(options[next++], start, hours, end, live);
+      live();
       done++;
       progress();
     }
   };
   progress();
   await Promise.all([worker(), worker()]);
+  live();
   if (!options.some(o => o.route)) {
     gen = { options: [], index: -1, running: false, status: routerTrouble() };
     return renderSoon();
@@ -489,7 +538,7 @@ function rate(r) {
 // one the doubled-back miles are on, like a lake road that dead-ends, or else the one nearest
 // them). The best is kept if the loop ranks higher and stays in 80–120%.
 // One way (with an `end`), the same, riding on to the end instead of home.
-async function routeOption(opt, start, hours, end = null) {
+async function routeOption(opt, start, hours, end = null, live = () => {}) {
   let items = [start, ...opt.stops];
   const e = end && end.pts[0], finish = list => end ? [...list, end] : list;
   const copy = list => list.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
@@ -500,6 +549,7 @@ async function routeOption(opt, start, hours, end = null) {
     return end ? t.items.slice(0, -1) : t.items;
   };
   const routeOf = list => {
+    live();  // stopped: no more requests for this run
     P.orientStops(start.pts[0], list.slice(1), !end, e);
     const pts = T.routablePoints({ ...trip, items: finish(list), loop: !end }), key = JSON.stringify([pts, trip.pref]);
     if (!genRoutes.has(key)) genRoutes.set(key, fetchRoute(pts, +trip.pref));
@@ -747,9 +797,9 @@ function render() {
 }
 
 const iconEl = (svg, cls = 'i') => h(`span.${cls}`, { html: svg });
-const backBar = (title, sub) => h('div.view-head', {},
+const backBar = (title, sub, action) => h('div.view-head', {},
   h('button.icon-btn', { title: 'Back', onclick: () => go('home'), html: icon.back }),
-  h('div', {}, h('h2', {}, title), sub ? h('div.muted', {}, sub) : ''));
+  h('div', {}, h('h2', {}, title), sub ? h('div.muted', {}, sub) : ''), action || '');
 const cap = s => s[0].toUpperCase() + s.slice(1);
 const stat = (value, label) => h('div.stat', {}, h('b', {}, value), h('span', {}, label));
 const hillWord = hill => hill == null ? null : HILLS[Math.max(0, HILLS.reduce((l, c, i) => hill >= c.min ? i : l, 0))].label;
@@ -1021,10 +1071,10 @@ function planView() {
       h('div.btn-row', {}, h('button.btn', { onclick: () => startPicking('end') }, iconEl(icon.pin), 'Pick on map'))) : '',
     mustInclude(),
     oneWay ? extraTime() : rideTime(),
-    h('button.cta', { onclick: generate, disabled: gen.running }, iconEl(icon.route), gen.running ? 'Working…' : oneWay ? 'Find fun ways there' : 'Generate loops'),
+    h('button.cta', { onclick: generate }, iconEl(icon.route), gen.running ? 'Stop' : oneWay ? 'Find fun ways there' : 'Generate loops'),
     gen.status ? h('p.muted', {}, gen.status) : '',
     gen.options.length ? h('div.cards', {}, gen.options.map(optionCard)) : '',
-    gen.index >= 0 ? h('button.btn.wide', { onclick: () => go('trip') }, gen.options[gen.index] && gen.options[gen.index].oneWay ? 'Ride this way →' : 'Ride this loop →') : '',
+    gen.index >= 0 ? h('button.btn.primary.wide', { onclick: () => go('trip') }, gen.options[gen.index] && gen.options[gen.index].oneWay ? 'Ride this way →' : 'Ride this loop →') : '',
     h('p.fineprint', {}, 'Uses the filters at the top (speed, hills, paved). Riding time doesn’t include stops. Or build your own: tap roads on the map and Add to ride.'),
   ];
 }
@@ -1074,6 +1124,8 @@ function optionCard(o, i) {
     o.blind ? h('span.warn', {}, ` · ⚠ ${o.blind}`) : '', o.back >= 400 ? h('span.warn', {}, ` · ↩ ${miles(o.back)} mi twice`) : '',
     o.turns ? h('span.warn', {}, ` · ↺ turns around${o.turns > 1 ? ` ${o.turns}×` : ''}`) : '',
     o.lights ? ` · 🚦 ${o.lights}${o.lefts ? ` (${o.lefts} left)` : ''}` : ''),
+  (o.focus ??= P.rideFocus(P.rideMix(o.route.path, store.roads))).length
+    ? h('div.focus', {}, o.focus.map(f => h('span.tag.sm', { style: `--c:${f.color}` }, f.label))) : '',
   h('div.muted.small', {}, o.items.slice(1).filter(it => !it.end).flatMap((it, k) => [k ? ', ' : '', it.gen ? it.label : h('b.own', {}, it.label)])));
 }
 
@@ -1090,7 +1142,8 @@ function tripView() {
   // Stops first: nothing above them changes height as the route is worked out again, so after
   // removing one, the next ✕ is under the same finger.
   return [
-    backBar('Your ride', P.tripName(trip).replace(/^Ride: /, '')),
+    // Share at the top: the ride page has grown, and it's what you do once a ride looks right.
+    backBar('Your ride', P.tripName(trip).replace(/^Ride: /, ''), h('button.btn.head-btn', { onclick: shareTrip }, iconEl(icon.share), 'Share')),
     h('div.section-head', {}, h('h3', {}, `Stops (${trip.items.length})`),
       h('button.btn.small', { onclick: clearRide }, iconEl(icon.trash), 'Clear all')),
     stopList(),
@@ -1104,8 +1157,8 @@ function tripView() {
     weatherSection(),
     h('div.section', {},
       rideTime('Generate a loop'),
-      h('button.btn.primary.wide', { onclick: () => { go('plan'); generate(); }, disabled: gen.running },
-        iconEl(icon.route), gen.running ? 'Working…' : ownStops().length ? 'Generate loops through these stops' : 'Generate loops from this start'),
+      h('button.btn.primary.wide', { onclick: () => { if (!gen.running) go('plan'); generate(); } },
+        iconEl(icon.route), gen.running ? 'Stop' : ownStops().length ? 'Generate loops through these stops' : 'Generate loops from this start'),
       h('p.muted.small', {}, `Keeps your own stops and fills the time with the best ${{ all: 'roads nearby, sweeping highways included', back: 'back roads nearby', highway: 'highway sweeps nearby' }[settings.roadType] || 'roads nearby'}. The road type on the map decides which.`)),
     h('div.field', {}, h('label.switch', {},
       h('input', { type: 'checkbox', checked: trip.loop, onchange: e => { trip.loop = e.target.checked; tripChanged(); } }),
@@ -1127,6 +1180,68 @@ function clearRide() {
   toast('Ride cleared', { label: 'Undo', run: () => { trip.items = was; tripChanged(); } });
 }
 
+// What a ride is made of, kept per route and filters (filters can change after routing, and render runs often).
+let mixMemo = null;
+function mixFor(r) {
+  const key = JSON.stringify(settings);
+  if (!mixMemo || mixMemo.route !== r || mixMemo.key !== key || mixMemo.n !== store.roads.length) {
+    // As the generator reads them: Speed limits mode still plans rides.
+    const f = { ...filters(), mode: settings.mode === 'curvy' ? 'curvy' : 'ride' };
+    mixMemo = { route: r, key, n: store.roads.length, mix: P.rideMix(r.path, store.roads, road => visible(road, f)) };
+  }
+  return mixMemo.mix;
+}
+
+// The filters as the chips say them, for "fits your filters".
+function filterWords() {
+  const s = settings, out = [];
+  if (s.roadType !== 'all') out.push(ROAD_TYPES[s.roadType]);
+  if (s.roadType !== 'highway') {
+    if (s.classes.length < CURVE_CLASSES.length) out.push(s.classes.slice().sort().map(c => CURVE_CLASSES[c].label).join(', '));
+    if (s.mode !== 'curvy') out.push(`${s.minSpeed}+ mph`);
+    if (s.minHills) out.push(`${HILLS[s.minHills].label}+`);
+  }
+  if (s.hideUnpaved) out.push('Paved');
+  return out.join(' · ');
+}
+
+// Why a road on the ride doesn't fit the filters, in the chips' words.
+function missesBy(r) {
+  const s = settings, out = [];
+  if (r.roller) return 'roller coaster';
+  if (r.cls >= 0 && !s.classes.includes(r.cls)) out.push(CURVE_CLASSES[r.cls].label.toLowerCase());
+  if (s.minHills && r.hillLevel < s.minHills) out.push(r.hillLevel >= 0 ? HILLS[r.hillLevel].label.toLowerCase() : 'hills not measured');
+  if (s.mode !== 'curvy' && r.speed < s.minSpeed) out.push(`${r.speed} mph`);
+  return out.join(', ') || 'not shown';
+}
+
+// A touchscreen picks a pin up with a press and hold (see MapView.setStops).
+const PIN_HINT = matchMedia('(pointer: coarse)').matches ? 'hold its pin to move it' : 'drag its pin to move';
+
+const kindColor = k => k === -1 ? HIGHWAYS.color : k === -2 ? ROLLER.color : CURVE_CLASSES[k].color;
+const kindLabel = k => k === -1 ? 'Highway sweep' : k === -2 ? 'Roller coaster' : CURVE_CLASSES[k].label;
+
+// The focus tags, a bar of the whole ride by kind of road, and the roads on it that fit the filters.
+function rideMixView(mix) {
+  const focus = P.rideFocus(mix), total = mix.meters || 1;
+  const parts = [...mix.byClass.map((m, k) => [k, m]), [-1, mix.highway], [-2, mix.roller]].filter(([, m]) => m > 0);
+  const fit = mix.roads.filter(g => g.fitM >= 160), outside = mix.roads.filter(g => g.m - g.fitM >= 400 && g.cls >= 0);
+  const words = filterWords();
+  return h('div.ride-mix', {},
+    focus.length ? h('div.focus', {}, focus.map(f => h('span.tag.sm', { style: `--c:${f.color}` }, f.label))) : '',
+    h('div.mixbar', { title: 'The whole ride by kind of road; the dark part connects them' },
+      parts.map(([k, m]) => h('span', { style: `width:${100 * m / total}%;background:${kindColor(k)}`, title: `${kindLabel(k)}: ${miles(m)} mi` }))),
+    fit.length ? h('div', {},
+      h('p.small', {}, h('b', {}, `${miles(mix.fits)} mi`), ` fits your filters${words ? ` (${words})` : ''}:`),
+      fit.map(g => h('div.fit-row', { style: `--c:${kindColor(g.cls)}` },
+        h('span.dot'), h('span', {}, g.key),
+        h('span.muted.push', {}, [kindLabel(g.cls), g.hill != null && g.cls !== -1 ? HILLS[hillLevel(g.hill)].label : '', `${miles(g.fitM)} mi`].filter(Boolean).join(' · '))))) :
+      h('p.muted.small', {}, `None of it fits your filters${words ? ` (${words})` : ''}.`),
+    outside.length ? h('p.muted.small', {}, 'Outside your filters: ',
+      outside.slice().sort((a, b) => (b.m - b.fitM) - (a.m - a.fitM)).slice(0, 5).map(g => `${g.key} (${missesBy(g.road)})`).join(', '),
+      outside.length > 5 ? `, and ${outside.length - 5} more.` : '.') : '');
+}
+
 function routeSummary() {
   if (info && info.loading) return h('p.muted', {}, 'Finding a route…');
   if (info && info.error) return h('p.error', {}, info.error);
@@ -1139,6 +1254,7 @@ function routeSummary() {
       stat(info && info.curvy != null ? `${miles(info.curvy)} mi` : '…', 'on curvy roads'),
       stat(info && info.blind != null ? (info.blind ? `⚠ ${info.blind}` : 'None') : '…', 'blind crests')),
     info && info.highway >= 200 ? h('p.muted.small', {}, `Plus ${miles(info.highway)} mi of highway sweeps and fast ramps.`) : '',
+    info ? rideMixView(mixFor(route)) : '',
     info && info.lights && info.lights.length ? h('p.muted.small', {}, lightsNote(info.lights)) : '',
     route.fallback ? h('p.muted.small', {}, 'The back-roads router is busy, so this is the plain fastest route.') : '',
     doubleBack(),
@@ -1260,7 +1376,7 @@ function stopList() {
     h('span.num', {}, i + 1),
     h('div.grow', { onclick: () => mapView.fit(boundsOf(it.pts), 13) },
       h('div', {}, it.label),
-      h('div.muted.small', {}, it.type !== 'road' ? (on ? `Stop on ${on.key} · drag its pin to move` : 'Stop · drag its pin to move')
+      h('div.muted.small', {}, it.type !== 'road' ? `${on ? `Stop on ${on.key}` : 'Stop'} · ${PIN_HINT}`
         : `${it.oneway ? 'One way' : `${cap(T.ends(it).entry)} end → ${T.ends(it).exit} end`} · ${miles(it.curvy || 0)} mi of curves`)),
     it.type === 'road' && !it.oneway ? h('button.icon-btn', { title: 'Switch ends: ride it the other way', html: icon.swap,
       onclick: () => flipRoad(it) }) : '',

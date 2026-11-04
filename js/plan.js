@@ -1,24 +1,24 @@
 // Ride planning on top of a routed trip: fuel stops, the loop generator, curvy miles and blind
 // crests along a route, and exports (Google Maps links, GPX). Pure: no DOM, no map library.
-import { FUEL, GEN, GOOGLE, DECISION_TURNS } from './config.js';
+import { FUEL, GEN, GOOGLE, DECISION_TURNS, CURVE_CLASSES, HILLS, HIGHWAYS, ROLLER } from './config.js';
 import { distance, km, bearing, relAngle, cumulative, nearestIndex, alongRoute, boundsOf, pad, intersects, center } from './geo.js';
-import { clusterRoads, summarize } from './roads.js';
+import { clusterRoads, summarize, hillLevel } from './roads.js';
 import { tripPoints, roadStop } from './trip.js';
 
 // ---------- along a route ----------
 
 // The ~200 m grid cells that roads `ok` accepts pass through, near a path, and a test for a point.
 const CELL = 0.002, cellKey = (la, lo) => Math.round(la / CELL) + ',' + Math.round(lo / CELL);
+function eachCell(r, fn) {
+  for (let i = 1; i < r.geom.length; i++) {
+    const [a0, a1] = r.geom[i - 1], [b0, b1] = r.geom[i];
+    const n = Math.ceil(Math.max(Math.abs(b0 - a0), Math.abs(b1 - a1)) / CELL) || 1;
+    for (let k = 0; k <= n; k++) fn(cellKey(a0 + (b0 - a0) * k / n, a1 + (b1 - a1) * k / n));
+  }
+}
 function roadCells(path, roads, ok) {
   const cells = new Set(), area = pad(boundsOf(path), 0.02);
-  for (const r of roads) {
-    if (!ok(r) || !intersects(area, r.bounds)) continue;
-    for (let i = 1; i < r.geom.length; i++) {
-      const [a0, a1] = r.geom[i - 1], [b0, b1] = r.geom[i];
-      const n = Math.ceil(Math.max(Math.abs(b0 - a0), Math.abs(b1 - a1)) / CELL) || 1;
-      for (let k = 0; k <= n; k++) cells.add(cellKey(a0 + (b0 - a0) * k / n, a1 + (b1 - a1) * k / n));
-    }
-  }
+  for (const r of roads) if (ok(r) && intersects(area, r.bounds)) eachCell(r, c => cells.add(c));
   return cells;
 }
 
@@ -31,6 +31,72 @@ export function metersOn(path, roads, ok) {
     if (cells.has(key((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))) m += distance(a, b);
   }
   return m;
+}
+
+// What a route rides, in the filters' words: metres on each curve class (byClass, Sweepers to Twisty), on highway
+// sweeps and fast ramps, on roller coasters, and the hills of those roads (length-weighted, m/km; null if none
+// measured). A spot on two kinds of road counts as the curvier one. Unpaved roads don't count, as for curvy miles.
+// `roads` lists the named roads ridden, in ride order: { key, cls (-1 highway, -2 roller coaster), hill, m, fitM, road
+// (its most-ridden piece) },
+// fitM being the metres on pieces `fits` accepts (the map's filters), fits the metres of the whole ride that do.
+export function rideMix(path, roads, fits = () => true) {
+  const kind = r => r.surface === 1 ? null : r.cls >= 0 ? r.cls : r.rampTier >= 0 ? -1 : r.roller ? -2 : null;
+  const cells = new Map(), area = pad(boundsOf(path), 0.02);
+  for (const r of roads) {
+    const k = kind(r);
+    if (k == null || !intersects(area, r.bounds)) continue;
+    eachCell(r, c => { const was = cells.get(c); if (!was || k > was.k) cells.set(c, { k, r }); });
+  }
+  const mix = { byClass: CURVE_CLASSES.map(() => 0), highway: 0, roller: 0, meters: 0, hill: null, fits: 0, roads: [] };
+  const byKey = new Map(), fitsOf = new Map();
+  let hillM = 0, hillSum = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i], d = distance(a, b), on = cells.get(cellKey((a[0] + b[0]) / 2, (a[1] + b[1]) / 2));
+    mix.meters += d;
+    if (!on) continue;
+    const { k, r } = on;
+    if (k === -1) mix.highway += d;
+    else if (k === -2) mix.roller += d;
+    else mix.byClass[k] += d;
+    if (r.hill != null && k !== -1) { hillM += d; hillSum += r.hill * d; }
+    if (!fitsOf.has(r)) fitsOf.set(r, fits(r));
+    const ok = fitsOf.get(r);
+    if (ok) mix.fits += d;
+    const key = r.key || r.name || 'Unnamed road';
+    if (!byKey.has(key)) byKey.set(key, { key, byKind: new Map(), pieces: new Map(), hillM: 0, hillSum: 0, m: 0, fitM: 0 });
+    const g = byKey.get(key);
+    g.m += d;
+    if (ok) g.fitM += d;
+    g.byKind.set(k, (g.byKind.get(k) || 0) + d);
+    g.pieces.set(r, (g.pieces.get(r) || 0) + d);
+    if (r.hill != null) { g.hillM += d; g.hillSum += r.hill * d; }
+  }
+  if (hillM) mix.hill = hillSum / hillM;
+  mix.roads = [...byKey.values()].map(g => ({ key: g.key, m: g.m, fitM: g.fitM, hill: g.hillM ? g.hillSum / g.hillM : null,
+    cls: [...g.byKind].reduce((best, kv) => kv[1] > best[1] ? kv : best)[0],
+    road: [...g.pieces].reduce((best, kv) => kv[1] > best[1] ? kv : best)[0] }));
+  return mix;
+}
+
+const HILL_COLOR = '#adb5bd';
+// What a ride is about, as the key's labels in its colors, most first: the curve classes that make up a fifth or
+// more of its curvy miles (a very curvy or twisty half mile counts anyway), highway sweeps if they're a fifth of the
+// fun, roller coasters if they're a fifth of what it rides (country loops cross plenty), and how hilly its roads are.
+// [{ label, color }]
+export function rideFocus(mix) {
+  const curvy = mix.byClass.reduce((a, b) => a + b, 0), out = [];
+  if (curvy >= 800) {
+    mix.byClass.map((m, c) => ({ m, c })).filter(({ m, c }) => m >= 0.2 * curvy || (c >= 3 && m >= 800))
+      .sort((a, b) => b.m - a.m).slice(0, 3)
+      .forEach(({ c }) => out.push({ label: CURVE_CLASSES[c].label, color: CURVE_CLASSES[c].color }));
+  }
+  if (mix.highway >= 3000 && mix.highway >= 0.2 * (curvy + mix.highway)) {
+    const hw = { label: 'Highway sweeps', color: HIGHWAYS.color };
+    mix.highway > curvy ? out.unshift(hw) : out.push(hw);
+  }
+  if (mix.roller >= 1500 && mix.roller >= 0.2 * (curvy + mix.highway + mix.roller)) out.push({ label: ROLLER.label, color: ROLLER.color });
+  if (out.length && mix.hill != null) out.push({ label: HILLS[hillLevel(mix.hill)].label, color: HILL_COLOR });
+  return out;
 }
 
 export const curvyMetersOn = (path, roads) => metersOn(path, roads, r => r.cls >= 0 && r.surface !== 1);

@@ -46,7 +46,9 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Loops come in near the chosen time (80–120%), and the cards say how long.
 - There's a loop to each side of the start where there are good roads, and a note says which sides have none.
 - The status line keeps moving while it works; a 6 h run finishes in under about 3 minutes.
-- Tapping a card loads it; "Ride this loop →" opens the ride with the stops in order.
+- Tapping a card loads it; "Ride this loop →" (blue) opens the ride with the stops in order.
+- Each card's tags read true to the loop (Sweepers on a sweeper loop, not Roller coasters on every card).
+- While it works the button says Stop and stops it; changing a filter chip stops it too and says why.
 
 ## One way
 
@@ -66,6 +68,10 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 ## The ride
 
 - Stops can be dragged into a new order (mouse and touch), removed, and Clear all can be undone.
+- On a phone: hold a stop pin until it lifts, drag it, let go; it moves and the ride reroutes. A quick swipe over a
+  pin pans the map. A road stop's pin dropped on another colored road swaps to that road (Undo in the toast).
+- Under the stats: focus tags, the color bar, and the roads that fit your filters. Change a filter chip and the
+  list follows. Share is at the top of the page.
 - "Try fixing" on a ride that doubles back either helps or says why not.
 - Fuel stops are planned within the tank range.
 - Go opens Google Maps with the stops in order; GPX downloads; Share gives a link that reopens the same ride,

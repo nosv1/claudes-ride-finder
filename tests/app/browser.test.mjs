@@ -266,6 +266,50 @@ test('stops can be dragged on a phone too', async () => {
   }
 });
 
+test('on a phone, hold a stop pin to pick it up and drag it; a quick swipe over it pans the map', async () => {
+  const phone = await launch({ mobile: true });
+  try {
+    await phone.goto(base);
+    await phone.waitFor('window.RF && RF.store.roads.length > 0', 60000);
+    await phone.eval(pointTrip);
+    await sleep(400);
+    await phone.eval("document.querySelector('#sheetBody label.switch input').click()");  // the pins go up with the next change
+    await phone.eval("document.getElementById('sheet').dataset.snap = 'peek'");
+    await phone.waitFor('RF.route', 60000);  // routing fits the map to the ride: after that, put the pin in view
+    await sleep(1000);
+    await phone.eval('void RF.mapView.map.jumpTo({ center: [-94.3, 38.86], zoom: 13 })');
+    await phone.waitFor("(() => { const m = [...document.querySelectorAll('.stop-marker')].find(m => m.textContent === '2'); if (!m) return false;"
+      + " const r = m.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === m; })()", 15000);
+    const pin = () => phone.eval("(() => { const r = [...document.querySelectorAll('.stop-marker')].find(m => m.textContent === '2').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()");
+    const before = await phone.eval('JSON.stringify(RF.trip.items[1].pts[0])');
+    const center = await phone.eval('JSON.stringify(RF.mapView.map.getCenter())');
+
+    // A swipe that starts on the pin: the map pans, the stop stays.
+    let [x, y] = await pin();
+    await phone.touch('touchStart', x, y);
+    for (let k = 1; k <= 5; k++) { await phone.touch('touchMove', x + 12 * k, y); await sleep(16); }
+    await phone.touch('touchEnd', x + 60, y);
+    await sleep(500);
+    assert.equal(await phone.eval('JSON.stringify(RF.trip.items[1].pts[0])'), before, 'a swipe doesn’t move the stop');
+    assert.notEqual(await phone.eval('JSON.stringify(RF.mapView.map.getCenter())'), center, 'it pans the map');
+
+    // Press and hold, then drag: the stop moves, the map doesn't.
+    [x, y] = await pin();
+    const panned = await phone.eval('JSON.stringify(RF.mapView.map.getCenter())');
+    await phone.touch('touchStart', x, y);
+    await sleep(500);
+    assert.equal(await phone.eval("document.querySelector('.stop-marker.lifted')?.textContent"), '2', 'picked up');
+    for (let k = 1; k <= 5; k++) { await phone.touch('touchMove', x - 16 * k, y + 10 * k); await sleep(16); }
+    await phone.touch('touchEnd', x - 80, y + 50);
+    await sleep(500);
+    assert.notEqual(await phone.eval('JSON.stringify(RF.trip.items[1].pts[0])'), before, 'the stop moved');
+    assert.equal(await phone.eval('JSON.stringify(RF.mapView.map.getCenter())'), panned, 'the map stayed put');
+    assert.equal(await phone.eval("document.querySelectorAll('.stop-marker.lifted').length"), 0, 'and it was put down');
+  } finally {
+    phone.close();
+  }
+});
+
 test('Add road on the ride page: tap a road, it goes in where it fits, and its ends can be switched', async () => {
   await showMo150();
   await page.eval(pointTrip);
@@ -309,9 +353,17 @@ test('the ride page can generate loops through its stops', async () => {
   assert.match(await sheetText(), /Generate a loop[\s\S]*1½ h/);
   await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Generate loops through these stops/.test(b.textContent)).click()");
   await sleep(100);
-  assert.match(await sheetText(), /Plan a ride[\s\S]*Must include[\s\S]*Working…/);
-  // Let it finish (or fail offline) so it can't change the ride under later tests.
-  await page.waitFor('!RF.gen.running', 180000);
+  assert.match(await sheetText(), /Plan a ride[\s\S]*Must include/);
+  assert.ok(await page.eval("[...document.querySelectorAll('#sheetBody button')].some(b => b.textContent === 'Stop')"), 'the button stops it');
+  // Changing a filter stops it: the rides it was building are on roads the map no longer shows.
+  const paved = "[...document.querySelectorAll('#chips .chip')].find(c => c.textContent === 'Paved').click()";
+  await page.eval(paved);
+  await sleep(300);
+  assert.equal(await page.eval('RF.gen.running'), false);
+  assert.match(await sheetText(), /Stopped: the filters changed/);
+  await page.eval(paved);
+  await sleep(3000);  // what was in flight comes back to nothing
+  assert.deepEqual([await page.eval('RF.gen.running'), await page.eval('RF.gen.options.length')], [false, 0]);
 });
 
 test('one way: pick an end, and the planner finds fun ways there that finish at it', async () => {

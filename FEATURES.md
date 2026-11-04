@@ -290,6 +290,11 @@ colored road), Add a stop here, Street View here.
 
 **Stops** (Your ride)
 - **Pinned points:** the start (my location, a map spot, or a search result) and stops added on the map. Pins can be dragged.
+  - **Moving a pin:** with a mouse, drag it. On a touchscreen, press and hold (350 ms) to pick it up: it grows, the
+    phone buzzes, and it rides 44 px above the finger so it can be seen; let go to drop it. A swipe that starts on a
+    pin pans the map. Rows say "drag its pin to move" or, on touch, "hold its pin to move it".
+  - **A road stop's pin** dropped on another colored road becomes that road (the toast can undo it). Dropped anywhere
+    else it goes back, with a toast saying to drop it on a colored road.
 - **Roads:** ridden end to end. Each has an entry, up to 2 "through" points that keep the router on the road, and an exit.
   - **Add to ride** (road card, ＋ on a card, or **Add road** on Your ride then tap a road on the map) puts the road
     where it adds the least straight-line distance (counting the ride home on a loop, never before the start),
@@ -401,7 +406,21 @@ colored road), Add a stop here, Street View here.
 - Warns about any stretch longer than the range, and shows the longest stretch without a station.
 - ＋ inserts a station at the right place in the ride.
 
+**What a ride rides** (Your ride, under the stats; the tags on generated loop cards too)
+- **Focus tags**, the key's labels in its colors: the curve classes that make up a fifth or more of its curvy miles (a
+  half mile of Very curvy or Twisty counts anyway; up to 3), Highway sweeps when they're a fifth of the fun, Roller
+  coasters when they're a fifth of what it rides, and how hilly its roads are (Flat to Very hilly, length-weighted).
+- **A bar** of the whole ride by kind of road, in the map's colors; the dark rest connects them.
+- **What fits your filters**: "2.9 mi fits your filters (45+ mph · Very hilly+ · Paved)", then each road that does, in
+  ride order, with its class, hills and miles. Then "Outside your filters", the 5 longest that don't and why
+  ("MO F (hilly)", "Jefferson Street (hilly, 35 mph)"). Filters changed after routing update it.
+- `rideMix` in `plan.js` matches the route to roads on the same ~200 m grid as curvy miles; unpaved never counts.
+- **Share** sits at the top right of Your ride as well as under Ride it.
+
 **Generate loops** (Plan a ride, or Generate a loop on Your ride)
+- While it works, the button says **Stop**. Changing a road filter (mode, road type, mph, hills, Paved, the curve
+  classes or ramp tiers in the key) stops it too, saying so: the rides would be on roads the map no longer shows.
+- Each card has the ride's **focus tags** (below). **Ride this loop →** is the blue button under the cards.
 - Ride time 1–8 h. The start is the first stop, or the rider's location.
 - **Must include:** the rider's own stops (roads, gas stops, pinned points).
   - Every loop goes through them.

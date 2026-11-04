@@ -3,11 +3,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 
-import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, nearestIndex } from '../../js/geo.js';
+import { boundsOf, distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, nearestIndex } from '../../js/geo.js';
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, rollersInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn } from '../../js/plan.js';
+import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
@@ -689,4 +689,20 @@ test('roller coasters: straight hilly back roads, shown only when asked for, and
   const [g] = rollersInView([roller, twisty], view, on);
   assert.ok(g.key === 'MO Y' && g.roller && g.length === 2000);
   assert.deepEqual(rollersInView([roller], view, FILTERS), [], 'none while the layer is off');
+});
+
+test('a ride says what it rides, in the filters’ words, and which roads fit the filters', () => {
+  const road = (key, cls, hill, lon0, n, extra = {}) => {
+    const geom = east(38.5, lon0, n, 0.001);
+    return { key, name: key, cls, hill, hillLevel: hill == null ? -1 : hill >= 35 ? 3 : hill >= 22 ? 2 : hill >= 12 ? 1 : 0,
+      rampTier: -1, roller: false, surface: 0, speed: 55, geom, bounds: boundsOf(geom), ...extra };
+  };
+  const sweeper = road('MO 150', 0, 40, -94, 30), curvy = road('MO Y', 2, 15, -93.97, 20), gravel = road('CR 5', 4, 40, -93.95, 10, { surface: 1 });
+  const path = east(38.5, -94, 70, 0.001);  // ~6 km: 2.6 km sweeper, 1.7 km curvy, 0.9 km gravel, then nothing
+  const mix = rideMix(path, [sweeper, curvy, gravel], r => r.hill >= 35);
+  assert.ok(mix.byClass[0] > 2400 && mix.byClass[2] > 1500 && mix.byClass[4] === 0, 'gravel never counts');
+  assert.deepEqual(mix.roads.map(g => [g.key, g.cls]), [['MO 150', 0], ['MO Y', 2]], 'in ride order');
+  assert.ok(Math.abs(mix.fits - mix.roads[0].m) < 1 && mix.roads[1].fitM === 0, 'only the very hilly sweeper fits');
+  assert.deepEqual(rideFocus(mix).map(f => f.label), ['Sweepers', 'Curvy', 'Hilly']);
+  assert.deepEqual(rideFocus(rideMix(path, [])), [], 'nothing to say about a ride on no fun roads');
 });
