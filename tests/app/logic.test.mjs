@@ -7,7 +7,7 @@ import { distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, neares
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn } from '../../js/plan.js';
+import { planFuel, googlePoints, googleLinks, buildOptions, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
@@ -228,6 +228,24 @@ test('doubling back is measured, crossings and the ride home are not', () => {
   assert.equal(retrace([...home, ...east(38.5, -94, 51, 0.0002).reverse()]).meters, 0);
 });
 
+test('a stretch ridden twice gets a spot to either side to ride through, in that part of the loop', () => {
+  const out = east(38.5, -94, 301, 0.0002);                   // ~5 km east and straight back
+  const path = [...out, ...[...out].reverse().slice(1)];
+  const twice = retrace(path, 0), spots = detours(twice);
+  assert.equal(twice.spans.length, twice.lines.length);
+  assert.ok(twice.spans[0][0] > 5000, 'the second pass is on the way back');
+  assert.equal(spots.length, 2);
+  // North and south of the road, about a third of its length out (but at least 2 km).
+  const lats = spots.map(d => d.p[0]).sort();
+  assert.ok(lats[0] < 38.485 && lats[1] > 38.515, `either side, got ${lats}`);
+  spots.forEach(d => assert.ok(Math.abs(d.p[1] - -93.97) < 0.01, 'off the middle'));
+  // Out to a road at the far end and back: the spot goes after it, on the ride home.
+  const items = [{ type: 'point', pts: [path[0]] }, { type: 'road', pts: [path[290], path[300]] }];
+  assert.equal(stopIndexAt(path, items, spots[0].m), 2);
+  assert.equal(stopIndexAt(path, items, 100), 1);
+  assert.deepEqual(detours(retrace(out, 0)), []);
+});
+
 test('share links round-trip and read v1 links', () => {
   const trip = newTrip();
   setStart(trip, [38.85, -94.34], 'Start: Greenwood');
@@ -407,6 +425,9 @@ test('stoplights on a route: one per intersection, and which way it turns there'
   assert.deepEqual(found.map(f => f.turn), ['straight', 'left']);
   // The same corner ridden the other way is a right.
   assert.deepEqual(stoplightsOn([...path].reverse(), lights).map(f => f.turn), ['right', 'straight']);
+  // A straight road mapped with points 150 m apart, the light at one of them: straight through, not a left.
+  const sparse = Array.from({ length: 20 }, (_, i) => [39.0048, -94.1 - i * 0.00175]);
+  assert.deepEqual(stoplightsOn(sparse, [{ lat: 39.0048, lon: -94.1 - 10 * 0.00175 }]).map(f => f.turn), ['straight']);
   assert.deepEqual(stoplightsOn(path, []), [], 'no light data yet: nothing counted');
   assert.deepEqual(stoplightsOn(path, null), []);
 });

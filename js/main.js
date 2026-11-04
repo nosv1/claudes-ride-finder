@@ -200,6 +200,7 @@ function refreshInfo(withProfile) {
     info = null;
     mapView.setRouteStations([]);
     mapView.setRetrace([]);
+    mapView.setLights([]);
     return renderSoon();
   }
   loadTiles(boundsOf(route.path));
@@ -210,8 +211,9 @@ function refreshInfo(withProfile) {
     blind: P.blindCrestsOn(r.path, store.roads).length, fuel,
     back: P.retrace(r.path), turns: P.turnarounds(r.path, store.roads), lights: P.stoplightsOn(r.path, store.signals),
   };
-  if (!store.signals) loadSignals().then(() => { if (route === r && info) { info.lights = P.stoplightsOn(r.path, store.signals); renderSoon(); } });
+  if (!store.signals) loadSignals().then(() => { if (route === r && info) { info.lights = P.stoplightsOn(r.path, store.signals); mapView.setLights(info.lights); renderSoon(); } });
   mapView.setRetrace(info.back.lines);
+  mapView.setLights(info.lights);
   mapView.setRouteStations(fuel.along.map(a => ({ k: a.item.k, status: a.item.status, pick: fuel.picks.includes(a) })));
   if (withProfile) profile(r.path).then(p => { if (route === r && info) { info.profile = p; renderSoon(); } });
   renderSoon();
@@ -352,8 +354,13 @@ async function fixDoubleBack() {
 
 // ---------- generator ----------
 
+// Routes asked for while generating, by their points: loops heading different ways often come out
+// the same, and so do their fixes.
+let genRoutes = new Map();
+
 async function generate() {
   const hours = settings.genHours;
+  genRoutes = new Map();
   let start = T.startOf(trip);
   if (!start) {
     try {
@@ -382,11 +389,18 @@ async function generate() {
     gen = { options: [], index: -1, running: false, status: 'No good roads within reach. Try a longer ride, or loosen the filters.' };
     return renderSoon();
   }
-  for (let i = 0; i < options.length; i++) {
-    gen.status = `Routing loop ${i + 1} of ${options.length}…`;
-    renderSoon();
-    await routeOption(options[i], start, hours);
-  }
+  // Two at a time: about twice as fast, and still gentle on the public router.
+  let next = 0, done = 0;
+  const progress = () => { gen.status = `Routing loops: ${done} of ${options.length} done…`; renderSoon(); };
+  const worker = async () => {
+    while (next < options.length) {
+      await routeOption(options[next++], start, hours);
+      done++;
+      progress();
+    }
+  };
+  progress();
+  await Promise.all([worker(), worker()]);
   // Only loops within 80–120% of the chosen time; if none came out that close, the nearest.
   const worth = o => o.route ? o.worth : -1, twice = o => o.route && o.back > GEN.hideBack * o.route.meters;
   const target = hours * 3600, fits = o => o.route && o.route.seconds >= GEN.under * target && o.route.seconds <= GEN.overrun * target;
@@ -399,9 +413,9 @@ async function generate() {
   // The same loop can come out of two directions once fixed: keep one.
   const sigs = new Set(), sig = o => o.items.slice(1).map(it => (it.ids || [it.label]).join(',')).sort().join('|');
   shown = shown.filter(o => !o.route || !sigs.has(sig(o)) && sigs.add(sig(o)));
-  // Leave out loops that ride a fifth of the way twice, when there are enough without.
+  // Leave out loops that ride a fifth of the way twice, when there are a couple without.
   const clean = shown.filter(o => !twice(o));
-  if (clean.length >= 3) shown = clean;
+  if (clean.length >= 2) shown = clean;
   // Say which ways have nothing, so an all-north list doesn't look like a bug.
   const sides = ['north', 'east', 'south', 'west'], has = new Set(shown.filter(o => o.route).map(o => Math.floor(((o.dir + 45) % 360) / 90)));
   const none = sides.filter((_, q) => !has.has(q));
@@ -414,7 +428,7 @@ async function generate() {
 }
 
 // How good a routed loop is: miles on curvy roads plus highway sweeps and fast ramps, scaled by the
-// share of the ride they make up, cut by the share it rides twice (each 10% doubled back costs 30%),
+// share of the ride they make up, cut by the share it rides twice (10% doubled back costs 40%, 20% nearly two thirds),
 // by each turnaround (off the highway, round through the lights, back on: 40% each) and by each
 // stoplight (3%, a left turn at one twice that: getting stopped is the lame part). Best first.
 function rate(r) {
@@ -423,21 +437,24 @@ function rate(r) {
   const back = P.retrace(r.path).meters, turns = P.turnarounds(r.path, store.roads), fun = curvy + highway;
   const lights = P.stoplightsOn(r.path, store.signals), lefts = lights.filter(l => l.turn === 'left');
   return { route: r, curvy, highway, back, turns, lights, lefts, blind: P.blindCrestsOn(r.path, store.roads).length,
-    worth: fun * fun / r.meters * Math.max(0.1, 1 - 3 * back / r.meters) * GEN.turnKeep ** turns.length
+    worth: fun * fun / r.meters * Math.exp(-GEN.backCost * back / r.meters) * GEN.turnKeep ** turns.length
       * GEN.lightKeep ** (lights.length + lefts.length) };
 }
 
 // Route a loop for real. Under 80% of the time, fill it again aiming that much longer (the
 // estimate ran fast), up to twice; over 120%, drop its weakest road, up to twice. While it
-// then doubles back (up to twice), try another way home first: a road near the stretch ridden
-// twice, short ones too, if the time allows. Else try it without the generated road most to
-// blame: the one the doubled-back miles are on, like a lake road that dead-ends, or else the
-// one nearest them. Changes are kept only if the loop ranks higher and stays in 80–120%.
+// then doubles back (up to backTries times), try each of: another way home, a road near the
+// stretch ridden twice (short ones too) if the time allows; a spot off to either side of that
+// stretch to ride through instead; and the loop without the generated road most to blame (the
+// one the doubled-back miles are on, like a lake road that dead-ends, or else the one nearest
+// them). The best is kept if the loop ranks higher and stays in 80–120%.
 async function routeOption(opt, start, hours) {
   let items = [start, ...opt.stops];
   const routeOf = list => {
     P.orientStops(start.pts[0], list.slice(1));
-    return fetchRoute(T.routablePoints({ ...trip, items: list, loop: true }), +trip.pref);
+    const pts = T.routablePoints({ ...trip, items: list, loop: true }), key = JSON.stringify([pts, trip.pref]);
+    if (!genRoutes.has(key)) genRoutes.set(key, fetchRoute(pts, +trip.pref));
+    return genRoutes.get(key);
   };
   let r = await routeOf(items);
   for (let tries = 0; r && r.seconds < hours * 3600 * GEN.under && tries < 2; tries++) {
@@ -455,8 +472,9 @@ async function routeOption(opt, start, hours) {
     r = await routeOf(items);
   }
   let best = rate(r);
-  for (let tries = 0; tries < 2 && best && best.back > GEN.maxBack * best.route.meters; tries++) {
-    const lines = P.retrace(best.route.path).lines, spots = lines.flat(), attempts = [];
+  const copy = list => list.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
+  for (let tries = 0; tries < GEN.backTries && best && best.back > GEN.maxBack * best.route.meters; tries++) {
+    const twice = P.retrace(best.route.path), lines = twice.lines, spots = lines.flat(), attempts = [];
     // Another way home: the best road near the stretch ridden twice that fits the time left.
     const estOf = list => P.estimate(start.pts[0], list.slice(1)).hours;
     const scale = best.route.seconds / 3600 / estOf(items), room = hours * GEN.overrun - best.route.seconds / 3600;
@@ -464,6 +482,12 @@ async function routeOption(opt, start, hours) {
       const more = { items: items.map(it => ({ ...it, pts: it.pts.map(p => [...p]) })), loop: true };
       more.items[T.insertRoad(more, g)].gen = true;
       if ((estOf(more.items) - estOf(items)) * scale <= room) { attempts.push(more.items); break; }
+    }
+    // Or through a spot off to one side of it, so the second pass is on another road.
+    for (const d of P.detours(twice)) {
+      const list = copy(items);
+      list.splice(P.stopIndexAt(best.route.path, items, d.m), 0, { type: 'point', label: 'Another way back', pts: [d.p], gen: true });
+      attempts.push(list);
     }
     // Or without the generated road most to blame.
     const added = items.filter(it => it.gen);
@@ -473,43 +497,48 @@ async function routeOption(opt, start, hours) {
       const near = it => Math.min(...it.pts.flatMap(p => spots.map(q => km(p, q))));
       const blame = added.map(it => ({ it, on: onIt(it), near: near(it) }))
         .sort((a, b) => b.on - a.on || a.near - b.near)[0].it;
-      attempts.push(items.filter(it => it !== blame).map(it => ({ ...it, pts: it.pts.map(p => [...p]) })));
+      attempts.push(copy(items.filter(it => it !== blame)));
     }
     let better = null;
     for (const list of attempts) {
       const other = rate(await routeOf(list));
       const hrs = other && other.route.seconds / 3600;
-      if (other && other.worth > best.worth && hrs >= hours * GEN.under && hrs <= hours * GEN.overrun) { better = { list, other }; break; }
+      if (other && other.worth > (better || best).worth && hrs >= hours * GEN.under && hrs <= hours * GEN.overrun) better = { list, worth: other.worth, other };
     }
     if (!better) break;
     items = better.list;
     best = better.other;
   }
+  // From here on a change is kept only if the loop ranks higher, stays in 80–120%, and rides no more twice
+  // than it did (or maxBack of it), so a road picked up on the way doesn't undo the work above.
+  const keeps = other => { const hrs = other && other.route.seconds / 3600;
+    return other && other.worth > best.worth && hrs >= hours * GEN.under && hrs <= hours * GEN.overrun
+      && other.back <= Math.max(best.back, GEN.maxBack * other.route.meters); };
   // Turnarounds and left turns at stoplights (up to 2 tries): without the generated road nearest the first
-  // of them, if the loop then ranks higher and stays in 80–120%. Usually a highway sweep: ridden away from
-  // home then back the other way, or left off the highway at the lights at its end.
+  // of them. Usually a highway sweep: ridden away from home then back the other way, or left off the highway
+  // at the lights at its end.
   const trouble = b => [...b.turns, ...b.lefts.map(l => l.p)];
   for (let tries = 0; tries < 2 && best && trouble(best).length; tries++) {
     const at = trouble(best)[0], added = items.filter(it => it.gen);
     if (!added.length || items.length <= 2) break;
     const dist = it => Math.min(...it.pts.map(p => km(p, at)));
     const blame = added.reduce((a, b) => dist(b) < dist(a) ? b : a);
-    const list = items.filter(it => it !== blame).map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
-    const other = rate(await routeOf(list)), hrs = other && other.route.seconds / 3600;
-    if (!(other && other.worth > best.worth && hrs >= hours * GEN.under && hrs <= hours * GEN.overrun)) break;
+    const list = copy(items.filter(it => it !== blame));
+    const other = rate(await routeOf(list));
+    if (!keeps(other)) break;
     items = list;
     best = other;
   }
-  // Roads it rides right past (up to 2 tries): picked up if the loop ranks higher and stays in 80–120%.
+  // Roads it rides right past (up to 2 tries).
   const tried = new Set();
   for (let tries = 0; tries < 2 && best; tries++) {
     const g = P.onTheWay(opt.free, items, best.route.path).find(x => !tried.has(x));
     if (!g) break;
     tried.add(g);
-    const more = { items: items.map(it => ({ ...it, pts: it.pts.map(p => [...p]) })), loop: true };
+    const more = { items: copy(items), loop: true };
     more.items[T.insertRoad(more, g)].gen = true;
-    const other = rate(await routeOf(more.items)), hrs = other && other.route.seconds / 3600;
-    if (other && other.worth > best.worth && hrs >= hours * GEN.under && hrs <= hours * GEN.overrun) {
+    const other = rate(await routeOf(more.items));
+    if (keeps(other)) {
       items = more.items;
       best = other;
     }
@@ -533,28 +562,45 @@ function selectOption(i) {
 
 // ---------- map interactions ----------
 
-// A tap on a road the map isn't coloring (MO 7, a highway): its name and speed limit, from that spot's
-// speed-limit tile, loaded just for the tap. Zoomed in only: one tile is up to a few MB.
-let speedTap = 0;
-async function speedAt(at) {
-  const z = mapView.zoom(), tap = ++speedTap;
-  if (z < 11) return;
-  loadTiles([at[0], at[1], at[0], at[1]], { speed: true });
-  await tilesSettled(8000);
-  if (tap !== speedTap || fly) return;
-  // About 12 px of the screen either side of the finger.
-  const reach = Math.min(120, Math.max(20, 12 * 156543 * Math.cos(at[0] * Math.PI / 180) / 2 ** z));
-  const r = roadNear(store.roads, at, x => (x.mph ?? x.estMph) != null && !x.highway, reach);
-  if (!r) return;
+// A tap on the map: a tag right there with the road's name and speed limit. Roads the map isn't coloring
+// (MO 7, a highway) come from that spot's speed-limit tile, loaded for the tap, with a tag saying so while
+// it loads. Zoomed out past 10 only roads already loaded count: one tile is up to a few MB.
+let speedTap = 0, tagTimer = null;
+function showTag(at, text, ms = 5000) {
+  clearTimeout(tagTimer);
+  mapView.setTapTag(at && text ? at : null, text);
+  if (at && ms) tagTimer = setTimeout(() => mapView.setTapTag(null), ms);
+}
+
+function speedText(r) {
   const name = (r.ref || r.name || 'Unnamed road').replace(/;/g, ' / ');
   // The estimate is a rule of thumb for ordinary roads (30 in town): none on highways or ramps.
   const guess = /^(motorway|trunk)|_link$/.test(r.hw) ? null : r.estMph;
-  toast(r.mph != null ? `${name} · ${r.mph} mph` : guess != null ? `${name} · about ${guess} mph (no posted limit)` : `${name} · no posted limit`);
+  return r.mph != null ? `${name} · ${r.mph} mph` : guess != null ? `${name} · about ${guess} mph (not posted)` : `${name} · no posted limit`;
+}
+
+async function speedAt(at) {
+  const z = mapView.zoom(), tap = ++speedTap;
+  if (z >= 10) {
+    loadTiles([at[0], at[1], at[0], at[1]], { speed: true });
+    if (loadingCount()) {
+      showTag(at, 'Checking the speed limit…', 0);
+      await tilesSettled(20000);
+      if (tap !== speedTap || fly) return;
+    }
+  }
+  // About 14 px of the screen either side of the finger. Highway sweeps repeat pieces of the speed tiles, so
+  // they're only a fallback for when those aren't loaded.
+  const reach = Math.min(400, Math.max(20, 14 * 78272 * Math.cos(at[0] * Math.PI / 180) / 2 ** z));
+  const r = roadNear(store.roads, at, x => !x.highway, reach) || roadNear(store.roads, at, () => true, reach);
+  showTag(at, r && speedText(r));
 }
 
 function onRoadTap(id, at) {
   if (usePick(at, id)) return;
   const piece = store.byId.get(id);
+  speedTap++;
+  showTag(at, speedText(piece));
   select(stretchOf(store.roads, piece), piece, at);
 }
 
@@ -963,6 +1009,8 @@ function routeSummary() {
 function flyRide() {
   if (!route || fly) return;
   closeMenu();
+  speedTap++;
+  showTag(null);
   const r = route;
   mapView.setBasemap('satellite');  // the dark map is bleak from the seat
   loadTilesAlong(r.path, { speed: true });  // speed limits for every road on it, not just the curvy ones

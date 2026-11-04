@@ -14,6 +14,17 @@ async function fetchJson(url, ms) {
   }
 }
 
+// Answers by request, so trying a change to one stop of a long trip (the loop generator does, a lot)
+// re-asks only for the chunks it changes. The last 100.
+const answers = new Map();
+async function cachedJson(url, ms) {
+  if (!answers.has(url)) {
+    answers.set(url, fetchJson(url, ms).catch(e => { answers.delete(url); throw e; }));
+    if (answers.size > 100) answers.delete(answers.keys().next().value);
+  }
+  return answers.get(url);
+}
+
 // The public server takes 10 locations per request, so longer trips go in overlapping chunks.
 // useHighways: 1 fastest … 0 back roads only. Unless uTurns, the route may not turn around at a
 // stop (Valhalla's break_through), so it doesn't ride back down a road it just finished.
@@ -35,7 +46,7 @@ async function valhalla(pts, useHighways, uTurns) {
       costing_options: { motorcycle: { use_highways: useHighways, use_trails: 0 } },
       units: 'miles',
     };
-    const data = await fetchJson(`${ROUTING.valhalla}?json=${encodeURIComponent(JSON.stringify(req))}`, 30000);
+    const data = await cachedJson(`${ROUTING.valhalla}?json=${encodeURIComponent(JSON.stringify(req))}`, 30000);
     for (const leg of data.trip.legs) {
       const offset = result.path.length;
       for (const m of leg.maneuvers) {

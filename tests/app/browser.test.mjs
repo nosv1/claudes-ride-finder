@@ -120,7 +120,7 @@ test('the Highways road type shows the fast ramps at the Grandview Triangle and 
 test('zoomed far out it loads no more roads, and speed-only roads only in Speed limits mode', async () => {
   const files = () => page.eval("[...document.querySelectorAll('script[src*=\"tiles/\"]')].map(s => s.src.split('/').pop())");
   const before = await files();
-  assert.ok(before.every(f => !f.endsWith('.s.js')), 'Best rides loads no speed-only files');
+  assert.ok(before.every(f => !f.endsWith('.s.js')), 'Best rides loads no speed-only files: ' + before.filter(f => f.endsWith('.s.js')));
   await page.eval("RF.go('home')");
   await page.eval("void RF.mapView.map.jumpTo({ center: [-97, 33], zoom: 4.5 })");  // all of Texas and more
   await sleep(1500);
@@ -134,19 +134,19 @@ test('zoomed far out it loads no more roads, and speed-only roads only in Speed 
   await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Best rides/.test(b.textContent)).click()");
 });
 
-test('tapping an uncolored road tells its speed limit', async () => {
+test('tapping an uncolored road tags its speed limit right there', async () => {
   const MO7 = 517106224, I435 = 567231236;
   await page.eval("RF.go('home')");
   await page.eval("void RF.mapView.map.jumpTo({ center: [-94.284, 39.12], zoom: 14 })");
   await page.waitFor(`RF.store.byId.has(${MO7})`, 30000);
   await page.eval(`(() => { const r = RF.store.byId.get(${MO7}); RF.mapView.emit('empty', r.geom[Math.floor(r.geom.length / 2)]); })()`);
-  await page.waitFor("/MO 7 · 55 mph/.test(document.getElementById('toast').innerText)", 15000);
+  await page.waitFor("/MO 7 · 55 mph/.test(document.querySelector('.tap-tag') ? document.querySelector('.tap-tag').innerText : '')", 15000);
   // A road only in the speed-limit tiles: loaded for the tap.
   await page.eval("void RF.mapView.map.jumpTo({ center: [-94.76, 38.95], zoom: 14 })");
   await page.eval("RF.mapView.emit('empty', [38.95, -94.76])");
   await page.waitFor(`RF.store.byId.has(${I435})`, 30000);
   await page.eval(`(() => { const r = RF.store.byId.get(${I435}); RF.mapView.emit('empty', r.geom[Math.floor(r.geom.length / 2)]); })()`);
-  await page.waitFor("/I 435 · 70 mph/.test(document.getElementById('toast').innerText)", 15000);
+  await page.waitFor("/I 435 · 70 mph/.test(document.querySelector('.tap-tag') ? document.querySelector('.tap-tag').innerText : '')", 15000);
 });
 
 test('search finds a route number and opens the road', async () => {

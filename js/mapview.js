@@ -69,6 +69,16 @@ const arrowImage = () => canvasImage(24, 24, ctx => {
   ctx.lineWidth = 6; ctx.strokeStyle = '#0b1d33'; ctx.stroke();
   ctx.lineWidth = 3; ctx.strokeStyle = '#ffffff'; ctx.stroke();
 });
+// A stoplight: red, yellow and green in a dark box. Where the route turns left at it, an orange ring.
+const lightImage = left => canvasImage(28, 44, ctx => {
+  if (left) { roundRect(ctx, 1, 1, 26, 42, 8); ctx.fillStyle = '#ff922b'; ctx.fill(); }
+  roundRect(ctx, 5, 5, 18, 34, 5);
+  ctx.fillStyle = '#111'; ctx.fill();
+  ctx.lineWidth = 1.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+  ['#ff6b6b', '#ffd43b', '#51cf66'].forEach((c, i) => {
+    ctx.beginPath(); ctx.arc(14, 12 + i * 10, 3.6, 0, 2 * Math.PI); ctx.fillStyle = c; ctx.fill();
+  });
+});
 
 export class MapView {
   constructor(container, { center, zoom, insets }) {
@@ -90,6 +100,7 @@ export class MapView {
           blind: { type: 'geojson', data: EMPTY },
           route: { type: 'geojson', data: EMPTY },
           retrace: { type: 'geojson', data: EMPTY },
+          lights: { type: 'geojson', data: EMPTY },
           routeLabels: { type: 'geojson', data: EMPTY },
           preview: { type: 'geojson', data: EMPTY },
           fuel: { type: 'geojson', data: EMPTY },
@@ -136,6 +147,9 @@ export class MapView {
             'text-size': 10, 'icon-image': 'shield-route', 'icon-text-fit': 'both', 'icon-text-fit-padding': [1, 3, 1, 3],
             'text-rotation-alignment': 'viewport', 'icon-rotation-alignment': 'viewport', 'text-pitch-alignment': 'viewport',
             'icon-pitch-alignment': 'viewport' }, paint: { 'text-color': '#111' } },
+          { id: 'lights', type: 'symbol', source: 'lights', minzoom: 10, layout: {
+            'icon-image': ['case', ['get', 'left'], 'light-left', 'light'], 'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.6, 14, 0.9],
+            'icon-allow-overlap': true, 'icon-pitch-alignment': 'viewport', 'symbol-sort-key': ['case', ['get', 'left'], 1, 0] } },
           { id: 'blind', type: 'symbol', source: 'blind', minzoom: 11, layout: {
             'icon-image': 'blind', 'icon-size': 0.85, 'icon-allow-overlap': true, 'icon-pitch-alignment': 'viewport' } },
           { id: 'fuel', type: 'circle', source: 'fuel', minzoom: 9, layout: { visibility: 'none' }, paint: {
@@ -168,6 +182,8 @@ export class MapView {
       this.map.addImage('shield-route', shieldImage('#1c7ed6'), SHIELD_OPTS);
       this.map.addImage('blind', blindImage(), { pixelRatio: 2 });
       this.map.addImage('arrow', arrowImage(), { pixelRatio: 2 });
+      this.map.addImage('light', lightImage(false), { pixelRatio: 2 });
+      this.map.addImage('light-left', lightImage(true), { pixelRatio: 2 });
     });
     this.bindEvents();
   }
@@ -221,6 +237,8 @@ export class MapView {
   }
   // Where the route rides a road a second time.
   setRetrace(lines) { this.map.getSource('retrace').setData(fc((lines || []).map(l => line(l)))); }
+  // The stoplights on the route: [{ p, turn }].
+  setLights(lights) { this.map.getSource('lights').setData(fc((lights || []).map(l => point(l.p, { left: l.turn === 'left' })))); }
   setPreview(path) { this.map.getSource('preview').setData(path ? fc([line(path)]) : EMPTY); }
 
   setStations(stations) {
@@ -288,6 +306,19 @@ export class MapView {
     a.textContent = arrow || '';
     t.textContent = text;
     this.turnTag.setLngLat(ll(p)).addTo(this.map);
+  }
+
+  // A little tag where the map was tapped (a road's speed limit). Null hides it.
+  setTapTag(p, text) {
+    if (!p) { if (this.tapTag) this.tapTag.remove(); return; }
+    if (!this.tapTag) {
+      const el = document.createElement('div');
+      el.className = 'tap-tag';
+      el.append(document.createElement('span'));
+      this.tapTag = new maplibregl.Marker({ element: el, anchor: 'bottom', pitchAlignment: 'viewport', rotationAlignment: 'viewport' });
+    }
+    this.tapTag.getElement().firstChild.textContent = text;
+    this.tapTag.setLngLat(ll(p)).addTo(this.map);
   }
 
   setPin(p) {

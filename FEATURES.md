@@ -221,10 +221,12 @@ under the tag, and the Hills chip lists ft/mi.
 - A "stretch" means pieces of the same ref/name within ~3 km. Missouri reuses lettered routes in every county.
 - **Plan a ride** stays pinned at the bottom of the sheet.
 
-**What's this road?** Tapping a road the map isn't coloring (MO 7, an interstate), from zoom 11, toasts its
-name and limit: "MO 7 · 55 mph", "about 45 mph (no posted limit)" from the estimate, or "no posted limit" on
-highways and ramps. It loads that spot's speed-limit tile just for the tap (they're up to a few MB, so not for
-every view), and looks within about 12 screen pixels (20–120 m).
+**What's this road?** Tapping any road puts a little tag right there with its name and limit: "MO 7 · 55 mph",
+"about 45 mph (not posted)" from the estimate, or "no posted limit" on highways and ramps. A colored road also
+opens its card. For the others it loads that spot's speed-limit tile just for the tap (from zoom 10; they're up to
+a few MB, so not for every view), with "Checking the speed limit…" in the tag meanwhile, and looks within about 14
+screen pixels (20–400 m). The tag goes after 5 s. (It used to be a toast at the bottom of the screen, gave up after
+8 s of loading, and looked within 120 m at most, so at zoom 11–12 a tap had to land within 4–8 px of the road.)
 
 **Road card** (tap a road, a card, or a search result)
 - For the whole stretch: curve class, curve miles, hills (word and ft/mi), speed (posted, or "~55 mph" when
@@ -403,23 +405,37 @@ colored road), Add a stop here, Street View here.
   way with your filters"). From Greenwood at 1.5 h: west is the KC metro, and south's only other curvy road
   (South Amarugia Lane) is gravel, so with Paved on there's no south loop.
 - Roads are turned end for end to make the rides between them shortest over the whole loop (not nearest end first).
-- **Doubling back:** loops are ranked by fun² / miles × (1 − 3 × share ridden twice), floor 0.1, where fun is the
-  miles on curvy roads plus the miles on highway sweeps and fast ramps (straight interstate counts nothing). A loop riding
-  more than 4% twice (up to twice):
+- **Doubling back:** loops are ranked by fun² / miles × e^(−5 × share ridden twice) (10% twice keeps 61%, 20%
+  37%, 40% 14%; it used to be 1 − 3 × share with a floor of 0.1, so past 30% every loop looked equally bad), where
+  fun is the miles on curvy roads plus the miles on highway sweeps and fast ramps (straight interstate counts
+  nothing). A loop riding more than 4% twice tries each of these (up to 3 rounds), keeping the best:
   - first tries **another way home**: the best-scoring road with an end or midpoint within 3 km of the stretch
     ridden twice, not mostly on it, and fitting the time left (estimate × how far the estimate ran off). Short
     roads count here (800 m+ of curves, not unclassified), though never as the main roads, which need 2 km;
-  - else tries it without the generated road most to blame (the one the doubled-back miles are on, else the
-    nearest);
+  - **another way back**: a spot to either side of the middle of the longest stretch ridden twice, square to it
+    and a third of its length out (2–10 km), put in the part of the loop where the second pass is;
+  - it without the generated road most to blame (the one the doubled-back miles are on, else the nearest);
   - keeping a change only if it ranks higher and stays in 80–120%. From Lee's Summit at 1.5 h on back roads, the
-    out-and-back "MO TT" loop (48% twice) became Buckner Tarsney → MO TT → Litchford (12%).
+    out-and-back "MO TT" loop (48% twice) became Buckner Tarsney → MO TT → Litchford (12%). With another way back,
+    from the same start the south loop went from 8.4 to 2.6 mi twice; at 6 h the five loops went from 91 to 76 mi.
+  - After this, the stoplight, turnaround and roads-on-the-way passes keep a change only if it also rides no more
+    twice than before (or 4%): picking up East Colbern Road on the way once took a loop from 1.4 to 15.5 mi twice.
+  - Loops riding more than a fifth twice are left out when at least 2 others aren't.
+- **Speed:** loops are routed two at a time, routes asked for during a run are reused (directions often come out
+  the same loop), and the router's answers are kept per 10-point chunk, so a change to one stop of a long loop
+  re-asks only for the chunks it changes. A 6 h run: 264 requests and 259 s before the chunk cache, 150 and 145 s
+  after (209 s before any of this).
 - **Stoplights:** each one the route goes through keeps 97% of a loop's rank, and one where it turns left counts
   twice ("booking it down a highway, it's lame to get stopped by a stoplight"; double lefts off a highway are
   the worst). A light within 15 m of the route counts, one per intersection (nodes within 80 m along the route
-  are one), and the turn is the change in heading from 60 m before to 60 m after (over 50° left or right).
-  The router (Valhalla) has no setting to avoid lights, so the app ranks and fixes instead: a loop with a left at
+  are one), and the turn is the change in heading from 60 m before to 60 m after (over 50° left or right), measured
+  between the route's points (a straight road mapped with points over 60 m apart used to read as a left: 3 of 7
+  "lefts" on one loop).
+  The router (Valhalla) has no setting to avoid lights (`signal_penalty` on the motorcycle costing changed
+  nothing on valhalla1.openstreetmap.de, Nov 2026), so the app ranks and fixes instead: a loop with a left at
   a light tries dropping the generated road nearest it, as for turnarounds. Option cards show "🚦 12 (3 left)";
-  the ride says how many and how many turn left. Until `tiles/signals.js` is built, no lights are counted.
+  the ride says how many and how many turn left, and the map shows each light on the route (from zoom 10), with an
+  orange ring where it turns left. Until `tiles/signals.js` is built, no lights are counted.
 - **Turnarounds:** a spot off the curvy roads where the route comes back past within 120 m heading the other way
   (over 150° off) after 400 m to 3 km of riding: off the highway, left twice through the lights and back on, or round
   a block. Not a cloverleaf loop (shorter), not a hairpin (on a curvy road), not in the first or last 1.5 km. Each

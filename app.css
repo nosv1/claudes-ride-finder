@@ -365,3 +365,9 @@ body.flying #map, body.tilted #map { background: #9db4c8; }
   white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,.5);
 }
 .turn-tag b { color: var(--blue); font-size: 20px; line-height: 1; }
+.tap-tag { padding-bottom: 10px; pointer-events: none; }
+.tap-tag::after { content: ''; position: absolute; left: 50%; bottom: 2px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: #fff; }
+.tap-tag > span {
+  display: block; background: #fff; color: #111; font-weight: 700; font-size: 13px; padding: 5px 10px; border-radius: 8px;
+  white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,.5);
+}

@@ -71,7 +71,13 @@ export function stoplightsOn(path, lights) {
   const [s, w, n, e] = pad(boundsOf(path), 0.001);
   const near = lights.filter(l => l.lat >= s && l.lat <= n && l.lon >= w && l.lon <= e);
   const cum = cumulative(path), total = cum[cum.length - 1], out = [];
-  const at = d => { const i = cum.findIndex(c => c >= d); return path[i < 0 ? path.length - 1 : i]; };
+  // The spot d metres along, between the path's points: a straight road can be mapped with points far apart.
+  const at = d => {
+    const i = cum.findIndex(c => c >= d);
+    if (i <= 0) return path[i < 0 ? path.length - 1 : 0];
+    const t = (d - cum[i - 1]) / (cum[i] - cum[i - 1] || 1), a = path[i - 1], b = path[i];
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  };
   for (const { item, mile } of alongRoute(path, near, 15, 10).hits) {
     const m = mile * 1609.34;
     if (out.length && m - out[out.length - 1].m < 80) continue;
@@ -91,11 +97,12 @@ export function blindCrestsOn(path, roads) {
 }
 
 // Metres of a route ridden a second time, back down the same road or along it again (crossing
-// an earlier pass doesn't count), and those stretches as lines for the map. The first and last
+// an earlier pass doesn't count), those stretches as lines for the map, and where along the route
+// each second pass starts and ends (metres, in `spans`). The first and last
 // `ends` metres from the start and finish are left out: leaving home and coming back the same
 // way isn't what spoils a ride.
 export function retrace(path, ends = 1500) {
-  const CELL = 0.0006, STEP = 15, RAD = Math.PI / 180, seen = new Map(), lines = [];
+  const CELL = 0.0006, STEP = 15, RAD = Math.PI / 180, seen = new Map(), lines = [], spans = [];
   const first = path[0], last = path[path.length - 1];
   let meters = 0, at = 0, line = null;
   for (let i = 1; i < path.length; i++) {
@@ -112,15 +119,47 @@ export function retrace(path, ends = 1500) {
       if (visits.length < 4) seen.set(key, [...visits, { m, hd }]);
       if (again) {
         meters += d / n;
-        if (!line) lines.push(line = []);
+        if (!line) { lines.push(line = []); spans.push([m, m]); }
         line.push(p);
+        spans[spans.length - 1][1] = m;
       } else {
         line = null;
       }
     }
     at += d;
   }
-  return { meters, lines: lines.filter(l => l.length > 1) };
+  const keep = lines.map(l => l.length > 1);
+  return { meters, lines: lines.filter((_, i) => keep[i]), spans: spans.filter((_, i) => keep[i]) };
+}
+
+// Spots to send a loop through instead of riding a stretch twice: either side of the middle of the
+// longest one ridden twice, square to it and a third of its length out (2–10 km), each with the
+// metres along the route where the second pass goes by (to put the spot in that part of the loop).
+export function detours({ lines, spans }) {
+  if (!lines.length) return [];
+  const len = l => l.reduce((s, p, i) => i ? s + km(l[i - 1], p) : 0, 0);
+  const i = lines.reduce((b, l, k) => len(l) > len(lines[b]) ? k : b, 0), l = lines[i];
+  const mid = l[Math.floor(l.length / 2)], off = Math.min(10, Math.max(2, len(l) / 3)), dir = bearing(l[0], l[l.length - 1]);
+  const m = (spans[i][0] + spans[i][1]) / 2;
+  return [dir + 90, dir - 90].map(d => ({ p: offset(mid, d, off), m }));
+}
+
+// A point `dist` km from p heading `deg`.
+function offset([lat, lon], deg, dist) {
+  const r = deg * Math.PI / 180, dLat = dist * Math.cos(r) / 111.2;
+  return [lat + dLat, lon + dist * Math.sin(r) / (111.2 * Math.cos(lat * Math.PI / 180))].map(v => +v.toFixed(5));
+}
+
+// Where a stop belongs in a loop so the route goes there at `m` metres along: the index of the first
+// stop after it (items[0] is the start), or the end (the ride home).
+export function stopIndexAt(path, items, m) {
+  const cum = cumulative(path);
+  let from = 0;
+  for (let k = 1; k < items.length; k++) {
+    from = nearestIndex(path, items[k].pts[0], from);
+    if (cum[from] > m) return k;
+  }
+  return items.length;
 }
 
 // ---------- fuel ----------
