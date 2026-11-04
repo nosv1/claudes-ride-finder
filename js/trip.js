@@ -176,19 +176,68 @@ export function indexAlongRoute(trip, p, path) {
   return at < 0 ? trip.items.length : at;
 }
 
-// Share links: base64 JSON, compatible with v1's #trip= links (v1 ignores the extra ids and gen fields).
+// Share links: packed bytes in base64url, about a third the length of the old base64 JSON. Numbers are varints,
+// points are 1e-5° steps from the previous point and road ids steps from the previous id, so most take 2-4 bytes.
+// Layout: version 1, flags (loop 1, 90+ 2), pref × 10, range, item count, then per item: flags (road 1, gen 2,
+// oneway 4, start 8, end 16), label, curvy metres, point count and points, id count and ids.
+const ROAD = 1, GEN = 2, ONEWAY = 4, START = 8, END = 16;
+
 export function encodeTrip(trip) {
-  const data = {
-    l: trip.loop ? 1 : 0, p: trip.pref, r: trip.range, n: trip.need90 ? 1 : 0,
-    s: trip.items.map(it => [it.type === 'road' ? 'r' : 'p', it.label, Math.round(it.curvy || 0), it.pts.map(round5), it.ids || 0, it.gen ? 1 : 0, it.oneway ? 1 : 0]),
-  };
-  const bytes = new TextEncoder().encode(JSON.stringify(data));
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const out = [];
+  const uint = n => { do { const b = n % 128; n = Math.floor(n / 128); out.push(n ? b | 128 : b); } while (n); };
+  const int = n => uint(n < 0 ? -2 * n - 1 : 2 * n);
+  const text = s => { const b = new TextEncoder().encode(s || ''); uint(b.length); out.push(...b); };
+  uint(1);
+  uint((trip.loop ? 1 : 0) | (trip.need90 ? 2 : 0));
+  uint(Math.round(+trip.pref * 10));
+  uint(trip.range);
+  uint(trip.items.length);
+  let lat0 = 0, lon0 = 0, id0 = 0;
+  for (const it of trip.items) {
+    uint((it.type === 'road' ? ROAD : 0) | (it.gen ? GEN : 0) | (it.oneway ? ONEWAY : 0) | (it.start ? START : 0) | (it.end ? END : 0));
+    text(it.label);
+    uint(Math.round(it.curvy || 0));
+    uint(it.pts.length);
+    for (const [lat, lon] of it.pts) {
+      const a = Math.round(lat * 1e5), b = Math.round(lon * 1e5);
+      int(a - lat0); int(b - lon0);
+      lat0 = a; lon0 = b;
+    }
+    uint((it.ids || []).length);
+    for (const id of it.ids || []) { int(id - id0); id0 = id; }
+  }
+  return btoa(String.fromCharCode(...out)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 export function decodeTrip(s) {
-  const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
-  const d = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+  const bin = Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+  return bin[0] === 123 ? decodeJsonTrip(bin) : decodePackedTrip(bin);  // "{": an older link, base64 JSON
+}
+
+function decodePackedTrip(bin) {
+  let i = 0;
+  const uint = () => { let n = 0, k = 1, b; do { b = bin[i++]; n += (b & 127) * k; k *= 128; } while (b & 128); return n; };
+  const int = () => { const n = uint(); return n % 2 ? -(n + 1) / 2 : n / 2; };
+  const text = () => { const n = uint(); return new TextDecoder().decode(bin.subarray(i, i += n)); };
+  if (uint() !== 1) throw new Error('Unknown share link version');
+  const flags = uint(), pref = String(uint() / 10), range = uint(), items = [];
+  let lat0 = 0, lon0 = 0, id0 = 0;
+  for (let n = uint(); n > 0; n--) {
+    const f = uint(), label = text(), curvy = uint(), pts = [], ids = [];
+    for (let k = uint(); k > 0; k--) {
+      lat0 += int(); lon0 += int();
+      pts.push([lat0 / 1e5, lon0 / 1e5]);
+    }
+    for (let k = uint(); k > 0; k--) ids.push(id0 += int());
+    items.push({ type: f & ROAD ? 'road' : 'point', label, curvy, pts, ...(ids.length ? { ids } : {}), ...(f & GEN ? { gen: true } : {}),
+      ...(f & ONEWAY ? { oneway: true } : {}), ...(f & START ? { start: true } : {}), ...(f & END ? { end: true } : {}) });
+  }
+  return { loop: !!(flags & 1), pref, range, need90: !!(flags & 2), items };
+}
+
+// Links made before November 2026 (and the original app's): base64 JSON.
+function decodeJsonTrip(bin) {
+  const d = JSON.parse(new TextDecoder().decode(bin));
   return {
     loop: !!d.l, pref: d.p ?? '0.5', range: +(d.r ?? 120), need90: !!d.n,
     items: d.s.map(([t, label, curvy, pts, ids, gen, oneway], i) => ({

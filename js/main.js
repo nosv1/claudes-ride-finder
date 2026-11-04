@@ -143,7 +143,7 @@ function setSetting(patch) {
 // ---------- trip ----------
 
 function loadSavedTrip() {
-  const fromLink = location.hash.match(/trip=([\w-]+)/);
+  const fromLink = location.hash.match(/^#(?:r|trip)=([\w-]+)/);  // #trip= is the older, longer link
   try {
     if (fromLink) {
       trip = T.decodeTrip(fromLink[1]);
@@ -1362,7 +1362,7 @@ function downloadGpx() {
 }
 
 async function shareTrip() {
-  const url = location.href.split('#')[0] + '#trip=' + T.encodeTrip(trip);
+  const url = location.href.split('#')[0] + '#r=' + T.encodeTrip(trip);
   try {
     if (navigator.share) await navigator.share({ title: P.tripName(trip), url });
     else { await navigator.clipboard.writeText(url); toast('Link copied. Anyone with it can open this ride.'); }

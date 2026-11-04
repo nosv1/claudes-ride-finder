@@ -426,7 +426,7 @@ test('a share link reopens the same ride', async () => {
   const link = await page.eval(`(async () => {
     const T = await import('./js/trip.js');
     T.addPoint(RF.trip, [38.9, -94.3], 'Coffee stop');
-    return location.href.split('#')[0] + '#trip=' + T.encodeTrip(RF.trip);
+    return location.href.split('#')[0] + '#r=' + T.encodeTrip(RF.trip);
   })()`);
   const labels = await page.eval('RF.trip.items.map(i => i.label)');
   const other = await launch();

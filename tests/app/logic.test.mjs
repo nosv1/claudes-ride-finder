@@ -267,6 +267,15 @@ test('share links round-trip and read v1 links', () => {
   assert.deepEqual(back.items.map(i => [i.type, i.label, i.pts]), trip.items.map(i => [i.type, i.label, i.pts]));
   assert.deepEqual([back.range, back.need90, back.loop, back.items[2].ids], [80, true, false, [18518688]]);
   assert.ok(back.items[0].start, 'the start stays the start');
+  // Accents and curly quotes in labels, a generated one-way road, a pinned end, and the Fastest setting.
+  trip.items.push({ type: 'road', label: 'Route de l’Église', curvy: 0, ids: [1373218700, 13105698], pts: [[29.62049, -98.79487]], gen: true, oneway: true });
+  setEnd(trip, [38.7, -94.1], 'End: Café');
+  trip.pref = '1';
+  assert.deepEqual(decodeTrip(encodeTrip(trip)), { ...trip, items: trip.items.map(it => ({ ...it, curvy: Math.round(it.curvy || 0) })) });
+  // Links made before the packed format (base64 JSON) still open.
+  const json = Buffer.from(JSON.stringify({ l: 0, p: '0', r: 150, n: 1, s: [['p', 'Start: Café', 0, [[38.85, -94.34]], 0, 0, 0], ['r', 'MO 150', 1100, [[38.83, -94.36], [38.85, -94.3]], [18518688], 1, 0]] })).toString('base64url');
+  const before = decodeTrip(json);
+  assert.deepEqual([before.items[0].label, before.items[0].start, before.items[1].ids, before.items[1].gen, before.range, before.pref], ['Start: Café', true, [18518688], true, 150, '0']);
   // A link made by v1 (no ids, ASCII only).
   const v1 = Buffer.from(JSON.stringify({ l: 1, p: '0.5', r: '120', n: 0, s: [['p', 'Start', 0, [[38.85, -94.34]]], ['r', 'MO 7', 5000, [[38.8, -94.2], [38.9, -94.1]]]] })).toString('base64');
   const old = decodeTrip(v1);

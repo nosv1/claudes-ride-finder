@@ -504,7 +504,8 @@ colored road), Add a stop here, Street View here.
   - Then a stop in the middle of any stretch over 25 km without one.
   - Then stops 200 m past the turns onto the longest roads, at least 800 m apart.
 - **GPX:** waypoints, a route and the full track. For OsmAnd (free and follows the track), Calimoto, REVER, Garmin.
-- **Share:** the phone's share sheet (or the clipboard) with a `#trip=` link.
+- **Share:** the phone's share sheet (or the clipboard) with a `#r=` link: the ride packed into bytes (varints, points and road ids as steps from the last one), about a
+  third the length of the older `#trip=` base64-JSON links, which still open.
   - The link holds base64 JSON of the stops and settings.
   - Links from the original app work too. Opening one loads the ride.
 - **Persistence:** the ride saves to localStorage on every change. A ride saved by the original app is picked up once.
