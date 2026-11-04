@@ -447,6 +447,16 @@ test('sweeping highways count toward a ride, and the generator can ride to one',
   assert.ok(g && !g.small && g.oneway);
   assert.ok(buildOptions([g], start, 1.5).some(o => o.stops.some(st => st.label === g.key && st.oneway)));
   assert.deepEqual(wayHomeRoads([g], [], [along(sweep.geom)]), [], 'a one-way highway isn’t a way home');
+
+  // The hills and mph chips are hidden with Highways, and a setting left over from All roads doesn't apply: the
+  // generator's candidates (main.js: the map's filters, as visible() reads them) still have the sweep. Highways aren't
+  // held to hills or mph with All roads either; the curvy road is (its hills weren't measured, so not Very hilly).
+  const worthy = f => r => !r.roller && visible(r, { ...f, mode: 'ride' }) && (!r.oneway || r.highway);
+  for (const roadType of ['highway', 'all']) {
+    const keys = candidateGroups([sweep, curvy], start, 100, worthy({ ...FILTERS, roadType, minHills: 3, minSpeed: 55 })).map(x => x.key);
+    assert.ok(keys.some(k => k.startsWith('I 435')), `${roadType}: the sweep counts whatever the hills setting`);
+    assert.ok(!keys.includes('MO TT'), `${roadType}: the curvy road doesn't`);
+  }
 });
 
 test('turnarounds: off the highway and back the other way counts; cloverleaf loops, hairpins and plain loops don’t', () => {

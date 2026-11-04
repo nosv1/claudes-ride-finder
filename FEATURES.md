@@ -201,6 +201,9 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 | Back roads | the curvy roads only | curviness |
 | Highways | fast ramps (all 3 tiers) and highway sweeps only (a different kind of riding); the mph and hills chips go away | 3 ramp tiers, 2 highway tiers |
 
+Highway sweeps and fast ramps are never held to the mph or hills chips, on the map or in the generator, with any
+road type: with Highways those chips are hidden, and a setting left from All roads doesn't apply.
+
 All roads leaves out the smaller ramp tiers: across a metro at zoom 10–11, every interchange's ramps drew as white
 confetti over the curvy roads. The Highways chip in its key turns all highways off and on. Saved settings in the old
 Interchanges mode open as Best rides with Highways.

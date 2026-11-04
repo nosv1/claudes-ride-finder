@@ -1209,6 +1209,7 @@ function filterWords() {
 function missesBy(r) {
   const s = settings, out = [];
   if (r.roller) return 'roller coaster';
+  if (s.roadType === 'highway') return 'not a highway sweep';
   if (r.cls >= 0 && !s.classes.includes(r.cls)) out.push(CURVE_CLASSES[r.cls].label.toLowerCase());
   if (s.minHills && r.hillLevel < s.minHills) out.push(r.hillLevel >= 0 ? HILLS[r.hillLevel].label.toLowerCase() : 'hills not measured');
   if (s.mode !== 'curvy' && r.speed < s.minSpeed) out.push(`${r.speed} mph`);
