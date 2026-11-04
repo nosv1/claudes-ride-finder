@@ -13,8 +13,16 @@ Ideas that came up, roughly in order of how much they'd help.
 - **Bottlenecks to fix before going national** (measured 2026-11-01): the site's map files are 68 MB for
   3 states (about 70% is the speed-limit layer), so the whole US would be near GitHub Pages' 1 GB limit,
   and every rebuild adds to git history. Slim the speed-limit layer, then move tiles off git (e.g.
-  Cloudflare R2). Routing uses the free public Valhalla server (20–40 requests per Generate); host our
-  own only if other people start using the site.
+  Cloudflare R2).
+- **Our own router, once other people use the site**: routing runs on the free public Valhalla server
+  (FOSSGIS), which has no key and no published limit, only fair use. One Generate sends about 40 requests
+  for 1½ h and about 150 for 6 h (checked 2026-11-03). It already slows each request down when two are sent at
+  once, so a handful of riders generating at once could get the site throttled or blocked. The OSRM demo
+  fallback is 1 request a second and not meant for apps. Options: run Valhalla ourselves (Docker, built
+  from the same `.osm.pbf` files in `raw/`, on the PC or a small cloud server), or a hosted Valhalla with
+  a free tier (Stadia Maps; check its current limits and price). Either way, keep the motorcycle costing
+  and point `valhalla` in `js/config.js` at it. Photon search and Open-Meteo weather are fine for a group
+  of riders as they are.
 - **Turn-by-turn "Ride mode"** in the app, so it follows the planned route exactly (Google
   re-plans between stops). Full-screen map following GPS, big next-turn banner, voice prompts
   from Valhalla's turn instructions, screen kept awake, re-routing back onto the planned roads,
