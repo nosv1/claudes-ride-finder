@@ -138,6 +138,16 @@ test('same-named pieces form stretches only when close', () => {
   assert.deepEqual(stretchOf([a, b, far], a).ids.sort(), [1, 2]);
 });
 
+test('a tapped stretch leaves out pieces the filters hide', () => {
+  // Little Blue Road: the tapped piece is drawn; the next piece is too slow for Ride and drawn
+  // without color, so it shouldn't light up (or count) with it.
+  const a = row({ id: 1, name: 'Little Blue Road', score: 600, pts: east(38, -93) });
+  const slow = row({ id: 2, name: 'Little Blue Road', score: 600, est: 30, pts: east(38, -92.985) });
+  assert.deepEqual(stretchOf([a, slow], a).ids.sort(), [1, 2], 'without filters, every piece');
+  assert.deepEqual(stretchOf([a, slow], a, FILTERS).ids, [1]);
+  assert.deepEqual(stretchOf([a, slow], a, { ...FILTERS, mode: 'curvy' }).ids.sort(), [1, 2], 'shown in Curvy mode');
+});
+
 test('MO-150 east of Lee\'s Summit is a 55 mph sweeper and ranks in view', { skip: !haveTiles }, () => {
   const roads = loadTile('-189_77');
   const mo150 = roads.find(r => r.id === 18518688);

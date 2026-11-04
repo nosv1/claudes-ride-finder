@@ -15,6 +15,8 @@ but not what it feels like to use. These checks are for that.
 - ✱ Things of the same kind offer the same actions. A searched place gets Add to ride / Start here / End here
   like a road or gas station does.
 - ✱ Feedback shows up near the finger, not at the far edge of the screen (the speed tag at the tap).
+- ✱ What lights up white when a road is tapped or hovered is only road drawn in color: no glow on pieces the
+  filters hide (a slow end of the same road, say).
 - A tap on empty map closes the open card and nothing else.
 - Long-press (phone) and right-click (desktop) open the spot menu with Start / End / Add a stop / Street View.
 
@@ -70,6 +72,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   including a one-way ride's end.
 - Reloading the page keeps the ride and the settings.
 - The fly-through plays, shows the road sign, speed limit and next turn, and Esc / ✕ ends it.
+- ✱ The blue rider dot stays in sight the whole way, over hills and crests (the camera looks down more steeply
+  for a moment rather than lose it behind one).
 
 ## Looks and layout
 

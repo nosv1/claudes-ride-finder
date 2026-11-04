@@ -113,10 +113,12 @@ export function summarize(c, key) {
   return g;
 }
 
-// The stretch a piece belongs to (just the piece if it has no name).
-export function stretchOf(roads, r) {
+// The stretch a piece belongs to (just the piece if it has no name). With filters, only the
+// pieces the map shows count, so a tap doesn't select (and light up) pieces drawn without color.
+export function stretchOf(roads, r, filters = null) {
   if (!r.key) return summarize({ roads: [r], bounds: r.bounds }, 'Unnamed road');
-  const same = roads.filter(x => x === r || (x.key === r.key && (x.cls >= 0 || x.rampTier >= 0) && x.oneway === r.oneway));
+  const same = roads.filter(x => x === r || (x.key === r.key && (x.cls >= 0 || x.rampTier >= 0) && x.oneway === r.oneway
+    && (!filters || visible(x, filters))));
   return summarize(clusterRoads(same).find(c => c.roads.includes(r)), r.key);
 }
 

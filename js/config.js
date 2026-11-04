@@ -109,10 +109,12 @@ export const TERRAIN = { exaggeration: 2, maxPitch: 85, pitch: 65 };
 // highways. The camera sits low behind the rider and turns toward the road aheadM on. Terrain is
 // drawn `exaggeration` times taller on curvy roads, flatExaggeration elsewhere (highways and
 // towns, where bridges and road cuts turn into canyons), easing between them over ~liftS.
+// When a hill hides the rider, the camera looks down more steeply, up to maxDip degrees, and
+// eases back at dipBack degrees a second once it's clear.
 export const FLY = {
   speeds: [5, 10, 20, 40], speed: 10, zoom: 16.2, pitch: 78, pitchTall: 72,
   exaggeration: 2.2, flatExaggeration: 1.2, liftS: 1.5,
-  aheadM: 250, turnS: 0.6, crestM: 400,
+  aheadM: 250, turnS: 0.6, crestM: 400, maxDip: 35, dipBack: 6,
 };
 
 export const GOOGLE = { perPart: 9, parts: 2, pastTurn: 200, minSpacing: 800, maxGap: 25000 };

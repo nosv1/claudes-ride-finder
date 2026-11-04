@@ -245,7 +245,7 @@ function addStopOn(at, g) {
 function desiredRoadAt(at) {
   const f = filters();
   const r = roadNear(store.roads, at, r => (r.cls >= 0 || r.rampTier >= 0) && visible(r, f));
-  return r && stretchOf(store.roads, r);
+  return r && stretchOf(store.roads, r, f);
 }
 
 function roadToast(it, verb, extra) {
@@ -640,7 +640,7 @@ function onRoadTap(id, at) {
   const piece = store.byId.get(id);
   speedTap++;
   showTag(at, speedText(piece));
-  select(stretchOf(store.roads, piece), piece, at);
+  select(stretchOf(store.roads, piece, filters()), piece, at);
 }
 
 function select(group, piece, at, fit = false) {
@@ -664,7 +664,7 @@ function clearSelection() {
 function onHover(id) {
   if (id == null) return mapView.highlight(selected && selected.group.ids);
   const r = store.byId.get(id);
-  if (r) mapView.highlight(stretchOf(store.roads, r).ids);
+  if (r) mapView.highlight(stretchOf(store.roads, r, filters()).ids);
 }
 
 function spotMenu(at, pt) {
@@ -692,7 +692,7 @@ function usePick(at, roadId = null) {
   if (kind === 'start') setStartAt(at, 'Start');
   else if (kind === 'end') setEndAt(at, 'End');
   else if (roadId != null) {
-    const g = stretchOf(store.roads, store.byId.get(roadId));
+    const g = stretchOf(store.roads, store.byId.get(roadId), filters());
     kind === 'road' ? addRoad(g) : addStopOn(at, g);
   } else { T.addPoint(trip, at, 'Stop'); tripChanged(); }
   renderSoon();

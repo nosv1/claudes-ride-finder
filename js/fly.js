@@ -99,6 +99,7 @@ export class Fly {
     this.s = 0;
     this.heading = null;
     this.pitch = innerHeight > innerWidth ? FLY.pitchTall : FLY.pitch;  // a tall phone screen: less sky
+    this.dip = 0;  // degrees steeper than pitch, while a hill would hide the rider
     this.zoom = FLY.zoom;  // as asked for (a zoom by hand is kept); the camera may back off from hills
     this.playing = false;
     this.raf = null;
@@ -111,7 +112,7 @@ export class Fly {
     this.resize = () => this.pad();
     // Asked for every frame: the map lowers the tilt when the camera would be inside a hill (or
     // looks it, before the terrain there has loaded). A tilt by hand is kept.
-    this.tilted = e => { if (e.originalEvent) this.pitch = this.map.getPitch(); };
+    this.tilted = e => { if (e.originalEvent) { this.pitch = this.map.getPitch(); this.dip = 0; } };
     this.zoomed = e => { if (e.originalEvent) this.zoom = this.map.getZoom(); };
     this.map.on('pitchend', this.tilted);
     this.map.on('zoomend', this.zoomed);
@@ -216,8 +217,8 @@ export class Fly {
   draw(dt) {
     const m = this.f.metersAt(this.s), p = this.f.pointAt(m), want = this.f.lookFrom(m, FLY.aheadM);
     this.heading = this.heading == null || !dt ? want : turn(this.heading, want, 1 - Math.exp(-dt / FLY.turnS));
-    this.map.jumpTo({ center: [p[1], p[0]], bearing: this.heading, pitch: this.pitch });
-    this.keepTilt(dt);
+    this.map.jumpTo({ center: [p[1], p[0]], bearing: this.heading, pitch: this.pitch - this.dip });
+    this.keepTilt(dt, p);
     this.mapView.setRider(p);
     this.miniDot.setAttribute('cx', this.miniX(p[1]).toFixed(1));
     this.miniDot.setAttribute('cy', this.miniY(p[0]).toFixed(1));
@@ -252,15 +253,41 @@ export class Fly {
 
   // MapLibre flattens the view when the camera would be inside a hill (zoomed in close among
   // hills, or before the terrain there has loaded), down to looking straight down. Back the
-  // camera off instead, and ease back in to the zoom asked for once it's clear.
-  keepTilt(dt) {
-    const map = this.map, flat = () => map.getPitch() < this.pitch - 1;
-    for (let k = 0; k < 40 && flat(); k++) map.jumpTo({ zoom: map.getZoom() - 0.1, pitch: this.pitch });
+  // camera off instead, and ease back in to the zoom asked for once it's clear. A hill can also
+  // sit between the camera and the rider (p) and hide the dot. Backing off doesn't help there (the
+  // camera moves back along the same line of sight), so look down more steeply until it clears,
+  // and ease back up after.
+  keepTilt(dt, p) {
+    const map = this.map, tilt = () => map.jumpTo({ pitch: this.pitch - this.dip });
+    const flat = () => map.getPitch() < this.pitch - this.dip - 1;
+    for (let k = 0; k < 40 && flat(); k++) map.jumpTo({ zoom: map.getZoom() - 0.1, pitch: this.pitch - this.dip });
     if (dt && !map.isZooming() && map.getZoom() < this.zoom - 0.01) {
       const z = map.getZoom();
-      map.jumpTo({ zoom: Math.min(this.zoom, z + 0.5 * dt), pitch: this.pitch });
-      if (flat()) map.jumpTo({ zoom: z, pitch: this.pitch });  // not clear yet
+      map.jumpTo({ zoom: Math.min(this.zoom, z + 0.5 * dt), pitch: this.pitch - this.dip });
+      if (flat()) map.jumpTo({ zoom: z, pitch: this.pitch - this.dip });  // not clear yet
     }
+    for (let k = 0; k < 40 && this.dip < FLY.maxDip && this.hidden(p); k++) { this.dip = Math.min(FLY.maxDip, this.dip + 1); tilt(); }
+    if (dt && this.dip > 0) {
+      const d = this.dip;
+      this.dip = Math.max(0, d - FLY.dipBack * dt);
+      tilt();
+      if (flat() || this.hidden(p)) { this.dip = d; tilt(); }  // not clear yet
+    }
+  }
+
+  // Whether the ground rises above the line from the camera down to the rider at p ([lat, lon]):
+  // samples the terrain along it, up to just short of the road. The camera's height is taken from
+  // the ground at the rider, as the map only updates its own on the next frame.
+  hidden(p) {
+    const map = this.map, tr = map.transform;
+    if (!p || !map.terrain) return false;
+    const ground = map.queryTerrainElevation([p[1], p[0]]) || 0;
+    const c = tr.getCameraLngLat(), up = tr.getCameraAltitude() - tr.elevation + ground;
+    for (let k = 1; k <= 40; k++) {
+      const t = k / 40 * 0.96, at = [c.lng + (p[1] - c.lng) * t, c.lat + (p[0] - c.lat) * t];
+      if ((map.queryTerrainElevation(at) || 0) > up + (ground - up) * t + 1.5) return true;
+    }
+    return false;
   }
 
   // The road sign (route number and name) and its speed limit: from our road data under the
