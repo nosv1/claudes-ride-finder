@@ -26,6 +26,7 @@ export const icon = {
   route: svg('<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h7"/>'),
   flag: svg('<path d="M5 21V4"/><path d="M5 4h12l-2.5 4 2.5 4H5"/>'),
   tag: svg('<path d="M3 12V4h8l10 10-8 8-10-10Z"/><circle cx="7.5" cy="8.5" r="1.5"/>'),
+  lock: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
   sound: svg('<path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/>'),
   mute: svg('<path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="m17 9.5 5 5M22 9.5l-5 5"/>'),
   pin: svg('<path d="M12 21s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/>'),

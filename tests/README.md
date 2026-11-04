@@ -18,7 +18,7 @@ nothing touches the real one):
 
 | Command | What it checks |
 |---|---|
-| `node --test tests/worker.test.mjs` | The API: sign in, save, change and delete a ride, accounts can't see each other's rides, signed-out calls and sign-out, settings and tags, share links (same ride same link, open without signing in, only the owner takes one down), bad input and other sites refused, deleting an account takes everything |
-| `node --test tests/app/account.test.mjs` | The app, a PC and a phone on one account: the sign-in page, saving a ride and its changes and name, the phone gets the ride, settings and tags and opens the ride, Share makes a short link that opens signed out (and falls back to the long link with the service down), deleting the account signs both out |
+| `node --test tests/worker.test.mjs` | The API: sign in, save, change and delete a ride, the account key's id is set once, accounts can't see each other's rides, signed-out calls and sign-out, settings and tags (locked text only), share links (ids never reused, open without signing in, only the owner takes one down), bad input and other sites refused, deleting an account takes everything |
+| `node --test tests/app/account.test.mjs` | The app, a PC and a phone on one account: the sign-in page, saving a ride and its changes and name, and that the API holds them locked (no other key opens them); the phone is locked until it opens the PC's device link, then gets the ride, settings and tags and opens the ride; Share makes a short link the API can't read that opens signed out (and falls back to the long link with the service down); deleting the account signs both out |
 
 `node tests/app/cdp.mjs <url> out.png [--mobile] [--wait "<js>"]` takes a screenshot once a condition holds.

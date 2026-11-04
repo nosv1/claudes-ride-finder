@@ -533,7 +533,7 @@ colored road), Add a stop here, Street View here.
   - Then a stop in the middle of any stretch over 25 km without one.
   - Then stops 200 m past the turns onto the longest roads, at least 800 m apart.
 - **GPX:** waypoints, a route and the full track. For OsmAnd (free and follows the track), Calimoto, REVER, Garmin.
-- **Share:** the phone's share sheet (or the clipboard) with a short `#s=<id>` link from the accounts service (see
+- **Share:** the phone's share sheet (or the clipboard) with a short `#s=<code>` link from the accounts service (see
   Accounts) when it answers within 3 s, else a `#r=` link: the ride packed into bytes (varints, points and road ids as steps from the last one), about a
   third the length of the older `#trip=` base64-JSON links, which still open.
   - The link holds base64 JSON of the stops and settings.
@@ -552,6 +552,18 @@ colored road), Add a stop here, Street View here.
   expiry) and hands the app its own session token (kept a year; the database keeps only its hash). It keeps the
   Google account's id, not the email or name. Only the site's origin (and `127.0.0.1`/`localhost`, for tests) may
   change anything.
+- **Locked end to end (`js/seal.js`):** nobody but the rider can read what's in their account: not other riders,
+  not Cloudflare, not whoever runs the site. Ride names and rides, settings and tags, and each share link's code
+  and name are locked (AES-GCM, 256-bit) in the browser before they're sent; the service holds only locked text.
+  - **The account key** (32 random bytes) is made by the first device that signs in; the service keeps only its id
+    (a hash), set once. Each other device gets the key from the account page's **Send the link to another device**
+    (`#k=<key>`; after the `#`, so it's never sent to any server). Opening it stores the key (`rf2-keys`, by id, kept
+    after signing out) and takes it out of the address. A device signed in without it is **locked**: the account
+    page says how to unlock it, the ride page says it's locked, nothing is read, applied or saved, and **Start
+    over** (tap twice) deletes the account so the next sign-in starts fresh. Lose every device and the link, and
+    nobody can unlock it: the account page says so and says to keep the link somewhere safe.
+  - Rides saved before locking existed are read as they were and locked again on the next sign-in; settings and
+    tags likewise.
 - **Your rides:** **Save to your rides** on the ride page saves it under its name; from then on the ride on screen
   *is* that saved ride: changes save 1.5 s after they settle ("Saving…", then "In your rides. Changes save as you
   go."), and its name is editable there. **Clear all** starts a new ride (Undo puts it back, saved ride and all);
@@ -560,10 +572,13 @@ colored road), Add a stop here, Street View here.
 - **Settings and road tags** follow the account as one blob with the time it last changed: whichever copy is newer
   wins when the app opens; changes are sent 2 s after they settle. The first sign-in on a device merges its tags
   with the account's (the newer tag wins where both tag a road) and takes the account's settings.
-- **Short share links** (`#s=` + 10 characters from the ride's hash: the same ride always gets the same link, and
-  far too many to guess, since a start is often someone's home). Anyone can make one and open one without signing
-  in. Made while signed in, a link is listed on the account page ("Rides you’ve shared") with Copy and Take down.
-- **Limits:** a ride up to 8 KB, 300 saved rides, settings and tags up to 256 KB; per day 1,000 saves per account,
+- **Short share links** (`#s=` + a 16-character code: 12 random bytes, far too many to guess, since a start is often
+  someone's home). The code never leaves the link: the service files the ride under one hash of it and it's locked
+  with a key from a different hash, so the service can read neither the ride nor which code opens it. Anyone can
+  make one and open one without signing in. Made while signed in, the link's code and name are also kept locked
+  with the account key, so it's listed on the account page ("Rides you’ve shared") with Copy and Take down.
+- **Limits** (on the locked text, about 4/3 of the original): a ride up to 16 KB, 300 saved rides, settings and tags
+  up to 400 KB; per day 1,000 saves per account,
   200 new links per address (hashed with the day) or account, 50 sign-ins per address.
 - **Delete account** (tap twice) removes the account, its rides, links, settings, tags and sessions everywhere. The
   device keeps its own copy.

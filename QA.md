@@ -133,9 +133,11 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   with your Google account: the page becomes Your rides, with your email under the title.
 - On a ride: Save to your rides. The name box and "In your rides. Changes save as you go." show; rename it; add a
   stop: "Saving…", then saved.
-- On the phone: sign in with the same account. The ride is under Your rides on the home list; tapping it opens it
-  with the same stops. A setting changed on the PC (say 50+ mph) and a road tag show on the phone after reopening.
-- Share a ride: the link is short (`…#s=` and 10 characters) and opens the ride in a private window, signed out.
+- On the phone: sign in with the same account. It says Unlock your rides. On the PC, Your rides and account → Send
+  the link to another device; open that link on the phone: Your rides shows, and the ride is under Your rides on the
+  home list; tapping it opens it with the same stops. A setting changed on the PC (say 50+ mph) and a road tag show
+  on the phone after reopening.
+- Share a ride: the link is short (`…#s=` and 16 characters) and opens the ride in a private window, signed out.
   It's listed under Rides you’ve shared; Take down makes it stop opening.
 - Clear all: the saved ride stays as it was in Your rides; Undo brings it back on screen.
 - Sign out, then sign in again: everything's still there. Delete account (tap twice): you're signed out and the

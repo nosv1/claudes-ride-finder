@@ -1,6 +1,7 @@
 // Accounts in the app, in headless Edge/Chrome against a local copy of the API (wrangler dev). Run from the repo root:
 //   node --test tests/app/account.test.mjs
-// Two browsers stand in for the PC and the phone, signed in to the same made-up account.
+// Two browsers stand in for the PC and the phone, signed in to the same made-up account. What the API holds is checked
+// to be locked: nothing in it reads as the ride, its name or the settings.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -9,6 +10,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, sleep } from './cdp.mjs';
 import { startWorker } from '../worker-dev.mjs';
+import { unlock, linkParts } from '../../js/seal.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
@@ -72,14 +74,18 @@ test('sign in, save the ride, and its changes save as you go', async () => {
   await pc.waitFor("document.querySelector('.ride-name')");
   assert.match(await sheet(pc), /In your rides\. Changes save as you go\./);
 
-  // Rename it, and change it (Return to start): both reach the account.
+  // Rename it, and change it (Return to start): both reach the account, locked with the PC's key.
   await pc.eval(`(() => { const i = document.querySelector('.ride-name'); i.value = 'Ozark coffee run'; i.dispatchEvent(new Event('change')); })()`);
   await pc.eval("document.querySelector('.switch input').click()");
   const id = await pc.eval('RF.account.rideId()'), want = await pc.eval(`import('./js/trip.js').then(T => T.encodeTrip(RF.trip))`);
-  for (let i = 0; i < 40 && (await api(pc, `/rides/${id}`)).trip !== want; i++) await sleep(250);
+  const key = await pc.eval('RF.account.account.key');
+  for (let i = 0; i < 40 && await unlock(key, (await api(pc, `/rides/${id}`)).trip) !== want; i++) await sleep(250);
   const saved = await api(pc, `/rides/${id}`);
-  assert.equal(saved.trip, want, 'the change was saved');
-  assert.equal(saved.name, 'Ozark coffee run');
+  assert.equal(await unlock(key, saved.trip), want, 'the change was saved');
+  assert.equal(await unlock(key, saved.name), 'Ozark coffee run');
+  assert.notEqual(saved.trip, want, 'the service holds it locked');
+  assert.doesNotMatch(JSON.stringify(saved), /Ozark/);
+  assert.equal(await unlock('A'.repeat(43), saved.trip), null, 'another key doesn’t open it');
 });
 
 test('the phone signs in to the same account: the ride, settings and tags are there', async () => {
@@ -90,18 +96,33 @@ test('the phone signs in to the same account: the ride, settings and tags are th
     Tg.setTags({ key: 'MO 150', roads: [{ id: 18518688, geom: [[38.9, -94.3], [38.9, -94.2]] }] }, ['great']);
     RF.account.dataChanged();
   })()`);
-  for (let i = 0; i < 40 && (((await api(pc, '/me')).data || {}).settings || {}).minSpeed !== 55; i++) await sleep(250);
-  assert.equal((await api(pc, '/me')).data.settings.minSpeed, 55);
+  const key = await pc.eval('RF.account.account.key');
+  const synced = async () => JSON.parse(await unlock(key, (await api(pc, '/me')).data || '') || '{}');
+  for (let i = 0; i < 40 && ((await synced()).settings || {}).minSpeed !== 55; i++) await sleep(250);
+  assert.equal((await synced()).settings.minSpeed, 55);
+  assert.doesNotMatch(JSON.stringify(await api(pc, '/me')), /minSpeed|MO 150|great/, 'settings and tags are locked');
 
+  // The phone signs in, but can't read anything until it opens the PC's device link.
   await phone.eval(`RF.account.finishSignIn(${JSON.stringify(WHO)})`);
-  await phone.waitFor('RF.account.account.rides && RF.account.account.rides.length === 1');
+  await phone.waitFor('RF.account.account.locked');
+  await phone.eval("RF.go('account')");
+  assert.match(await sheet(phone), /Unlock your rides/);
+  assert.notEqual(await phone.eval('RF.settings.minSpeed'), 55, 'nothing applied while locked');
+  await phone.eval(`(async () => { const T = await import('./js/trip.js'); T.addPoint(RF.trip, [38.9, -94.3], 'Phone stop'); RF.go('trip'); })()`);
+  assert.match(await sheet(phone), /Your rides are locked on this device/);
+
+  const link = await pc.eval(`RF.account.deviceLink(${JSON.stringify(base)})`);
+  assert.match(link, /#k=[\w-]{43}$/);
+  await phone.goto(link);
+  await phone.waitFor('!RF.account.account.locked && RF.account.account.rides && RF.account.account.rides.length === 1');
+  assert.equal(await phone.eval('location.hash'), '', 'the key is taken out of the address');
   assert.equal(await phone.eval('RF.settings.minSpeed'), 55);
   assert.deepEqual(await phone.eval("import('./js/tags.js').then(Tg => Tg.allTags().map(t => t.key + ':' + t.tags))"), ['MO 150:great']);
 
   await phone.eval("RF.go('home')");
   await phone.waitFor("[...document.querySelectorAll('#sheetBody .card-title')].some(e => e.textContent === 'Ozark coffee run')");
   await phone.eval("[...document.querySelectorAll('#sheetBody .card')].find(e => e.textContent.includes('Ozark coffee run')).click()");
-  await phone.waitFor('RF.trip.items.length > 0');
+  await phone.waitFor("RF.trip.items.some(i => i.label === 'Coffee in Ozark')");
   assert.deepEqual(await phone.eval('RF.trip.items.map(i => i.label)'), await pc.eval('RF.trip.items.map(i => i.label)'));
   assert.equal(await phone.eval('RF.account.rideId()'), await pc.eval('RF.account.rideId()'));
 });
@@ -111,7 +132,12 @@ test('Share makes a short link that opens the ride without signing in, and shows
   await phone.eval("document.querySelector('.view-head .head-btn').click()");
   await phone.waitFor('window.shared');
   const url = await phone.eval('window.shared');
-  assert.match(url, /#s=[\w-]{10}$/);
+  assert.match(url, /#s=[\w-]{16}$/);
+  // The service has the ride under a hash of the code, locked with a key made from the code: it can read neither.
+  const code = url.split('#s=')[1], { id, key } = await linkParts(code);
+  const held = (await (await fetch(`${worker.url}/links/${id}`)).json()).trip;
+  assert.equal(await unlock(key, held), await phone.eval(`import('./js/trip.js').then(T => T.encodeTrip(RF.trip))`));
+  assert.ok(!held.includes(code) && id !== code);
   const other = await launch();
   try {
     await other.goto(base);

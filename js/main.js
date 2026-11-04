@@ -206,6 +206,12 @@ function setSetting(patch) {
 function openLink(was) {
   const fromLink = location.hash.match(/^#(?:r|trip)=([\w-]+)/);  // #trip= is the older, longer link
   const shortLink = location.hash.match(/^#s=([\w-]+)/);
+  const deviceKey = location.hash.match(/^#k=([\w-]+)/);
+  if (deviceKey) {
+    history.replaceState(null, '', location.pathname + location.search);
+    addDevice(deviceKey[1]);
+    return false;
+  }
   if (shortLink) {
     history.replaceState(null, '', location.pathname + location.search);
     openSharedRide(shortLink[1], was);
@@ -253,6 +259,18 @@ function showRide(t) {
   go('trip');
   const pts = trip.items.flatMap(it => it.pts);
   if (pts.length) mapView.fit(boundsOf(pts), 12);
+}
+
+// An "add a device" link (#k=): this device keeps the account's key, so it can read your rides once signed in.
+async function addDevice(k) {
+  try {
+    await A.addKey(k);
+    go('account');
+    toast(A.signedIn() ? (A.account.locked ? 'That link is for a different account.' : 'This device can read your rides now.')
+      : 'This device has your key. Sign in to see your rides.');
+  } catch (e) {
+    toast(e.message);
+  }
 }
 
 // A short link (#s=): the ride is kept by the account service, so it's fetched first. was: the ride on screen when
@@ -1001,7 +1019,7 @@ function aboutView() {
         credit('Map', link('https://maplibre.org/', 'MapLibre GL JS'), ', with fonts from ', link('https://openfreemap.org/', 'OpenFreeMap')))),
     h('div.section', {}, h('h3', {}, iconEl(icon.person), 'Your data'),
       h('p.small', {}, 'No tracking. Without signing in, your rides, tags and settings are saved in this browser only. Some things do get sent out to work: your stops, to the route planner; what you type in search, to the place search; and spots along your ride, to the weather service. Your location is only used when you tap My location, or when you generate a ride without picking a start.'),
-      h('p.small', {}, 'If you sign in (optional), your saved rides, road tags and settings are kept in your account on Cloudflare, with your Google account’s id but not your email or name, so they’re the same on every device. A share link keeps the ride on the same service so the link can be short; anyone with the link can open it. If the service doesn’t answer, Share makes a long link with the whole ride in it instead, kept nowhere. You can take a link down, or delete your account and everything in it, from ',
+      h('p.small', {}, 'If you sign in (optional), your saved rides, road tags and settings are kept in your account on Cloudflare, so they’re the same on every device. They’re locked on your own devices before they’re sent, with a key that stays on them, so nobody else can read them: not other riders, not Cloudflare, not whoever runs Ride Finder. The account keeps your Google account’s id, not your email or name. A short share link is locked the same way, and the key is in the link itself, so only people you give it to can open the ride. If the service doesn’t answer, Share makes a long link with the whole ride in it instead, kept nowhere. You can take a link down, or delete your account and everything in it, from ',
         h('button.link', { onclick: () => go('account') }, 'your account'), '.')),
     h('p.fineprint', {}, `Version ${APP_VERSION}${updateTo ? ` (${updateTo} is out: ` : ''}`,
       updateTo ? h('button.link', { onclick: applyUpdate }, 'update') : '', updateTo ? ')' : '', '.'),
@@ -1030,7 +1048,7 @@ function rideCard(r, { remove = false } = {}) {
 
 // Signed in: your latest rides on the home list; the rest are on the account page.
 function yourRides(n) {
-  const rides = A.signedIn() && A.account.rides;
+  const rides = A.signedIn() && !A.account.locked && A.account.rides;
   if (!rides || !rides.length) return null;
   return h('div.section', {},
     h('div.section-head', {}, h('h3', {}, 'Your rides'),
@@ -1049,6 +1067,9 @@ async function removeRide(r) {
 function saveRow() {
   if (!A.signedIn()) {
     return h('button.link.save-link', { onclick: () => go('account') }, iconEl(icon.person), 'Sign in to keep this ride on every device');
+  }
+  if (A.account.locked) {
+    return h('button.link.save-link', { onclick: () => go('account') }, iconEl(icon.lock), 'Your rides are locked on this device: unlock them');
   }
   const id = A.rideId();
   if (!id) {
@@ -1069,7 +1090,34 @@ function saveRow() {
     h('div.muted.small', {}, A.account.saving ? 'Saving…' : A.account.error ? A.account.error : 'In your rides. Changes save as you go.'));
 }
 
+// The share sheet where there is one, else the clipboard, else a box to copy from.
+async function sendLink(url, title, copied) {
+  try {
+    if (navigator.share) await navigator.share({ title, url });
+    else { await navigator.clipboard.writeText(url); toast(copied); }
+  } catch (e) {
+    if (e.name !== 'AbortError') prompt('Copy this link:', url);
+  }
+}
+
+// Tap once, then again within 5 s: deletes the account and everything in it.
 let confirmDelete = 0;
+function deleteButton(label, done) {
+  const confirming = Date.now() - confirmDelete < 5000;
+  return h(`button.btn${confirming ? '.danger' : ''}`, { onclick: async () => {
+    if (!confirming) {
+      confirmDelete = Date.now();
+      setTimeout(renderSoon, 5100);
+      return render();
+    }
+    try {
+      await A.deleteAccount();
+      toast(done);
+      go('home');
+    } catch (e) { toast(e.message); }
+  } }, iconEl(icon.trash), confirming ? 'Tap again to delete everything' : label);
+}
+
 function accountView() {
   const acct = A.account;
   if (!A.signedIn()) {
@@ -1080,11 +1128,23 @@ function accountView() {
       h('p', {}, 'Sign in to keep your rides, road tags and settings in your account, the same on your phone and your PC. Shared rides get short links, too.'),
       acct.signingIn ? h('p.muted', {}, 'Signing in…') : box,
       acct.error ? h('p.error', {}, acct.error) : '',
-      h('p.muted.small', {}, 'Optional. Without it everything works as it does now, kept on this device. Your account keeps your rides, tags and settings and your Google account’s id, not your email or name. You can delete it all from here any time.'),
+      h('p.muted.small', {}, 'Optional. Without it everything works as it does now, kept on this device. Everything in your account is locked on your own devices before it’s sent, so nobody else can read it, not even whoever runs Ride Finder. You can delete it all from here any time.'),
     ];
   }
   const u = A.user(), base = location.href.split('#')[0];
-  const confirming = Date.now() - confirmDelete < 5000;
+  if (acct.locked) {
+    return [
+      backBar('Unlock your rides', u.email || u.name),
+      h('p', {}, 'Your rides, tags and settings are locked so only your own devices can read them, and this one doesn’t have the key yet.'),
+      h('p', {}, 'On a phone or PC where Ride Finder already shows your rides, open ', h('b', {}, 'Your rides and account'), ' and tap ',
+        h('b', {}, 'Send the link to another device'), '. Open that link here, and this device can read them too.'),
+      h('div.section', {}, h('h3', {}, iconEl(icon.warn), 'Lost the link and your other devices?'),
+        h('p.small.muted', {}, 'Then nobody can unlock what’s in the account, us included. You can start over: that deletes everything in it, and the next sign-in starts a new, empty account.'),
+        h('div.btn-row', {},
+          h('button.btn', { onclick: async () => { await A.signOut(); go('home'); } }, 'Sign out'),
+          deleteButton('Start over', 'Everything in the account is deleted. Sign in again to start fresh.'))),
+    ];
+  }
   return [
     backBar('Your rides', u.email || u.name),
     acct.rides == null ? h('p.muted', {}, acct.error || 'Loading your rides…')
@@ -1094,24 +1154,18 @@ function accountView() {
       h('p.muted.small', {}, 'Anyone with one of these links can open the ride. Take one down and it stops working.'),
       h('div.cards', {}, acct.links.map(l => h('div.card.link-card', {},
         h('div.card-main', {}, h('div.card-title', {}, l.name || 'A ride'), h('div.card-sub', {}, `Shared ${ago(l.created)}`)),
-        h('button.btn.small', { onclick: () => navigator.clipboard.writeText(`${base}#s=${l.id}`).then(() => toast('Link copied.'), () => prompt('Copy this link:', `${base}#s=${l.id}`)) }, 'Copy'),
+        h('button.btn.small', { onclick: () => sendLink(`${base}#s=${l.code}`, l.name || 'A ride', 'Link copied.') }, 'Copy'),
         h('button.btn.small', { onclick: () => A.deleteLink(l.id).then(() => toast('Link taken down. It won’t open any more.'), e => toast(e.message)) }, 'Take down'))))) : '',
+    h('div.section', {}, h('h3', {}, iconEl(icon.lock), 'Your other devices'),
+      h('p.small.muted', {}, 'Everything in your account is locked with a key that stays on your devices, so only they can read it. To add your phone or another PC, send yourself this link, open it there and sign in.'),
+      h('button.btn.wide', { onclick: () => sendLink(A.deviceLink(base), 'Ride Finder: add this device', 'Link copied. Open it on your other device.') },
+        iconEl(icon.share), 'Send the link to another device'),
+      h('p.small.muted', {}, h('b', {}, 'Keep it somewhere safe too'), ', like your notes or an email to yourself. It’s the only way back in if you lose your devices: without it or one of them, nobody can unlock your rides, us included. Anyone with it and your Google sign-in could read them.')),
     h('div.section', {}, h('h3', {}, iconEl(icon.person), 'Account'),
-      h('p.small.muted', {}, `Signed in with Google${u.name ? ` as ${u.name}` : ''}. Your rides, road tags and settings are kept in your account and show up wherever you sign in.`),
+      h('p.small.muted', {}, `Signed in with Google${u.name ? ` as ${u.name}` : ''}. Your rides, road tags and settings are kept in your account, locked, and show up on each device you add.`),
       h('div.btn-row', {},
         h('button.btn', { onclick: async () => { await A.signOut(); toast('Signed out. Your rides are still in your account.'); go('home'); } }, 'Sign out'),
-        h(`button.btn${confirming ? '.danger' : ''}`, { onclick: async () => {
-          if (!confirming) {
-            confirmDelete = Date.now();
-            setTimeout(renderSoon, 5100);
-            return render();
-          }
-          try {
-            await A.deleteAccount();
-            toast('Account deleted, with its rides, share links, tags and settings. This device keeps its own copy.');
-            go('home');
-          } catch (e) { toast(e.message); }
-        } }, iconEl(icon.trash), confirming ? 'Tap again to delete everything' : 'Delete account'))),
+        deleteButton('Delete account', 'Account deleted, with its rides, share links, tags and settings. This device keeps its own copy.'))),
   ];
 }
 
@@ -1859,9 +1913,9 @@ async function shareTrip() {
   if (sharing) return;
   sharing = true;
   const packed = T.encodeTrip(trip), base = location.href.split('#')[0], title = P.tripName(trip);
-  const id = await A.shortLink(packed, title.replace(/^Ride: /, ''));
+  const code = await A.shortLink(packed, title.replace(/^Ride: /, ''));
   sharing = false;
-  const url = id ? `${base}#s=${id}` : `${base}#r=${packed}`;
+  const url = code ? `${base}#s=${code}` : `${base}#r=${packed}`;
   const send = async () => {
     try {
       if (navigator.share) await navigator.share({ title, url });

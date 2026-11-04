@@ -1,26 +1,31 @@
 // Ride Finder's accounts API on Cloudflare (a Worker with a D1 database): rides, settings and road tags kept per
 // Google account, and short share links. Signing in is optional; the app works without it. See FEATURES.md, Accounts.
 //
+// Everything a rider saves arrives locked (js/seal.js: AES-GCM in their browser, with a key the service never sees),
+// so this only ever stores and hands back locked text: base64url, checked for size and nothing else.
+//
 //   POST   /login      { credential: Google ID token }  → { token, user }     a session for the app to keep
 //   POST   /logout                                     → {}
-//   GET    /me                                         → { rides, links, data, dataAt }
+//   GET    /me                                         → { keyId, rides, links, data, dataAt }
 //   DELETE /me                                         → {}                    the account and everything in it
-//   POST   /rides      { name, trip }                  → { id, updated }
+//   PUT    /key        { keyId }                       → { keyId }             the account key's id, set once
+//   POST   /rides      { name, trip }                  → { id, updated }       both locked
 //   GET    /rides/:id                                  → { id, name, trip, updated }
 //   PUT    /rides/:id  { name?, trip? }                → { updated }
 //   DELETE /rides/:id                                  → {}
-//   PUT    /data       { data, at }                    → {}                    settings and road tags, as one blob
-//   POST   /links      { trip, name? }                 → { id }                anyone; owned when signed in
-//   GET    /links/:id                                  → { trip, name }
+//   PUT    /data       { data, at }                    → {}                    settings and road tags, locked
+//   POST   /links      { id, trip, owner? }            → { id }                anyone; owner (locked) when signed in
+//   GET    /links/:id                                  → { trip }
 //   DELETE /links/:id                                  → {}                    its owner only
 //
-// A trip is the app's packed ride (trip.js encodeTrip): letters, digits, - and _. Signed-in calls send
-// "Authorization: Bearer <token>"; the database keeps only a hash of the token, and only the Google account's id
-// (no email or name).
+// A link's id is a hash of the code in the link, which the service never sees (the code also makes the key that
+// unlocks it). Signed-in calls send "Authorization: Bearer <token>"; the database keeps only a hash of the token, and
+// only the Google account's id (no email or name).
 
 const SITE_ORIGINS = ['https://nosv1.github.io'];
 const LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;  // the tests, and trying the app on the PC
-const MAX_TRIP = 8 * 1024, MAX_NAME = 120, MAX_DATA = 256 * 1024, MAX_RIDES = 300;
+// Sizes of the locked text (about 4/3 of what was locked, plus 38 characters).
+const MAX_TRIP = 16 * 1024, MAX_NAME = 600, MAX_OWNER = 1024, MAX_DATA = 400 * 1024, MAX_RIDES = 300;
 const SESSION_DAYS = 365;
 // Per day: saves per account, new share links per address, sign-ins per address.
 const LIMITS = { save: 1000, link: 200, login: 50 };
@@ -64,7 +69,7 @@ async function route(req, env) {
 
   if (what === 'login' && m === 'POST') return login(req, env);
   if (what === 'links' && id && m === 'GET') {
-    const row = await db.prepare('SELECT trip, name FROM links WHERE id = ?').bind(id).first();
+    const row = await db.prepare('SELECT trip FROM links WHERE id = ?').bind(id).first();
     if (!row) throw new HttpError(404, 'That ride link was taken down or never existed.');
     return json(row);
   }
@@ -78,10 +83,18 @@ async function route(req, env) {
   if (what === 'me' && m === 'GET') {
     const [rides, links, row] = await Promise.all([
       db.prepare('SELECT id, name, updated FROM rides WHERE user_id = ? ORDER BY updated DESC').bind(user.id).all(),
-      db.prepare('SELECT id, name, created FROM links WHERE user_id = ? ORDER BY created DESC').bind(user.id).all(),
-      db.prepare('SELECT data, data_at FROM users WHERE id = ?').bind(user.id).first(),
+      db.prepare('SELECT id, owner, created FROM links WHERE user_id = ? ORDER BY created DESC').bind(user.id).all(),
+      db.prepare('SELECT key_id, data, data_at FROM users WHERE id = ?').bind(user.id).first(),
     ]);
-    return json({ rides: rides.results, links: links.results, data: row && row.data ? JSON.parse(row.data) : null, dataAt: row ? row.data_at : 0 });
+    return json({ keyId: row ? row.key_id : null, rides: rides.results, links: links.results,
+      data: row && row.data ? JSON.parse(row.data) : null, dataAt: row ? row.data_at : 0 });
+  }
+  if (what === 'key' && m === 'PUT') {
+    const { keyId } = await readJson(req);
+    if (typeof keyId !== 'string' || !/^[\w-]{16}$/.test(keyId)) throw new HttpError(400, 'That key didn’t come through right.');
+    await db.prepare('UPDATE users SET key_id = ? WHERE id = ? AND key_id IS NULL').bind(keyId, user.id).run();
+    const row = await db.prepare('SELECT key_id FROM users WHERE id = ?').bind(user.id).first();
+    return json({ keyId: row.key_id });
   }
   if (what === 'me' && m === 'DELETE') {
     await db.batch(['rides', 'links', 'sessions'].map(t => db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(user.id))
@@ -90,7 +103,7 @@ async function route(req, env) {
   }
   if (what === 'data' && m === 'PUT') {
     await limit(db, 'save', user.id);
-    const body = await readJson(req), data = JSON.stringify(body.data ?? null);
+    const body = await readJson(req), data = JSON.stringify(checkLocked(body.data, MAX_DATA));
     if (data.length > MAX_DATA) throw new HttpError(413, 'Too many tags to keep in your account.');
     const at = Number.isFinite(body.at) ? Math.min(body.at, Date.now() + DAY) : Date.now();
     await db.prepare('UPDATE users SET data = ?, data_at = ? WHERE id = ?').bind(data, at, user.id).run();
@@ -99,7 +112,7 @@ async function route(req, env) {
   if (what === 'rides') {
     if (!id && m === 'POST') {
       await limit(db, 'save', user.id);
-      const body = await readJson(req), trip = checkTrip(body.trip), name = checkName(body.name);
+      const body = await readJson(req), trip = checkLocked(body.trip, MAX_TRIP), name = checkLocked(body.name, MAX_NAME);
       const { n } = await db.prepare('SELECT COUNT(*) AS n FROM rides WHERE user_id = ?').bind(user.id).first();
       if (n >= MAX_RIDES) throw new HttpError(409, `You have ${MAX_RIDES} saved rides, the most there's room for. Delete some first.`);
       const rideId = randomId(12), updated = Date.now();
@@ -112,7 +125,8 @@ async function route(req, env) {
     if (m === 'PUT') {
       await limit(db, 'save', user.id);
       const body = await readJson(req), updated = Date.now();
-      const trip = body.trip == null ? owned.trip : checkTrip(body.trip), name = body.name == null ? owned.name : checkName(body.name);
+      const trip = body.trip == null ? owned.trip : checkLocked(body.trip, MAX_TRIP);
+      const name = body.name == null ? owned.name : checkLocked(body.name, MAX_NAME);
       await db.prepare('UPDATE rides SET name = ?, trip = ?, updated = ? WHERE id = ?').bind(name, trip, updated, id).run();
       return json({ updated });
     }
@@ -131,20 +145,18 @@ async function route(req, env) {
 
 // ---------- share links ----------
 
-// The id is the start of the ride's hash: the same ride always gets the same link, and 10 characters (60 bits) are
-// far too many to guess, which matters because a ride's start is often someone's home.
+// The app makes the id (a hash of the link's code, 16 characters: far too many to guess, which matters because a ride's
+// start is often someone's home). The same id twice would be the same code: refused, and the app makes another.
 async function makeLink(req, env) {
-  const db = env.DB, body = await readJson(req), trip = checkTrip(body.trip), name = body.name == null ? null : checkName(body.name);
+  const db = env.DB, body = await readJson(req), trip = checkLocked(body.trip, MAX_TRIP);
+  if (typeof body.id !== 'string' || !/^[\w-]{16}$/.test(body.id)) throw new HttpError(400, 'That link didn’t come through right.');
   const user = req.headers.get('Authorization') ? await signedIn(req, db) : null;
-  const id = (await sha256(trip)).slice(0, 10);
-  const had = await db.prepare('SELECT user_id FROM links WHERE id = ?').bind(id).first();
-  if (had) {
-    if (user && !had.user_id) await db.prepare('UPDATE links SET user_id = ? WHERE id = ?').bind(user.id, id).run();
-    return json({ id });
-  }
+  const owner = user && body.owner != null ? checkLocked(body.owner, MAX_OWNER) : null;
   await limit(db, 'link', user ? user.id : await addressKey(req));
-  await db.prepare('INSERT INTO links (id, trip, name, user_id, created) VALUES (?, ?, ?, ?, ?)').bind(id, trip, name, user ? user.id : null, Date.now()).run();
-  return json({ id });
+  const r = await db.prepare('INSERT OR IGNORE INTO links (id, trip, owner, user_id, created) VALUES (?, ?, ?, ?, ?)')
+    .bind(body.id, trip, owner, user ? user.id : null, Date.now()).run();
+  if (!r.meta.changes) throw new HttpError(409, 'That link is taken. Try sharing again.');
+  return json({ id: body.id });
 }
 
 // ---------- signing in ----------
@@ -209,15 +221,10 @@ async function readJson(req) {
   try { return JSON.parse(body || '{}'); } catch (e) { throw new HttpError(400, 'That request didn’t make sense.'); }
 }
 
-function checkTrip(trip) {
-  if (typeof trip !== 'string' || !/^[\w-]+$/.test(trip)) throw new HttpError(400, 'That ride didn’t come through right.');
-  if (trip.length > MAX_TRIP) throw new HttpError(413, 'That ride has too many stops to save. Try splitting it in two.');
-  return trip;
-}
-
-function checkName(name) {
-  if (typeof name !== 'string' || !name.trim()) throw new HttpError(400, 'A ride needs a name.');
-  return name.trim().slice(0, MAX_NAME);
+function checkLocked(text, max) {
+  if (typeof text !== 'string' || !/^[\w-]+$/.test(text)) throw new HttpError(400, 'That didn’t come through right.');
+  if (text.length > max) throw new HttpError(413, max === MAX_TRIP ? 'That ride has too many stops to save. Try splitting it in two.' : 'That’s more than there’s room for.');
+  return text;
 }
 
 // A count per kind, who and day; over the limit is a polite no until tomorrow.
