@@ -516,6 +516,12 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
     RF.go('trip');
   })()`);
   await page.waitFor("[...document.querySelectorAll('#sheetBody button')].some(b => /Ride it here/.test(b.textContent))", 10000);
+  // The voice: a pick says the sample, and is kept on the device.
+  await page.eval("[...document.querySelectorAll('.voice-field .seg button')].find(b => b.textContent === 'Faster').click()");
+  assert.equal(await page.eval("JSON.parse(localStorage.getItem('rf2-voice-pick')).rate"), '1.15');
+  assert.ok(await page.eval("__said.includes('In half a mile, turn right onto Missouri D.')"));
+  assert.ok(await page.eval("!!document.querySelector('.voice-field select option')"), 'a list of voices (the phone’s default at least)');
+  await page.eval("localStorage.removeItem('rf2-voice-pick')");
   await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Ride it here/.test(b.textContent)).click()");
   assert.ok(await page.eval("RF.ride && document.body.classList.contains('riding')"));
   assert.equal(await page.eval("getComputedStyle(document.getElementById('sheet')).display"), 'none', 'the panel steps aside');
@@ -535,6 +541,25 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   assert.match(await page.eval("document.querySelector('.ride-panel').innerText"), /mi left · (back|there) about \d+:\d\d/);
   await sleep(600);
   assert.ok(Math.abs(await page.eval('RF.mapView.map.getPitch()') - 50) < 1, 'heading-up, tilted');
+  // The map can be dragged while riding: it stops following until Recenter.
+  const at = () => page.eval('JSON.stringify(RF.mapView.map.getCenter())');
+  const was = await at();
+  await page.mouse('mousePressed', 900, 450);
+  for (let k = 1; k <= 8; k++) { await page.mouse('mouseMoved', 900 + 15 * k, 450 + 10 * k); await sleep(30); }
+  await page.mouse('mouseReleased', 1020, 530);
+  await sleep(400);
+  assert.notEqual(await at(), was, 'the map moved');
+  assert.equal(await page.eval('RF.ride.following'), false);
+  await gps(3);
+  await sleep(300);
+  const dragged = await at();
+  await sleep(300);
+  assert.equal(await at(), dragged, 'and stays where it was dragged as you ride on');
+  await page.eval("document.querySelector('.ride-recenter').click()");
+  assert.equal(await page.eval('RF.ride.following'), true);
+  // An iPhone that doesn't know the speed says -1: no "-2 mph".
+  await page.eval(`(() => { const p = RF.store.byId.get(${MO150}).geom[3]; __gps({ coords: { latitude: p[0], longitude: p[1], heading: -1, speed: -1, accuracy: 5 }, timestamp: Date.now() }); })()`);
+  assert.ok(await page.eval("+document.querySelector('.ride-speed b').textContent >= 0"));
   // Coming up on the turn, it's called out.
   for (let k = Math.max(3, mid - 3); k < mid; k++) await gps(k);
   assert.ok(await page.eval("__said.includes('Turn right onto Missouri Y.')"), await page.eval('JSON.stringify(__said)'));

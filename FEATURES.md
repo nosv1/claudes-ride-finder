@@ -588,9 +588,19 @@ colored road), Add a stop here, Street View here.
   the next is within 400 m). **Voice** (on by default, the setting kept): a heads-up about 35 s ahead (at least
   700 m: "In half a mile, turn right onto Missouri D") and the call about 9 s ahead (at least 120 m), each once, plus
   "Blind crest ahead", off/back/rejoined, and the arrival. Spoken in the tap that starts it (iPhones need that).
+- **Which voice** (`js/voice.js`): on the ride page under Ride it, the phone's English voices (Premium, Enhanced and
+  Natural ones first), Slower / Normal / Faster, and Test; each change says a sample. Kept on the device
+  (`rf2-voice-pick`: each phone has its own voices). On iPhone it says where to download better voices.
+- **Music**: each call sets Safari's audio session to `transient` (`navigator.audioSession`), which is meant to turn
+  other apps' audio down under the voice and back up after, instead of taking over (which stops the music for good).
+  Whether Safari's speech follows it is up to iOS (WebKit's support is patchy); a native app can duck music reliably.
 - **The map**: heading-up, tilted 50°, you low on the screen as a blue arrow gliding between fixes, closer in slowly and
-  further out at speed (a pinch is kept); the part ridden greys out. A drag stops following: **Recenter**.
+  further out at speed (a pinch is kept); the part ridden greys out. A finger or mouse on the map holds the camera
+  still (moving it every frame would cancel the drag as it starts); a drag stops following: **Recenter**. A tap doesn't.
   **Overview** shows the whole ride.
+- **Speed** is the phone's own GPS speed (from the signal's Doppler shift: within about 1 mph under open sky, a second
+  behind; a bike's speedometer usually reads a few percent high). When the phone doesn't know it (iPhones give -1),
+  it's the distance over the last few seconds; a fix worse than 50 m shows –.
 - **The bar**: the road you're on (route number and name), your speed, the speed limit (dashed: estimated), miles
   left and when you'd be back (or there). **Tag road** (big buttons: Rough, Gravel, Don't ride, Great) tags the mile
   or so of the road around you. **End** takes two taps (a bump on the mount doesn't end it). At the end: miles ridden

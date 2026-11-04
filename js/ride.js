@@ -8,6 +8,7 @@ import { bearing, distance, relAngle, miles, fmtDuration } from './geo.js';
 import { turnArrow, turnOnto, turn } from './fly.js';
 import { icon, h, toast } from './ui.js';
 import { TAGS } from './tags.js';
+import { speak } from './voice.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const clock = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -45,7 +46,12 @@ export class Ride {
     this.pad();
     this.resize = () => this.pad();
     addEventListener('resize', this.resize);
-    // A drag by hand stops following (Recenter brings it back); a zoom by hand is kept.
+    // A finger (or mouse) on the map holds the camera still while it's down: the camera moving every frame would cancel
+    // a drag as it starts. A drag stops following (Recenter brings it back); a tap doesn't; a zoom by hand is kept.
+    this.press = () => { this.held = true; };
+    this.release = () => { this.held = false; };
+    this.map.getCanvasContainer().addEventListener('pointerdown', this.press);
+    for (const type of ['pointerup', 'pointercancel', 'touchend']) addEventListener(type, this.release);
     this.dragged = e => { if (e.originalEvent) this.follow(false); };
     this.zoomed = e => { if (e.originalEvent && this.following) this.zoomOff = this.map.getZoom() - zoomFor(this.fix && this.fix.speed); };
     this.map.on('dragstart', this.dragged);
@@ -109,11 +115,7 @@ export class Ride {
 
   say(text) {
     this.lastSaid = text;
-    if (!this.voice || !text || !globalThis.speechSynthesis) return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-US';
-    speechSynthesis.speak(u);
+    if (this.voice) speak(text);
   }
 
   async keepAwake() {
@@ -126,14 +128,18 @@ export class Ride {
   }
 
   onFix(pos) {
-    const c = pos.coords, p = [c.latitude, c.longitude], prev = this.fix;
+    const c = pos.coords, p = [c.latitude, c.longitude], prev = this.fix, t = pos.timestamp || Date.now();
     const moved = prev ? distance(prev.p, p) : 0;
-    // Phones leave out the heading when slow or stopped: take it from the way you moved, else keep the last.
-    let heading = Number.isFinite(c.heading) && c.speed > 1 ? c.heading : null;
+    // The speed is the phone's own, from the GPS signal (within about 1 mph under open sky, a second behind). iPhones
+    // give -1 (and Android null) when they don't know it: then it's how far you went over the last few seconds.
+    this.trail = [...(this.trail || []).filter(x => t - x.t < 5000), { p, t }];
+    const known = Number.isFinite(c.speed) && c.speed >= 0, from = this.trail[0];
+    const speed = known ? c.speed : t - from.t >= 2000 ? distance(from.p, p) / ((t - from.t) / 1000) : prev ? prev.speed : 0;
+    // Phones leave out the heading (or give -1) when slow or stopped: take it from the way you moved, else keep the last.
+    let heading = Number.isFinite(c.heading) && c.heading >= 0 && speed > 1 ? c.heading : null;
     if (heading == null && prev && moved > 8) heading = bearing(prev.p, p);
     if (heading == null && prev) heading = prev.heading;
-    const speed = Number.isFinite(c.speed) && c.speed != null ? c.speed : prev && pos.timestamp > prev.t ? moved / ((pos.timestamp - prev.t) / 1000) : 0;
-    const f = { p, heading, speed, accuracy: c.accuracy || 0, t: pos.timestamp || Date.now() };
+    const f = { p, heading, speed, accuracy: c.accuracy || 0, t };
     if (prev && moved < 200) this.ridden += moved;
     this.fix = f;
     this.gpsTrouble = null;
@@ -170,7 +176,7 @@ export class Ride {
       this.shownAt = [g.from[0] + (g.to[0] - g.from[0]) * k, g.from[1] + (g.to[1] - g.from[1]) * k];
       this.heading = this.heading == null ? this.want : turn(this.heading, this.want, 1 - Math.exp(-dt / 0.7));
       this.mapView.setNavArrow(this.shownAt, this.heading);
-      if (this.following) {
+      if (this.following && !this.held) {
         const z = zoomFor(this.fix.speed) + this.zoomOff, zNow = this.map.getZoom();
         this.map.jumpTo({ center: [this.shownAt[1], this.shownAt[0]], bearing: this.heading, pitch: 50, zoom: zNow + (z - zNow) * Math.min(1, dt * 1.5) });
       }
@@ -269,7 +275,8 @@ export class Ride {
       this.limitEl.classList.toggle('est', !here.posted);
       this.limitEl.replaceChildren(h('small', {}, here.posted ? 'SPEED LIMIT' : 'ABOUT'), h('b', {}, `${here.limit}`));
     }
-    this.speedEl.replaceChildren(h('b', {}, f ? `${Math.round(f.speed * 2.237)}` : '–'), h('small', {}, 'mph'));
+    // A rough fix (worse than 50 m) can't tell speed.
+    this.speedEl.replaceChildren(h('b', {}, f && f.accuracy <= 50 ? `${Math.round(f.speed * 2.237)}` : '–'), h('small', {}, 'mph'));
     const leftS = this.route.seconds * g.leftM / Math.max(1, g.main.total);
     this.leftEl.textContent = state === 'done' ? `${miles(this.ridden)} mi ridden` : `${miles(g.leftM)} mi left · ${this.loop ? 'back' : 'there'} about ${clock(Date.now() + leftS * 1000)}`;
     const m = g.main.m, crest = state === 'on' && this.crests.find(c => c.m - m > -30 && c.m - m < NAV.crestM);
@@ -286,6 +293,8 @@ export class Ride {
     document.removeEventListener('visibilitychange', this.awake);
     removeEventListener('resize', this.resize);
     this.map.off('dragstart', this.dragged);
+    this.map.getCanvasContainer().removeEventListener('pointerdown', this.press);
+    for (const type of ['pointerup', 'pointercancel', 'touchend']) removeEventListener(type, this.release);
     this.map.off('zoomend', this.zoomed);
     for (const el of [this.banner, this.panel, this.tagSheet, this.doneEl]) el.remove();
     document.body.classList.remove('riding');

@@ -91,6 +91,10 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Skip a stop or a road on purpose: no "make a U-turn", no going back for it. Back on the line further along it says
   "Picking up your ride from here". Ride off the route: within a few seconds "off the ride", a purple way back, and
   it never sends you back to where you left. Skip ahead aims further on.
+- Drag the map mid-ride: it moves and stays; Recenter brings it back. A tap on the map doesn't stop following.
+- The voice: pick one on the ride page (Test says a sample), ride, and it's that voice. With music playing in another
+  app: does it dip under the voice and come back, or stop? (Report back: that's up to iOS.)
+- Speed against the bike's speedometer at a steady 45: the GPS usually reads 1–3 mph lower (speedos read high).
 - Tag road while riding (big buttons, gloves) tags about a mile of the road you're on; it shows on the map after.
 - Speed and speed limit look right; miles left goes down; End needs two taps; the arrival says miles and time.
 - Switch apps and back: it picks up where you are. ✱ How the battery holds up over a 2-hour ride, on a charger.

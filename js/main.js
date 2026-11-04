@@ -10,6 +10,7 @@ import { profile } from './elevation.js';
 import * as W from './weather.js';
 import { Fly } from './fly.js';
 import { Ride } from './ride.js';
+import { voices, voicePick, setVoicePick, speak, SAMPLE, RATES } from './voice.js';
 import { TAGS, allTags, tagOf, setTags, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged } from './tags.js';
 import * as A from './account.js';
 import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox, loadSignals } from './store.js';
@@ -104,6 +105,8 @@ async function start() {
   applySettings();
   loadSavedTrip();
   addEventListener('hashchange', onLinkPasted);
+  // Phones list their voices a moment after the page loads.
+  if (globalThis.speechSynthesis) speechSynthesis.addEventListener('voiceschanged', () => { if (view === 'trip') renderSoon(); });
   // Signed in: settings and road tags follow the account (whichever copy changed last), and so do saved rides.
   A.syncData({
     get: () => ({ settings, tags: allTags() }),
@@ -1806,6 +1809,7 @@ function exportSection() {
     h('h3', {}, iconEl(icon.go), 'Ride it'),
     h('button.cta', { onclick: startRide }, iconEl(icon.go), 'Ride it here, turn by turn'),
     h('p.muted.small', {}, 'Follows the ride itself, not its stops: skip a part and it picks you up where you rejoin; leave it and it finds a way back on ahead. Keep the screen on and Ride Finder in front (phone mounted and charging).'),
+    voiceField(),
     h('button.btn.wide', { onclick: openGoogle }, iconEl(icon.globe), links.length > 1 ? `Open in Google Maps (${links.length} parts)` : 'Open in Google Maps'),
     showGoogleParts && links.length > 1 ? h('div.parts', {}, links.map((l, i) =>
       h('a.btn', { href: l, target: '_blank', rel: 'noopener' }, `Part ${i + 1} of ${links.length}`))) : '',
@@ -1813,6 +1817,22 @@ function exportSection() {
       h('button.btn', { onclick: downloadGpx }, iconEl(icon.download), 'GPX file'),
       h('button.btn', { onclick: shareTrip }, iconEl(icon.share), 'Share')),
     h('p.fineprint', {}, 'Google Maps gets extra stops just past key turns so it sticks to this route (skip one and it sends you back for it). GPX keeps the exact route for riding apps (OsmAnd is free).'));
+}
+
+// Ride mode's voice and how fast it talks, with a sample on each change (and Test).
+function voiceField() {
+  const list = voices(), pick = voicePick();
+  const set = patch => { const p = { ...voicePick(), ...patch }; setVoicePick(p); speak(SAMPLE, p); renderSoon(); };
+  return h('div.field.voice-field', {}, h('label', {}, 'Voice'),
+    h('div.voice-row', {},
+      h('select', { onchange: e => set({ uri: e.target.value }), 'aria-label': 'Voice' },
+        h('option', { value: '' }, 'Phone’s default'),
+        list.map(v => h('option', { value: v.voiceURI, selected: v.voiceURI === pick.uri }, v.lang === 'en-US' ? v.name : `${v.name} (${v.lang.slice(3) || v.lang})`))),
+      h('button.btn.small', { onclick: () => speak(SAMPLE) }, iconEl(icon.sound), 'Test')),
+    h('div.seg', {}, RATES.map(([v, l]) => h(`button${String(pick.rate || '1') === v ? '.on' : ''}`, { onclick: () => set({ rate: v }) }, l))),
+    h('p.fineprint', {}, iPhone()
+      ? 'More voices: Settings → Accessibility → Spoken Content → Voices → English. Download an Enhanced or Premium one and it shows up here.'
+      : 'Voices come from your phone or computer; ones marked Natural or Enhanced sound best.'));
 }
 
 function openGoogle() {
