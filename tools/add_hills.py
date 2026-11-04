@@ -5,7 +5,7 @@ Usage (from the repo root):  python tools/add_hills.py
 build_tiles.py does this itself on a full build, for every straight back road. The built tiles only hold the
 straight roads that have a posted limit (the rest are dropped at build time), so this finds the roller coasters
 among those; a full rebuild adds the unposted ones (most county roads). Downloads the elevation tiles it needs
-into raw/terrain/ once, like the build. Rows already measured are left as they are.
+into raw/terrain/ once, like the build. Measured rows are measured again, so a change to the rules applies.
 """
 import glob
 import json
@@ -31,7 +31,7 @@ def main():
         key = os.path.basename(path)[:-3].removesuffix(".s")
         tiles[key].extend(json.loads(read_js(path)))
 
-    todo = [row for rows in tiles.values() for row in rows if bt.roller_candidate(row) and row[12] is None]
+    todo = [row for rows in tiles.values() for row in rows if bt.roller_candidate(row)]
     needed = set()
     for row in todo:
         needed |= bt.terrain_tiles_for(bt.decode(row[11]))
@@ -39,7 +39,7 @@ def main():
     print(f"Measuring hills on {len(todo):,} straight back roads...", flush=True)
     elev = bt.Elevation()
     for i, row in enumerate(todo, 1):
-        row[12], row[13] = bt.hills_and_blind(bt.decode(row[11]), elev)
+        row[12], row[13] = bt.hills_and_blind(bt.decode(row[11]), elev, straight=True)
         if i % 2000 == 0:
             print(f"  {i:,}/{len(todo):,}", flush=True)
     print(f"Roller coasters: {sum(bt.is_roller(r) for rows in tiles.values() for r in rows):,}")

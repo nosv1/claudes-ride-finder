@@ -51,8 +51,9 @@ async function showMo150() {
 test('loads roads, draws them, and lists the best ones', async () => {
   assert.ok(await page.eval('RF.store.roads.length') > 1000);
   assert.equal(await page.eval("document.querySelectorAll('#chips .chip').length"), 7);
-  // The curve classes, plus Highways & ramps with All roads.
-  assert.equal(await page.eval("document.querySelectorAll('.legend-chip:not(.key-btn)').length"), 6);
+  // The curve classes, plus Highways & ramps with All roads, and Roller coasters.
+  assert.equal(await page.eval("document.querySelectorAll('.legend-chip:not(.key-btn)').length"), 7);
+  assert.match(await page.eval("[...document.querySelectorAll('.legend-chip')].map(c => c.textContent).join('|')"), /Roller coasters/);
   assert.match(await sheetText(), /Best roads in view/);
   assert.ok(await page.eval("document.querySelectorAll('.road-card').length") > 0);
 });

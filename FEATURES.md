@@ -76,6 +76,10 @@ committed as `tiles/`. The app needs no OSM server at runtime.
 - Every `primary`/`secondary`/`tertiary`/`unclassified` road over 1 km that isn't curvy or a sweeper is measured
   too. Hilly or more (≥ 22 m/km, 115 ft/mi) makes it a roller coaster, kept in the main `x_y` tiles; the rest
   stay speed-only (or are dropped when they have no posted limit, as before).
+  - For these roads the hills are only the climbing that's matched by dropping (2 × the smaller of up and down), so
+    one long grade doesn't count: the Red Route in Branson only goes downhill and used to read 43 m/km.
+  - A road whose smoothed profile is steeper than 18% over 100 m isn't rated: that's the hillside or bluff beside
+    the road in the bare-earth terrain (MO 39 by Shell Knob read as 28% grades along Table Rock Lake).
   - Under 1 km is mostly bridges (the bare-earth terrain has the valley under them) and corners. Highways are left
     out: road cuts and fills make the terrain beside them hillier than the road.
 - The build has to keep unposted straight back roads until it has measured them, so a full build reads elevation

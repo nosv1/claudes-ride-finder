@@ -276,8 +276,22 @@ class TestRollerCoasters(unittest.TestCase):
     def test_rolling_road_from_the_elevation_is_one(self):
         roller = FakeElevation(lambda x, y: 250 + 10 * math.sin(y / 400 * 2 * math.pi))
         r = self.row()
-        r[12], r[13] = bt.hills_and_blind(to_latlon(line(0, 0, 0, 2000)), roller)
+        r[12], r[13] = bt.hills_and_blind(to_latlon(line(0, 0, 0, 2000)), roller, straight=True)
         self.assertTrue(bt.is_roller(r))
+
+    def test_one_long_grade_is_not_one(self):
+        # 60 m down over 1.3 km, like the Red Route in Branson: hilly as a curvy road would read it, but no ups.
+        grade = FakeElevation(lambda x, y: 300 - y * 0.046)
+        self.assertGreater(bt.hills_and_blind(to_latlon(line(0, 0, 0, 1300)), grade)[0], 22)
+        r = self.row(length=1300)
+        r[12], r[13] = bt.hills_and_blind(to_latlon(line(0, 0, 0, 1300)), grade, straight=True)
+        self.assertFalse(bt.is_roller(r))
+
+    def test_steeper_than_a_road_is_the_hillside_not_the_road(self):
+        # 30 m up and down every 250 m: the bluff beside MO 39 by Shell Knob, not grades a highway has.
+        bluff = FakeElevation(lambda x, y: 400 + 15 * math.sin(y / 250 * 2 * math.pi))
+        hill, _ = bt.hills_and_blind(to_latlon(line(0, 0, 0, 2000)), bluff, straight=True)
+        self.assertIsNone(hill)
 
     def test_roller_coasters_go_in_the_main_tile(self):
         import tempfile

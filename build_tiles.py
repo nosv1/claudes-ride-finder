@@ -165,6 +165,7 @@ USER_AGENT = "ride-finder/1.0 (personal project)"
 CLIMB_STEP = 2.0     # ignore wiggles in the elevation profile smaller than this (metres)
 CREST_M = 3.0        # how far a point must rise above the road 75 m either side to be a crest
 BLIND_RADIUS = 120   # a turn this tight (metres) at or just past a crest hides what's beyond it
+ROAD_GRADE = 0.18    # steeper than this over 100 m is the hillside beside the road read as the road, not the road
 
 
 def world_px(lat, lon):
@@ -253,8 +254,34 @@ def terrain_tiles_for(coords):
     return tiles
 
 
-def hills_and_blind(coords, elev):
-    """Up-and-down per km, and spots where a tight turn sits on a crest."""
+def up_and_down(e):
+    """Metres climbed and dropped along an elevation profile, ignoring wiggles under CLIMB_STEP."""
+    up = down = 0.0
+    ref = e[0]
+    for v in e[1:]:
+        if abs(v - ref) >= CLIMB_STEP:
+            if v > ref:
+                up += v - ref
+            else:
+                down += ref - v
+            ref = v
+    return up, down
+
+
+def rolling(e, length):
+    """How much a straight road keeps going up and down, per km: only climbing that's matched by dropping counts,
+    so one long grade doesn't (the Red Route in Branson only goes downhill). None when the profile is steeper than a
+    road can be: next to a lake or bluff the bare-earth terrain has the hillside beside the road in it (MO 39 by
+    Shell Knob read as 28% grades)."""
+    s = [sum(e[max(0, i - 2):i + 3]) / len(e[max(0, i - 2):i + 3]) for i in range(len(e))]
+    if any(abs(s[i + 4] - s[i]) > ROAD_GRADE * 4 * STEP for i in range(len(s) - 4)):
+        return None
+    return round(2 * min(up_and_down(e)) / max(length, 1) * 1000, 1)
+
+
+def hills_and_blind(coords, elev, straight=False):
+    """Up-and-down per km, and spots where a tight turn sits on a crest. For a straight road (a possible roller
+    coaster), the up-and-down is only what it keeps doing (see rolling)."""
     lat0 = math.radians(coords[0][0])
     kx, ky = 111320 * math.cos(lat0), 110540
     samples, length = resample([(lon * kx, lat * ky) for lat, lon in coords], STEP)
@@ -263,12 +290,7 @@ def hills_and_blind(coords, elev):
     if len(e) < 7 or None in e:
         return None, []
 
-    climb, ref = 0.0, e[0]
-    for v in e[1:]:
-        if abs(v - ref) >= CLIMB_STEP:
-            climb += abs(v - ref)
-            ref = v
-    hill = round(climb / max(length, 1) * 1000, 1)
+    hill = rolling(e, length) if straight else round(sum(up_and_down(e)) / max(length, 1) * 1000, 1)
 
     r = [math.inf, *radii(samples), math.inf]  # turn radius at each sample
     blind, skip_to = [], 0
@@ -817,7 +839,7 @@ def main(args):
     elev = Elevation()
     for rows in tiles.values():
         for row in rows:
-            row += hills_and_blind(decode(row[11]), elev) if measure(row) else (None, [])
+            row += hills_and_blind(decode(row[11]), elev, roller_candidate(row)) if measure(row) else (None, [])
             row.append(lanes.get(row[0]))
         # Straight roads with no posted limit were only kept in case they were roller coasters.
         rows[:] = [r for r in rows if r[4] is not None or is_curvy_row(r) or is_roller(r)]

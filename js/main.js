@@ -819,7 +819,7 @@ function aboutView() {
         credit('Weather', link('https://open-meteo.com/', 'Weather data by Open-Meteo.com'), ' (CC BY 4.0)'),
         credit('Map', link('https://maplibre.org/', 'MapLibre GL JS'), ', with fonts from ', link('https://openfreemap.org/', 'OpenFreeMap')))),
     h('div.section', {}, h('h3', {}, iconEl(icon.person), 'Your data'),
-      h('p.small', {}, 'No account and no analytics. Your rides and settings stay in this browser. To plan, a ride’s stops go to the routing server, searches to Photon and points along the ride to Open-Meteo for the weather. Your location is used only when you ask for it (My location, or generating a ride with no start set). A share link carries the ride in the link itself.')),
+      h('p.small', {}, 'No account and no tracking. Your rides and settings are saved in this browser, not on a server. Some things do get sent out to work: your stops, to the route planner; what you type in search, to the place search; and spots along your ride, to the weather service. Your location is only used when you tap My location, or when you generate a ride without picking a start. A share link has the whole ride in the link, so nothing is stored anywhere.')),
     h('p.fineprint', {}, 'Ride Finder is open source: ', link('https://github.com/nosv1/claudes-ride-finder', 'github.com/nosv1/claudes-ride-finder'), '.'),
   ];
 }

@@ -77,12 +77,7 @@ Ideas that came up, roughly in order of how much they'd help.
   (drawn dashed today). Many are gravel in the Ozarks.
 - **Generator avoids city traffic**: today loops through town only rank lower. Penalize
   connecting routes through built-up areas directly.
-- **Roller coasters, the rest of them**: the layer is in, but the built tiles only had the straight roads with a
-  posted limit, so `tools/add_hills.py` found those. The next full build (`python build_tiles.py`, with the state
-  files in `raw/`) measures the unposted ones too, which is most county roads. It downloads terrain for nearly every
-  rural road the first time (more than before) and takes longer. Then look at a few: do they feel like roller coasters?
-  Ideas after that: count crests instead of (or with) climbing per mile, so one long grade up a bluff doesn't count;
-  blind crests on straight roads (a hilltop you can't see over, no turn needed).
+- **Roller coasters, next**: blind crests on straight roads (a hilltop you can't see over, no turn needed).
 - **More states**: Arkansas (Eureka Springs, the Pig Trail), Oklahoma, Iowa, Nebraska. (Texas is in.)
   Check each state's default speed limits in `estimate_mph`.
   Download the `.osm.pbf` into `raw/` and rebuild.
