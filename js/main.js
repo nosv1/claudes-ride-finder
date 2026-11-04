@@ -102,6 +102,7 @@ async function start() {
   onTagsChanged(() => { mapView.setTags(tagsForMap()); renderSoon(); });
   applySettings();
   loadSavedTrip();
+  addEventListener('hashchange', onLinkPasted);
   let lastZoom = mapView.zoom();
   mapView.on('move', () => {
     loadView();
@@ -181,16 +182,36 @@ function setSetting(patch) {
 
 // ---------- trip ----------
 
-function loadSavedTrip() {
+// A shared ride in the address (#r=…), opened and then taken out of the address. Whether there was one.
+function openLink() {
   const fromLink = location.hash.match(/^#(?:r|trip)=([\w-]+)/);  // #trip= is the older, longer link
+  if (!fromLink) return false;
+  trip = T.decodeTrip(fromLink[1]);
+  history.replaceState(null, '', location.pathname + location.search);
+  go('trip');
+  const pts = trip.items.flatMap(it => it.pts);
+  if (pts.length) mapView.fit(boundsOf(pts), 12);
+  return true;
+}
+
+// A link pasted into the address bar of the open app only changes what's after the #, so the page doesn't reload:
+// open it here. The ride you had comes back with Undo.
+function onLinkPasted() {
+  if (ride || fly) return;  // not in the middle of riding or a fly-through
+  const was = trip;
   try {
-    if (fromLink) {
-      trip = T.decodeTrip(fromLink[1]);
-      history.replaceState(null, '', location.pathname + location.search);
-      go('trip');
-      const pts = trip.items.flatMap(it => it.pts);
-      if (pts.length) mapView.fit(boundsOf(pts), 12);
-    } else {
+    if (!openLink()) return;
+  } catch (e) {
+    console.warn('Could not open the link', e);
+    return toast('That link didn’t open a ride. It may have been cut short when it was copied.');
+  }
+  tripChanged();
+  if (was.items.length) toast('Opened the shared ride.', { label: 'Undo', run: () => { trip = was; tripChanged(); go('trip'); } });
+}
+
+function loadSavedTrip() {
+  try {
+    if (!openLink()) {
       const saved = localStorage.getItem(TRIP_KEY) || localStorage.getItem('ride-finder-trip');  // the old app's key
       if (saved) trip = T.decodeTrip(saved);
     }

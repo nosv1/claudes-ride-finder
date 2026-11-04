@@ -618,6 +618,26 @@ test('a share link reopens the same ride', async () => {
   }
 });
 
+test('a share link pasted into the open app opens that ride (no reload), with Undo back to the one you had', async () => {
+  await page.eval(pointTrip);
+  const mine = await page.eval('JSON.stringify(RF.trip.items.map(i => i.label))');
+  const link = await page.eval(`(async () => {
+    const T = await import('./js/trip.js'), t = T.newTrip();
+    T.setStart(t, [38.9, -94.4], 'Their start');
+    T.addPoint(t, [38.95, -94.35], 'Their stop');
+    return '#r=' + T.encodeTrip(t);
+  })()`);
+  await page.eval('window.__same = 1');
+  await page.eval(`void (location.hash = '${link}')`);
+  await page.waitFor("RF.trip.items.some(i => i.label === 'Their stop')", 5000);
+  assert.equal(await page.eval('window.__same'), 1, 'the same page, not a reload');
+  assert.equal(await page.eval('location.hash'), '', 'the link is taken out of the address');
+  assert.match(await sheetText(), /Your ride/);
+  assert.match(await page.eval("document.getElementById('toast').innerText"), /Opened the shared ride/);
+  await page.eval("[...document.querySelectorAll('#toast button')].find(b => b.textContent === 'Undo').click()");
+  assert.equal(await page.eval('JSON.stringify(RF.trip.items.map(i => i.label))'), mine);
+});
+
 test('phone layout: search on top, chips scroll, sheet at the bottom', async () => {
   const phone = await launch({ mobile: true });
   try {

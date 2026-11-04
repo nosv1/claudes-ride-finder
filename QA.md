@@ -76,7 +76,7 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   on the map; tapping keeps them lit, tapping again turns them off. Check on the phone too.
 - "Try fixing" on a ride that doubles back either helps or says why not.
 - Fuel stops are planned within the tank range.
-- Open in Google Maps opens it with the stops in order; GPX downloads; Share gives a link that reopens the same ride,
+- Open in Google Maps opens it with the stops in order; GPX downloads; Share gives a link that reopens the same ride (also pasted into the address bar of the app already open),
   including a one-way ride's end.
 - Reloading the page keeps the ride and the settings.
 - The fly-through plays, shows the road sign, speed limit and next turn, and Esc / ✕ ends it.

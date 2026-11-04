@@ -537,6 +537,9 @@ colored road), Add a stop here, Street View here.
   third the length of the older `#trip=` base64-JSON links, which still open.
   - The link holds base64 JSON of the stops and settings.
   - Links from the original app work too. Opening one loads the ride.
+  - Pasted into the address bar of the app already open, a link only changes what's after the `#`, so the browser
+    doesn't reload: the app hears it (`hashchange`) and opens it, with **Undo** back to the ride you had (not while
+    riding or flying through).
 - **Persistence:** the ride saves to localStorage on every change. A ride saved by the original app is picked up once.
 
 **Ride mode (turn by turn, `js/ride.js`, `js/nav.js`)**

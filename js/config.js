@@ -3,7 +3,7 @@
 export const DATA_URL = 'tiles/';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.04.2';
+export const APP_VERSION = '2026.11.04.3';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
