@@ -104,6 +104,7 @@ export class MapView {
           lights: { type: 'geojson', data: EMPTY },
           routeLabels: { type: 'geojson', data: EMPTY },
           preview: { type: 'geojson', data: EMPTY },
+          focus: { type: 'geojson', data: EMPTY },
           fuel: { type: 'geojson', data: EMPTY },
           routeFuel: { type: 'geojson', data: EMPTY },
           rider: { type: 'geojson', data: EMPTY },
@@ -127,6 +128,9 @@ export class MapView {
           { id: 'highlight', type: 'line', source: 'roads', filter: ['in', ['get', 'i'], ['literal', []]],
             layout: { 'line-join': 'round', 'line-cap': 'round' },
             paint: { 'line-color': '#ffffff', 'line-opacity': 0.85, 'line-width': zoomWidth(12), 'line-blur': 1 } },
+          // Parts of the route lit up from the ride's summary (a tag, the bar, a road in the list).
+          { id: 'focus', type: 'line', source: 'focus', layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#ffffff', 'line-opacity': 0.9, 'line-width': zoomWidth(14), 'line-blur': 1 } },
           { id: 'roads-solid', type: 'line', source: 'roads', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: {} },
           { id: 'roads-dashed', type: 'line', source: 'roads', layout: { 'line-join': 'round' }, paint: { 'line-dasharray': [2, 1.5] } },
           { id: 'retrace', type: 'line', source: 'retrace', layout: { 'line-join': 'round', 'line-cap': 'round' },
@@ -240,6 +244,10 @@ export class MapView {
   setRetrace(lines) { this.map.getSource('retrace').setData(fc((lines || []).map(l => line(l)))); }
   // The stoplights on the route: [{ p, turn }].
   setLights(lights) { this.map.getSource('lights').setData(fc((lights || []).map(l => point(l.p, { left: l.turn === 'left' })))); }
+  setFocus(paths) {
+    const src = this.map.getSource('focus');  // not there until the style has loaded
+    if (src) src.setData(paths && paths.length ? fc(paths.map(p => line(p))) : EMPTY);
+  }
   setPreview(path) { this.map.getSource('preview').setData(path ? fc([line(path)]) : EMPTY); }
 
   setStations(stations) {

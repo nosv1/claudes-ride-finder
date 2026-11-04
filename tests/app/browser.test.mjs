@@ -310,6 +310,35 @@ test('on a phone, hold a stop pin to pick it up and drag it; a quick swipe over 
   }
 });
 
+test('the ride summary says what it rides, and hovering or tapping a tag lights up those parts of the route', async () => {
+  await showMo150();
+  await page.eval(`(async () => {
+    const T = await import('./js/trip.js');
+    RF.trip.items.length = 0;
+    T.setStart(RF.trip, [38.852, -94.343], 'Start');
+    const { stretchOf } = await import('./js/roads.js'), s = RF.settings;
+    const f = { ...s, mode: 'ride', classes: new Set(s.classes), speedBins: new Set(s.speedBins), rampTiers: new Set(s.rampTiers), zoom: 13 };
+    T.addRoad(RF.trip, stretchOf(RF.store.roads, RF.store.byId.get(${MO150}), f));
+    RF.go('trip');
+  })()`);
+  await sleep(300);
+  await page.eval("document.querySelector('#sheetBody label.switch input').click()");  // routes it
+  await page.waitFor("document.querySelector('.ride-mix .tag')", 60000);
+  assert.match(await page.eval("document.querySelector('.ride-mix').innerText"), /Sweepers[\s\S]*fits your filters[\s\S]*MO 150/);
+  const lit = () => page.eval("(async () => { await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return RF.mapView.map.queryRenderedFeatures({ layers: ['focus'] }).length; })()");
+  const tag = "[...document.querySelectorAll('.ride-mix .tag')].find(t => t.textContent === 'Sweepers')";
+  await page.eval(`void ${tag}.dispatchEvent(new MouseEvent('mouseenter'))`);
+  assert.ok(await lit() > 0, 'hovering Sweepers lights up the sweeper');
+  await page.eval(`void ${tag}.dispatchEvent(new MouseEvent('mouseleave'))`);
+  assert.equal(await lit(), 0, 'and it goes out after');
+  await page.eval(`${tag}.click()`);
+  await page.eval(`void ${tag}.dispatchEvent(new MouseEvent('mouseleave'))`);
+  assert.ok(await lit() > 0, 'a tap keeps it lit (the phone way)');
+  await page.eval(`${tag}.click()`);
+  assert.equal(await lit(), 0, 'until tapped again');
+  await page.eval("RF.trip.loop = true");
+});
+
 test('Add road on the ride page: tap a road, it goes in where it fits, and its ends can be switched', async () => {
   await showMo150();
   await page.eval(pointTrip);

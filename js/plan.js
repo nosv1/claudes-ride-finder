@@ -39,6 +39,7 @@ export function metersOn(path, roads, ok) {
 // `roads` lists the named roads ridden, in ride order: { key, cls (-1 highway, -2 roller coaster), hill, m, fitM, road
 // (its most-ridden piece) },
 // fitM being the metres on pieces `fits` accepts (the map's filters), fits the metres of the whole ride that do.
+// `pieces` are the runs of the route on one road and kind, { k, key, hill, pts }, to light up on the map.
 export function rideMix(path, roads, fits = () => true) {
   const kind = r => r.surface === 1 ? null : r.cls >= 0 ? r.cls : r.rampTier >= 0 ? -1 : r.roller ? -2 : null;
   const cells = new Map(), area = pad(boundsOf(path), 0.02);
@@ -47,13 +48,14 @@ export function rideMix(path, roads, fits = () => true) {
     if (k == null || !intersects(area, r.bounds)) continue;
     eachCell(r, c => { const was = cells.get(c); if (!was || k > was.k) cells.set(c, { k, r }); });
   }
-  const mix = { byClass: CURVE_CLASSES.map(() => 0), highway: 0, roller: 0, meters: 0, hill: null, fits: 0, roads: [] };
+  const mix = { byClass: CURVE_CLASSES.map(() => 0), highway: 0, roller: 0, meters: 0, hill: null, fits: 0, roads: [], pieces: [] };
+  let run = null;
   const byKey = new Map(), fitsOf = new Map();
   let hillM = 0, hillSum = 0;
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1], b = path[i], d = distance(a, b), on = cells.get(cellKey((a[0] + b[0]) / 2, (a[1] + b[1]) / 2));
     mix.meters += d;
-    if (!on) continue;
+    if (!on) { run = null; continue; }
     const { k, r } = on;
     if (k === -1) mix.highway += d;
     else if (k === -2) mix.roller += d;
@@ -63,6 +65,8 @@ export function rideMix(path, roads, fits = () => true) {
     const ok = fitsOf.get(r);
     if (ok) mix.fits += d;
     const key = r.key || r.name || 'Unnamed road';
+    if (run && run.k === k && run.key === key) run.pts.push(b);
+    else mix.pieces.push(run = { k, key, hill: r.hill, pts: [a, b] });
     if (!byKey.has(key)) byKey.set(key, { key, byKind: new Map(), pieces: new Map(), hillM: 0, hillSum: 0, m: 0, fitM: 0 });
     const g = byKey.get(key);
     g.m += d;
@@ -79,23 +83,27 @@ export function rideMix(path, roads, fits = () => true) {
 }
 
 const HILL_COLOR = '#adb5bd';
+export const kindIs = k => p => p.k === k;
 // What a ride is about, as the key's labels in its colors, most first: the curve classes that make up a fifth or
 // more of its curvy miles (a very curvy or twisty half mile counts anyway), highway sweeps if they're a fifth of the
 // fun, roller coasters if they're a fifth of what it rides (country loops cross plenty), and how hilly its roads are.
-// [{ label, color }]
+// [{ label, color, pick }], pick telling which of mix.pieces it's about.
 export function rideFocus(mix) {
   const curvy = mix.byClass.reduce((a, b) => a + b, 0), out = [];
   if (curvy >= 800) {
     mix.byClass.map((m, c) => ({ m, c })).filter(({ m, c }) => m >= 0.2 * curvy || (c >= 3 && m >= 800))
       .sort((a, b) => b.m - a.m).slice(0, 3)
-      .forEach(({ c }) => out.push({ label: CURVE_CLASSES[c].label, color: CURVE_CLASSES[c].color }));
+      .forEach(({ c }) => out.push({ label: CURVE_CLASSES[c].label, color: CURVE_CLASSES[c].color, pick: kindIs(c) }));
   }
   if (mix.highway >= 3000 && mix.highway >= 0.2 * (curvy + mix.highway)) {
-    const hw = { label: 'Highway sweeps', color: HIGHWAYS.color };
+    const hw = { label: 'Highway sweeps', color: HIGHWAYS.color, pick: kindIs(-1) };
     mix.highway > curvy ? out.unshift(hw) : out.push(hw);
   }
-  if (mix.roller >= 1500 && mix.roller >= 0.2 * (curvy + mix.highway + mix.roller)) out.push({ label: ROLLER.label, color: ROLLER.color });
-  if (out.length && mix.hill != null) out.push({ label: HILLS[hillLevel(mix.hill)].label, color: HILL_COLOR });
+  if (mix.roller >= 1500 && mix.roller >= 0.2 * (curvy + mix.highway + mix.roller)) out.push({ label: ROLLER.label, color: ROLLER.color, pick: kindIs(-2) });
+  if (out.length && mix.hill != null) {
+    const level = hillLevel(mix.hill);
+    out.push({ label: HILLS[level].label, color: HILL_COLOR, pick: p => p.k !== -1 && hillLevel(p.hill) >= level });
+  }
   return out;
 }
 

@@ -196,6 +196,7 @@ async function computeRoute() {
 
 function setRoute(r) {
   route = r;
+  clearFocus();
   const labels = (r && r.maneuvers || []).filter(m => m.km >= 1 && routeRefs(m).length)
     .map(m => ({ geom: r.path.slice(m.at, m.end + 1), ref: routeRefs(m).slice(0, 2).join(' / ') }));
   mapView.setRoute(r, labels);
@@ -774,6 +775,7 @@ function stopPicking() {
 
 function go(v, arg = null) {
   const changed = v !== view;
+  if (changed) clearFocus();
   view = v;
   viewArg = arg;
   if (v === 'station' || v === 'place') selected = null;
@@ -1222,6 +1224,22 @@ const PIN_HINT = matchMedia('(pointer: coarse)').matches ? 'hold its pin to move
 const kindColor = k => k === -1 ? HIGHWAYS.color : k === -2 ? ROLLER.color : CURVE_CLASSES[k].color;
 const kindLabel = k => k === -1 ? 'Highway sweep' : k === -2 ? 'Roller coaster' : CURVE_CLASSES[k].label;
 
+// Lighting up parts of the ride from its summary: hovering a tag, a bar segment or a road shows its parts of the
+// route on the map; a tap (or click) keeps them lit until tapped again, which is how it works on a phone.
+let focusPin = null;  // { id, pick, route }
+const pinned = () => focusPin && focusPin.route === route ? focusPin : null;
+function showFocus(pick) { mapView.setFocus(pick && route ? mixFor(route).pieces.filter(pick).map(p => p.pts) : null); }
+function clearFocus() { focusPin = null; mapView.setFocus(null); }
+// A summary element that lights up its parts: tag is the h() tag, picks the pieces.
+function lightUp(tag, id, pick, ...children) {
+  const on = pinned() && pinned().id === id;
+  return h(`${tag}.lights${on ? '.lit' : ''}`, {
+    onmouseenter: () => showFocus(pick),
+    onmouseleave: () => showFocus(pinned() && pinned().pick),
+    onclick: e => { e.stopPropagation(); focusPin = on ? null : { id, pick, route }; showFocus(focusPin && pick); renderSoon(); },
+  }, ...children);
+}
+
 // The focus tags, a bar of the whole ride by kind of road, and the roads on it that fit the filters.
 function rideMixView(mix) {
   const focus = P.rideFocus(mix), total = mix.meters || 1;
@@ -1229,17 +1247,31 @@ function rideMixView(mix) {
   const fit = mix.roads.filter(g => g.fitM >= 160), outside = mix.roads.filter(g => g.m - g.fitM >= 400 && g.cls >= 0);
   const words = filterWords();
   return h('div.ride-mix', {},
-    focus.length ? h('div.focus', {}, focus.map(f => h('span.tag.sm', { style: `--c:${f.color}` }, f.label))) : '',
+    focus.length ? h('div.focus', {}, focus.map(f => {
+      const el = lightUp('span.tag.sm', `tag:${f.label}`, f.pick, f.label);
+      el.style.setProperty('--c', f.color);
+      return el;
+    })) : '',
     h('div.mixbar', { title: 'The whole ride by kind of road; the dark part connects them' },
-      parts.map(([k, m]) => h('span', { style: `width:${100 * m / total}%;background:${kindColor(k)}`, title: `${kindLabel(k)}: ${miles(m)} mi` }))),
+      parts.map(([k, m]) => {
+        const el = lightUp('span', `kind:${k}`, P.kindIs(k));
+        el.style.cssText = `width:${100 * m / total}%;background:${kindColor(k)}`;
+        el.title = `${kindLabel(k)}: ${miles(m)} mi`;
+        return el;
+      })),
     fit.length ? h('div', {},
       h('p.small', {}, h('b', {}, `${miles(mix.fits)} mi`), ` fits your filters${words ? ` (${words})` : ''}:`),
-      fit.map(g => h('div.fit-row', { style: `--c:${kindColor(g.cls)}` },
-        h('span.dot'), h('span', {}, g.key),
-        h('span.muted.push', {}, [kindLabel(g.cls), g.hill != null && g.cls !== -1 ? HILLS[hillLevel(g.hill)].label : '', `${miles(g.fitM)} mi`].filter(Boolean).join(' · '))))) :
+      fit.map(g => {
+        const el = lightUp('div.fit-row', `road:${g.key}`, p => p.key === g.key,
+          h('span.dot'), h('span', {}, g.key),
+          h('span.muted.push', {}, [kindLabel(g.cls), g.hill != null && g.cls !== -1 ? HILLS[hillLevel(g.hill)].label : '', `${miles(g.fitM)} mi`].filter(Boolean).join(' · ')));
+        el.style.setProperty('--c', kindColor(g.cls));
+        return el;
+      })) :
       h('p.muted.small', {}, `None of it fits your filters${words ? ` (${words})` : ''}.`),
     outside.length ? h('p.muted.small', {}, 'Outside your filters: ',
-      outside.slice().sort((a, b) => (b.m - b.fitM) - (a.m - a.fitM)).slice(0, 5).map(g => `${g.key} (${missesBy(g.road)})`).join(', '),
+      outside.slice().sort((a, b) => (b.m - b.fitM) - (a.m - a.fitM)).slice(0, 5)
+        .flatMap((g, i) => [i ? ', ' : '', lightUp('span', `road:${g.key}`, p => p.key === g.key, `${g.key} (${missesBy(g.road)})`)]),
       outside.length > 5 ? `, and ${outside.length - 5} more.` : '.') : '');
 }
 

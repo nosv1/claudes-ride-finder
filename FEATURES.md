@@ -417,7 +417,11 @@ colored road), Add a stop here, Street View here.
 - **What fits your filters**: "2.9 mi fits your filters (45+ mph · Very hilly+ · Paved)", then each road that does, in
   ride order, with its class, hills and miles. Then "Outside your filters", the 5 longest that don't and why
   ("MO F (hilly)", "Jefferson Street (hilly, 35 mph)"). Filters changed after routing update it.
+- **Lighting up**: hover a tag, a bar segment, a road that fits or one outside the filters, and its parts of the route
+  glow white on the map (exactly the ridden pieces, not the whole road). A tap or click keeps them lit until tapped
+  again, which is how it works on a phone; a new route or leaving the page turns it off.
 - `rideMix` in `plan.js` matches the route to roads on the same ~200 m grid as curvy miles; unpaved never counts.
+  Its `pieces` (runs of the route on one road and kind) are what lights up.
 - **Share** sits at the top right of Your ride as well as under Ride it.
 
 **Generate loops** (Plan a ride, or Generate a loop on Your ride)

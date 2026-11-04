@@ -72,6 +72,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   pin pans the map. A road stop's pin dropped on another colored road swaps to that road (Undo in the toast).
 - Under the stats: focus tags, the color bar, and the roads that fit your filters. Change a filter chip and the
   list follows. Share is at the top of the page.
+- Hovering a tag (Some curves, Hilly…), a bar segment or a road in that list lights up just those parts of the route
+  on the map; tapping keeps them lit, tapping again turns them off. Check on the phone too.
 - "Try fixing" on a ride that doubles back either helps or says why not.
 - Fuel stops are planned within the tank range.
 - Go opens Google Maps with the stops in order; GPX downloads; Share gives a link that reopens the same ride,

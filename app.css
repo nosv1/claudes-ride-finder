@@ -205,6 +205,13 @@ h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0 0 
 .fit-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 3px 0; }
 .fit-row .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
 .fit-row .push { text-align: right; font-size: 12.5px; }
+/* Summary bits that light up their parts of the route: hover, or tap to keep them lit. */
+.lights { cursor: pointer; }
+.tag.lights:hover, .tag.lit { box-shadow: 0 0 0 1.5px var(--c); }
+.mixbar .lights:hover, .mixbar .lit { filter: brightness(1.35); }
+.fit-row.lights { border-radius: 8px; margin: 0 -6px; padding: 3px 6px; }
+.fit-row.lights:hover, .fit-row.lit { background: var(--raise); }
+p .lights:hover, p .lit { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
 .stat { padding: 10px 12px; border-radius: 10px; background: var(--raise); }
 .stat b { display: block; font-size: 17px; }
