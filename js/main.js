@@ -1832,7 +1832,9 @@ function voiceField() {
     h('div.seg', {}, RATES.map(([v, l]) => h(`button${String(pick.rate || '1') === v ? '.on' : ''}`, { onclick: () => set({ rate: v }) }, l))),
     h('p.fineprint', {}, iPhone()
       ? 'More voices: Settings → Accessibility → Spoken Content → Voices → English. Download an Enhanced or Premium one and it shows up here.'
-      : 'Voices come from your phone or computer; ones marked Natural or Enhanced sound best.'));
+      : 'Voices come from your phone or computer; ones marked Natural or Enhanced sound best.',
+      // Opens in the same window, so in the installed app it tests the installed app.
+      ' Music stops when it talks? ', h('a', { href: 'sound-check.html' }, 'Sound check'), ' finds what this phone allows.'));
 }
 
 function openGoogle() {

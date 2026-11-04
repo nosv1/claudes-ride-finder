@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161c">
+<title>Sound check · Ride Finder</title>
+<!-- Which ways of making a sound let music in another app keep playing (or come back) on this phone. Ride mode's voice
+     stops Spotify on iPhone; this finds out what the phone allows, to pick how Ride mode should speak. -->
+<style>
+  body { margin: 0; padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px 32px; background: #0f1115; color: #eceef2;
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  p, li { color: #c3c8d0; }
+  ol { padding-left: 20px; }
+  .info { font-size: 13px; color: #9aa1ad; background: #16181e; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 10px 12px; overflow-wrap: anywhere; }
+  button { display: flex; align-items: center; gap: 12px; width: 100%; margin: 10px 0; padding: 14px; text-align: left; font: inherit;
+    color: #eceef2; background: #20232b; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; }
+  button b { flex: none; width: 34px; height: 34px; border-radius: 50%; background: #1c7ed6; color: #fff; display: grid; place-items: center; font-size: 18px; }
+  button small { display: block; color: #9aa1ad; font-size: 13px; }
+  button.played { border-color: #1c7ed6; }
+  a { color: #74c0fc; }
+</style>
+</head>
+<body>
+<h1>Sound check</h1>
+<ol>
+  <li>Turn the ring switch on (not silent) and start music in Spotify or Apple Music.</li>
+  <li>Come back here and tap <b>1</b>. Listen: does the music keep going, dip and come back, or stop?</li>
+  <li>If it stopped, start it again, then try <b>2</b>, and so on.</li>
+  <li>Tell Claude the numbers where the music kept going or came back.</li>
+</ol>
+<div class="info" id="info"></div>
+<div id="tests"></div>
+<p><a href="./">Back to Ride Finder</a></p>
+<script>
+  const info = document.getElementById('info');
+  const session = navigator.audioSession;
+  const setType = t => { try { if (session) session.type = t; } catch (e) { /* not supported */ } };
+  const say = () => {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance('Sound check. In half a mile, turn right onto Missouri D.');
+    u.lang = 'en-US';
+    speechSynthesis.speak(u);
+  };
+  const clip = new Audio('sound-check.wav');
+  const playClip = () => { clip.currentTime = 0; clip.play().catch(e => alert(e.message)); };
+  let ctx = null, buffer = null;
+  const playWebAudio = async () => {
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') await ctx.resume();
+    buffer = buffer || await ctx.decodeAudioData(await (await fetch('sound-check.wav')).arrayBuffer());
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(ctx.destination);
+    src.start();
+  };
+  const TESTS = [
+    ['The phone’s voice, as Ride mode does now', 'speech · transient', () => { setType('transient'); say(); }],
+    ['The phone’s voice, mixed in', 'speech · ambient', () => { setType('ambient'); say(); }],
+    ['A recorded clip, music turned down', 'audio file · transient', () => { setType('transient'); playClip(); }],
+    ['A recorded clip, mixed in', 'audio file · ambient', () => { setType('ambient'); playClip(); }],
+    ['A recorded clip, plain', 'audio file · auto', () => { setType('auto'); playClip(); }],
+    ['A recorded clip through Web Audio, mixed in', 'web audio · ambient', () => { setType('ambient'); playWebAudio(); }],
+  ];
+  const show = () => {
+    info.textContent = `Audio session control: ${session ? `yes (now “${session.type}”)` : 'no'} · Installed app: `
+      + `${matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'yes' : 'no'} · ${navigator.userAgent}`;
+  };
+  document.getElementById('tests').append(...TESTS.map(([label, how, run], i) => {
+    const b = document.createElement('button');
+    b.innerHTML = `<b>${i + 1}</b><span>${label}<small>${how}</small></span>`;
+    b.onclick = () => { b.classList.add('played'); run(); setTimeout(show, 100); };
+    return b;
+  }));
+  show();
+</script>
+</body>
+</html>

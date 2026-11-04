@@ -594,6 +594,10 @@ colored road), Add a stop here, Street View here.
 - **Music**: each call sets Safari's audio session to `transient` (`navigator.audioSession`), which is meant to turn
   other apps' audio down under the voice and back up after, instead of taking over (which stops the music for good).
   Whether Safari's speech follows it is up to iOS (WebKit's support is patchy); a native app can duck music reliably.
+  On the rider's iPhone (home-screen app, 2026-11-04) the music stopped and didn't come back. **Sound check**
+  (`sound-check.html`, linked under the voice picker, opening in the same window so it tests the installed app) plays
+  the voice and a recorded clip (`sound-check.wav`) under each audio session type, to find which leave the music
+  playing; Ride mode's voice then follows whichever does. Every browser on iPhone is Safari underneath (Edge too).
 - **The map**: heading-up, tilted 50°, you low on the screen as a blue arrow gliding between fixes, closer in slowly and
   further out at speed (a pinch is kept); the part ridden greys out. A finger or mouse on the map holds the camera
   still (moving it every frame would cancel the drag as it starts); a drag stops following: **Recenter**. A tap doesn't.
