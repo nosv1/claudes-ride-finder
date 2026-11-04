@@ -542,7 +542,6 @@ colored road), Add a stop here, Street View here.
     doesn't reload: the app hears it (`hashchange`) and opens it, with **Undo** back to the ride you had (not while
     riding or flying through).
 - **Persistence:** the ride saves to localStorage on every change. A ride saved by the original app is picked up once.
-- A ride link opened in the tab the app is already in (only the `#` changes) loads too.
 
 **Accounts (optional; `js/account.js`, the API in `worker/`)**
 - **Sign in with Google** on the account page (home list: "Sign in to keep rides on every device"; ride page: "Sign
