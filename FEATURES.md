@@ -533,7 +533,8 @@ colored road), Add a stop here, Street View here.
   - Then a stop in the middle of any stretch over 25 km without one.
   - Then stops 200 m past the turns onto the longest roads, at least 800 m apart.
 - **GPX:** waypoints, a route and the full track. For OsmAnd (free and follows the track), Calimoto, REVER, Garmin.
-- **Share:** the phone's share sheet (or the clipboard) with a `#r=` link: the ride packed into bytes (varints, points and road ids as steps from the last one), about a
+- **Share:** the phone's share sheet (or the clipboard) with a short `#s=<id>` link from the accounts service (see
+  Accounts) when it answers within 3 s, else a `#r=` link: the ride packed into bytes (varints, points and road ids as steps from the last one), about a
   third the length of the older `#trip=` base64-JSON links, which still open.
   - The link holds base64 JSON of the stops and settings.
   - Links from the original app work too. Opening one loads the ride.
@@ -541,6 +542,34 @@ colored road), Add a stop here, Street View here.
     doesn't reload: the app hears it (`hashchange`) and opens it, with **Undo** back to the ride you had (not while
     riding or flying through).
 - **Persistence:** the ride saves to localStorage on every change. A ride saved by the original app is picked up once.
+- A ride link opened in the tab the app is already in (only the `#` changes) loads too.
+
+**Accounts (optional; `js/account.js`, the API in `worker/`)**
+- **Sign in with Google** on the account page (home list: "Sign in to keep rides on every device"; ride page: "Sign
+  in to keep this ride on every device"). Google's own button (Google Identity Services, popup). Without signing in
+  everything works as before, on the device only.
+- The API is a Cloudflare Worker with a D1 database (`worker/src/index.js` lists the calls, `worker/schema.sql` the
+  tables). It checks Google's ID token itself (signature against Google's keys, issuer, this app's client id,
+  expiry) and hands the app its own session token (kept a year; the database keeps only its hash). It keeps the
+  Google account's id, not the email or name. Only the site's origin (and `127.0.0.1`/`localhost`, for tests) may
+  change anything.
+- **Your rides:** **Save to your rides** on the ride page saves it under its name; from then on the ride on screen
+  *is* that saved ride: changes save 1.5 s after they settle ("Saving…", then "In your rides. Changes save as you
+  go."), and its name is editable there. **Clear all** starts a new ride (Undo puts it back, saved ride and all);
+  opening a shared link does too. The home list shows the latest 3 (and the empty ride page 5) under **Your rides**;
+  the account page lists them all, each with delete (with Undo). Opening one replaces the ride on screen (Undo).
+- **Settings and road tags** follow the account as one blob with the time it last changed: whichever copy is newer
+  wins when the app opens; changes are sent 2 s after they settle. The first sign-in on a device merges its tags
+  with the account's (the newer tag wins where both tag a road) and takes the account's settings.
+- **Short share links** (`#s=` + 10 characters from the ride's hash: the same ride always gets the same link, and
+  far too many to guess, since a start is often someone's home). Anyone can make one and open one without signing
+  in. Made while signed in, a link is listed on the account page ("Rides you’ve shared") with Copy and Take down.
+- **Limits:** a ride up to 8 KB, 300 saved rides, settings and tags up to 256 KB; per day 1,000 saves per account,
+  200 new links per address (hashed with the day) or account, 50 sign-ins per address.
+- **Delete account** (tap twice) removes the account, its rides, links, settings, tags and sessions everywhere. The
+  device keeps its own copy.
+- The Google sign-in client id is in `js/config.js` and `worker/wrangler.toml`; its authorized JavaScript origins are
+  `https://nosv1.github.io` and `http://127.0.0.1:8000`. Deploy the API with `cd worker && npx wrangler@4 deploy`.
 
 **Ride mode (turn by turn, `js/ride.js`, `js/nav.js`)**
 - **Ride it here, turn by turn** on the ride page (and **Ride** on the ride bar) rides the route in the app. Google
@@ -636,3 +665,5 @@ See `tests/README.md`:
 - Build logic in Python: `python -m unittest discover tests`.
 - The app's logic modules in Node: `node --test tests/app/logic.test.mjs`.
 - The app in headless Edge/Chrome: `node --test tests/app/browser.test.mjs` (`RF_NETWORK=1` adds live routing).
+- Accounts: `node --test tests/worker.test.mjs` (the API) and `node --test tests/app/account.test.mjs` (the app,
+  two browsers on one account), both against a local copy of the API from `wrangler dev`.

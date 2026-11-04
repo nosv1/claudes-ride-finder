@@ -470,6 +470,18 @@ body.riding .stop-marker { display: none; }
 .tag-picks { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .tag-pick { padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--border); background: var(--raise); font-size: 14px; }
 .tag-pick.on { border-color: var(--c); color: var(--c); font-weight: 700; box-shadow: inset 0 0 0 1px var(--c); }
-.tag-note { width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
+.tag-note, .ride-name { width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
 .tag-mark { margin-left: 8px; font-size: 12px; font-weight: 700; color: var(--c); }
 .tags-on-ride.warn { color: var(--warn); }
+
+/* ---------- your rides & account ---------- */
+.card.here { border-color: rgba(77,171,247,.55); background: var(--blue-soft); }
+.card .i { color: var(--muted); flex: none; }
+.link-card { cursor: default; gap: 8px; }
+.saved-ride { display: grid; gap: 6px; margin: 6px 0 4px; }
+.ride-name { font-weight: 600; }
+.save-btn { margin: 2px 0 4px; }
+button.link.save-link { margin: 2px 0 4px; color: #74c0fc; }
+.gsi { min-height: 44px; margin: 14px 0; }
+.error { color: var(--danger); }
+.btn.danger { border-color: var(--danger); color: var(--danger); }

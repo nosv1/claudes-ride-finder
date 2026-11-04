@@ -10,7 +10,8 @@ import { profile } from './elevation.js';
 import * as W from './weather.js';
 import { Fly } from './fly.js';
 import { Ride } from './ride.js';
-import { TAGS, allTags, tagOf, setTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged } from './tags.js';
+import { TAGS, allTags, tagOf, setTags, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged } from './tags.js';
+import * as A from './account.js';
 import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox, loadSignals } from './store.js';
 import { MapView } from './mapview.js';
 import { icon, h, elevationChart, Sheet, toast, menu, closeMenu } from './ui.js';
@@ -61,7 +62,7 @@ function filters() {
   return { ...settings, classes: new Set(settings.classes), speedBins: new Set(settings.speedBins),
     rampTiers: new Set(settings.rampTiers || RAMP_TIERS.map((_, i) => i)), zoom: mapView.zoom() };
 }
-function saveSettings() { save(SETTINGS_KEY, settings); }
+function saveSettings() { save(SETTINGS_KEY, settings); A.dataChanged(); }
 
 // ---------- setup ----------
 
@@ -73,7 +74,7 @@ const mapView = new MapView('map', {
     return { top: Sheet.wide() ? 0 : $('#topbar').getBoundingClientRect().bottom, right: 0, bottom: c.bottom, left: c.left };
   },
 });
-window.RF = { store, mapView, go: (v, arg) => go(v, arg), get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, get fly() { return fly; }, get ride() { return ride; }, setRoute: r => { routeSeq++; clearTimeout(routeTimer); setRoute(r); }, settings };
+window.RF = { store, mapView, go: (v, arg) => go(v, arg), get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, get fly() { return fly; }, get ride() { return ride; }, setRoute: r => { routeSeq++; clearTimeout(routeTimer); setRoute(r); }, settings, account: A };
 
 async function start() {
   // The side panel starts below the top bar, whose height depends on how the chips wrap.
@@ -99,10 +100,25 @@ async function start() {
   addEventListener('resize', () => mapView.updateInsets());
   mapView.setStations(store.fuel);
   mapView.setTags(tagsForMap());
-  onTagsChanged(() => { mapView.setTags(tagsForMap()); renderSoon(); });
+  onTagsChanged(() => { mapView.setTags(tagsForMap()); A.dataChanged(); renderSoon(); });
   applySettings();
   loadSavedTrip();
   addEventListener('hashchange', onLinkPasted);
+  // Signed in: settings and road tags follow the account (whichever copy changed last), and so do saved rides.
+  A.syncData({
+    get: () => ({ settings, tags: allTags() }),
+    apply: (data, { merge }) => {
+      if (data.settings) {
+        Object.assign(settings, data.settings);
+        save(SETTINGS_KEY, settings);
+        applySettings();
+        loadView();
+      }
+      if (data.tags) restoreTags(merge ? A.mergeTags(allTags(), data.tags) : data.tags);
+    },
+  });
+  A.onAccountChanged(renderSoon);
+  if (A.signedIn()) A.refresh().catch(() => { /* offline: the rides list shows when the account answers */ });
   let lastZoom = mapView.zoom();
   mapView.on('move', () => {
     loadView();
@@ -182,15 +198,20 @@ function setSetting(patch) {
 
 // ---------- trip ----------
 
-// A shared ride in the address (#r=…), opened and then taken out of the address. Whether there was one.
-function openLink() {
+// A shared ride in the address, opened and then taken out of the address: true for a long link (#r=, the ride is in
+// it), 'short' for a short one (#s=, fetched from the account service, so it opens a moment later), false for none.
+function openLink(was) {
   const fromLink = location.hash.match(/^#(?:r|trip)=([\w-]+)/);  // #trip= is the older, longer link
+  const shortLink = location.hash.match(/^#s=([\w-]+)/);
+  if (shortLink) {
+    history.replaceState(null, '', location.pathname + location.search);
+    openSharedRide(shortLink[1], was);
+    return 'short';
+  }
   if (!fromLink) return false;
-  trip = T.decodeTrip(fromLink[1]);
+  showRide(T.decodeTrip(fromLink[1]));
   history.replaceState(null, '', location.pathname + location.search);
-  go('trip');
-  const pts = trip.items.flatMap(it => it.pts);
-  if (pts.length) mapView.fit(boundsOf(pts), 12);
+  A.setRideId(null);  // someone else's ride: changes to it don't go into a ride of yours
   return true;
 }
 
@@ -199,19 +220,22 @@ function openLink() {
 function onLinkPasted() {
   if (ride || fly) return;  // not in the middle of riding or a fly-through
   const was = trip;
+  let opened;
   try {
-    if (!openLink()) return;
+    opened = openLink(was);
   } catch (e) {
     console.warn('Could not open the link', e);
     return toast('That link didn’t open a ride. It may have been cut short when it was copied.');
   }
+  if (opened !== true) return;
   tripChanged();
   if (was.items.length) toast('Opened the shared ride.', { label: 'Undo', run: () => { trip = was; tripChanged(); go('trip'); } });
 }
 
 function loadSavedTrip() {
   try {
-    if (!openLink()) {
+    // While a short link's ride is on its way, the ride saved here shows (and stays if the link doesn't open).
+    if (openLink() !== true) {
       const saved = localStorage.getItem(TRIP_KEY) || localStorage.getItem('ride-finder-trip');  // the old app's key
       if (saved) trip = T.decodeTrip(saved);
     }
@@ -221,9 +245,47 @@ function loadSavedTrip() {
   tripChanged();
 }
 
+function showRide(t) {
+  trip = t;
+  go('trip');
+  const pts = trip.items.flatMap(it => it.pts);
+  if (pts.length) mapView.fit(boundsOf(pts), 12);
+}
+
+// A short link (#s=): the ride is kept by the account service, so it's fetched first. was: the ride on screen when
+// the link was pasted into the open app, for Undo.
+async function openSharedRide(id, was) {
+  toast('Opening the shared ride…');
+  try {
+    const t = T.decodeTrip(await A.openLink(id)), wasId = A.rideId();
+    A.setRideId(null);
+    showRide(t);
+    tripChanged();
+    if (was && was.items.length) toast('Opened the shared ride.', { label: 'Undo', run: () => { trip = was; A.setRideId(wasId); tripChanged(); go('trip'); } });
+    else toast('Opened the shared ride.');
+  } catch (e) {
+    toast(e.status === 404 ? e.message : 'Couldn’t open that ride. Check your signal and open the link again.');
+  }
+}
+
+// Open a ride from your account in place of the one on screen (Undo puts that one back).
+async function openSavedRide(id) {
+  const was = trip, wasId = A.rideId();
+  try {
+    const r = await A.openRide(id);
+    showRide(T.decodeTrip(r.trip));
+    tripChanged();
+    toast(`Opened ${r.name}`, { label: 'Undo', run: () => { A.setRideId(wasId); trip = was; tripChanged(); } });
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 let routeTimer = null, routeSeq = 0;
 function tripChanged({ reroute = true } = {}) {
-  save(TRIP_KEY, T.encodeTrip(trip));
+  const packed = T.encodeTrip(trip);
+  save(TRIP_KEY, packed);
+  if (trip.items.length) A.rideChanged(packed);  // a saved ride keeps up with its changes
   mapView.setStops(trip.items.map((it, i) => ({ p: it.pts[0], label: it.label, n: i + 1, index: i })), dropStop);
   mapView.showTripRoads(trip.items.flatMap(it => it.ids || []));
   showGoogleParts = false;
@@ -852,7 +914,9 @@ function renderSoon() {
 
 function render() {
   if (dragging) return;
-  const views = { home: homeView, road: roadView, station: stationView, place: placeView, plan: planView, trip: tripView, about: aboutView };
+  // Typing in the sheet (a ride's name, a tag's note): wait until it's done, or the box would be redrawn under you.
+  if (document.activeElement && document.activeElement.matches('#sheetBody input[type=text]')) return;
+  const views = { home: homeView, road: roadView, station: stationView, place: placeView, plan: planView, trip: tripView, about: aboutView, account: accountView };
   $('#sheetBody').replaceChildren(...[(views[view] || homeView)()].flat(Infinity).filter(Boolean));
 }
 
@@ -879,9 +943,11 @@ function homeView() {
         : h('p.empty', {}, !store.roads.length || mapView.zoom() < LOAD_ZOOM ? 'Zoom in to see roads.'
           : highwaysOnly() ? 'No fast ramps or highway sweeps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
     rollerList(),
+    yourRides(3),
     h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
     h('div.foot-links', {},
+      h('button.link', { onclick: () => go('account') }, iconEl(icon.person), A.signedIn() ? 'Your rides and account' : 'Sign in to keep rides on every device'),
       h('button.link', { onclick: () => go('about') }, 'About, credits and riding safe'),
       canInstall() ? h('button.link', { onclick: install }, iconEl(icon.download), 'Install app') : '',
       updateTo ? h('button.link.update', { onclick: applyUpdate }, `Update to ${updateTo}`) : ''),
@@ -913,7 +979,7 @@ function aboutView() {
   const credit = (what, ...who) => h('li', {}, h('b', {}, what), ': ', ...who);
   return [
     backBar('About Ride Finder'),
-    h('p', {}, 'A map for finding motorcycle roads worth riding (curvy roads, fast sweepers and hills) and planning a ride on them for the time you have. Free, with no account and no ads.'),
+    h('p', {}, 'A map for finding motorcycle roads worth riding (curvy roads, fast sweepers and hills) and planning a ride on them for the time you have. Free, with no ads, and no account needed.'),
     h('div.section', {}, h('h3', {}, iconEl(icon.warn), 'Ride safe'),
       h('p.small', {}, 'Everything here comes from open map data and free services, and it can be wrong or out of date. Roads close, surfaces change, gravel and leaves wash onto curves, and many of the rural speed limits shown are estimates, not posted limits. A road marked Twisty is a description, not a dare.'),
       h('p.small', {}, h('b', {}, 'Always check conditions before you ride'), ', go by the posted signs and limits, and ride within your ability. Plan before you leave, not on the move. How and where you ride is up to you.')),
@@ -931,10 +997,118 @@ function aboutView() {
         credit('Weather', link('https://open-meteo.com/', 'Weather data by Open-Meteo.com'), ' (CC BY 4.0)'),
         credit('Map', link('https://maplibre.org/', 'MapLibre GL JS'), ', with fonts from ', link('https://openfreemap.org/', 'OpenFreeMap')))),
     h('div.section', {}, h('h3', {}, iconEl(icon.person), 'Your data'),
-      h('p.small', {}, 'No account and no tracking. Your rides and settings are saved in this browser, not on a server. Some things do get sent out to work: your stops, to the route planner; what you type in search, to the place search; and spots along your ride, to the weather service. Your location is only used when you tap My location, or when you generate a ride without picking a start. A share link has the whole ride in the link, so nothing is stored anywhere.')),
+      h('p.small', {}, 'No tracking. Without signing in, your rides, tags and settings are saved in this browser only. Some things do get sent out to work: your stops, to the route planner; what you type in search, to the place search; and spots along your ride, to the weather service. Your location is only used when you tap My location, or when you generate a ride without picking a start.'),
+      h('p.small', {}, 'If you sign in (optional), your saved rides, road tags and settings are kept in your account on Cloudflare, with your Google account’s id but not your email or name, so they’re the same on every device. A share link keeps the ride on the same service so the link can be short; anyone with the link can open it. If the service doesn’t answer, Share makes a long link with the whole ride in it instead, kept nowhere. You can take a link down, or delete your account and everything in it, from ',
+        h('button.link', { onclick: () => go('account') }, 'your account'), '.')),
     h('p.fineprint', {}, `Version ${APP_VERSION}${updateTo ? ` (${updateTo} is out: ` : ''}`,
       updateTo ? h('button.link', { onclick: applyUpdate }, 'update') : '', updateTo ? ')' : '', '.'),
     h('p.fineprint', {}, 'Ride Finder is open source: ', link('https://github.com/nosv1/claudes-ride-finder', 'github.com/nosv1/claudes-ride-finder'), '.'),
+  ];
+}
+
+// ---------- your rides & account ----------
+
+const ago = ms => {
+  const min = (Date.now() - ms) / 60000;
+  if (min < 1) return 'just now';
+  if (min < 60) return `${Math.round(min)} min ago`;
+  if (min < 24 * 60) return `${Math.round(min / 60)} h ago`;
+  if (min < 48 * 60) return 'yesterday';
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+function rideCard(r, { remove = false } = {}) {
+  const here = r.id === A.rideId();
+  return h(`div.card${here ? '.here' : ''}`, { onclick: () => here ? go('trip') : openSavedRide(r.id) },
+    iconEl(icon.route),
+    h('div.card-main', {}, h('div.card-title', {}, r.name), h('div.card-sub', {}, here ? 'On the map now' : `Saved ${ago(r.updated)}`)),
+    remove ? h('button.icon-btn', { title: 'Delete this ride', html: icon.trash, onclick: e => { e.stopPropagation(); removeRide(r); } }) : '');
+}
+
+// Signed in: your latest rides on the home list; the rest are on the account page.
+function yourRides(n) {
+  const rides = A.signedIn() && A.account.rides;
+  if (!rides || !rides.length) return null;
+  return h('div.section', {},
+    h('div.section-head', {}, h('h3', {}, 'Your rides'),
+      rides.length > n ? h('button.link', { onclick: () => go('account') }, `All ${rides.length}`) : ''),
+    h('div.cards', {}, rides.slice(0, n).map(r => rideCard(r))));
+}
+
+async function removeRide(r) {
+  try {
+    const gone = await A.deleteRide(r.id);
+    toast(`Deleted ${r.name}`, { label: 'Undo', run: () => A.saveRide(gone.name, gone.trip, { open: false }).catch(e => toast(e.message)) });
+  } catch (e) { toast(e.message); }
+}
+
+// On the ride page: save it to your rides, or, once it's there, its name and whether its changes are saved.
+function saveRow() {
+  if (!A.signedIn()) {
+    return h('button.link.save-link', { onclick: () => go('account') }, iconEl(icon.person), 'Sign in to keep this ride on every device');
+  }
+  const id = A.rideId();
+  if (!id) {
+    return h('button.btn.wide.save-btn', { onclick: async () => {
+      try {
+        await A.saveRide(P.tripName(trip).replace(/^Ride: /, ''), T.encodeTrip(trip));
+        toast('Saved to your rides. Changes save as you go.');
+      } catch (e) { toast(e.message); }
+    } }, iconEl(icon.plus), 'Save to your rides');
+  }
+  return h('div.saved-ride', {},
+    h('input.ride-name', { type: 'text', value: A.rideName(), maxlength: 120, 'aria-label': 'Ride name',
+      onkeydown: e => { if (e.key === 'Enter') e.target.blur(); },
+      onchange: e => {
+        if (!e.target.value.trim()) return renderSoon();
+        A.renameRide(id, e.target.value).catch(err => toast(err.message));
+      } }),
+    h('div.muted.small', {}, A.account.saving ? 'Saving…' : A.account.error ? A.account.error : 'In your rides. Changes save as you go.'));
+}
+
+let confirmDelete = 0;
+function accountView() {
+  const acct = A.account;
+  if (!A.signedIn()) {
+    const box = h('div.gsi');
+    if (!acct.signingIn) A.signInButton(box);
+    return [
+      backBar('Your rides on every device'),
+      h('p', {}, 'Sign in to keep your rides, road tags and settings in your account, the same on your phone and your PC. Shared rides get short links, too.'),
+      acct.signingIn ? h('p.muted', {}, 'Signing in…') : box,
+      acct.error ? h('p.error', {}, acct.error) : '',
+      h('p.muted.small', {}, 'Optional. Without it everything works as it does now, kept on this device. Your account keeps your rides, tags and settings and your Google account’s id, not your email or name. You can delete it all from here any time.'),
+    ];
+  }
+  const u = A.user(), base = location.href.split('#')[0];
+  const confirming = Date.now() - confirmDelete < 5000;
+  return [
+    backBar('Your rides', u.email || u.name),
+    acct.rides == null ? h('p.muted', {}, acct.error || 'Loading your rides…')
+      : acct.rides.length ? h('div.cards', {}, acct.rides.map(r => rideCard(r, { remove: true })))
+        : h('p.muted', {}, 'No saved rides yet. Plan one, then tap Save to your rides on its page.'),
+    acct.links.length ? h('div.section', {}, h('h3', {}, iconEl(icon.share), 'Rides you’ve shared'),
+      h('p.muted.small', {}, 'Anyone with one of these links can open the ride. Take one down and it stops working.'),
+      h('div.cards', {}, acct.links.map(l => h('div.card.link-card', {},
+        h('div.card-main', {}, h('div.card-title', {}, l.name || 'A ride'), h('div.card-sub', {}, `Shared ${ago(l.created)}`)),
+        h('button.btn.small', { onclick: () => navigator.clipboard.writeText(`${base}#s=${l.id}`).then(() => toast('Link copied.'), () => prompt('Copy this link:', `${base}#s=${l.id}`)) }, 'Copy'),
+        h('button.btn.small', { onclick: () => A.deleteLink(l.id).then(() => toast('Link taken down. It won’t open any more.'), e => toast(e.message)) }, 'Take down'))))) : '',
+    h('div.section', {}, h('h3', {}, iconEl(icon.person), 'Account'),
+      h('p.small.muted', {}, `Signed in with Google${u.name ? ` as ${u.name}` : ''}. Your rides, road tags and settings are kept in your account and show up wherever you sign in.`),
+      h('div.btn-row', {},
+        h('button.btn', { onclick: async () => { await A.signOut(); toast('Signed out. Your rides are still in your account.'); go('home'); } }, 'Sign out'),
+        h(`button.btn${confirming ? '.danger' : ''}`, { onclick: async () => {
+          if (!confirming) {
+            confirmDelete = Date.now();
+            setTimeout(renderSoon, 5100);
+            return render();
+          }
+          try {
+            await A.deleteAccount();
+            toast('Account deleted, with its rides, share links, tags and settings. This device keeps its own copy.');
+            go('home');
+          } catch (e) { toast(e.message); }
+        } }, iconEl(icon.trash), confirming ? 'Tap again to delete everything' : 'Delete account'))),
   ];
 }
 
@@ -1236,6 +1410,7 @@ function tripView() {
       h('div.btn-row', {},
         h('button.btn.primary', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
         h('button.btn', { onclick: () => startPicking('start') }, iconEl(icon.pin), 'Pick a start')),
+      yourRides(5),
     ];
   }
   // Stops first: nothing above them changes height as the route is worked out again, so after
@@ -1252,6 +1427,7 @@ function tripView() {
       h('button.btn', { onclick: async () => {
         try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'Start from me')),
+    saveRow(),
     h('div.section', {}, routeSummary()),
     weatherSection(),
     h('div.section', {},
@@ -1271,12 +1447,14 @@ function tripView() {
 }
 
 // No "are you sure": an Undo in the toast instead.
+// A saved ride stays as it was in your rides: clearing starts a new one.
 function clearRide() {
-  const was = trip.items;
+  const was = trip.items, wasId = A.rideId();
   trip.items = [];
   gen.index = -1;
+  A.setRideId(null);
   tripChanged();
-  toast('Ride cleared', { label: 'Undo', run: () => { trip.items = was; tripChanged(); } });
+  toast('Ride cleared', { label: 'Undo', run: () => { trip.items = was; A.setRideId(wasId); tripChanged(); } });
 }
 
 // What a ride is made of, kept per route and filters (filters can change after routing, and render runs often).
@@ -1651,14 +1829,27 @@ function downloadGpx() {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+// A short link (#s=) from the account service when it answers within a few seconds, else the long link with the
+// whole ride in it (#r=). Waiting on the service can use up the tap that lets a page open the share sheet; then a
+// toast offers the sheet again with a fresh tap.
+let sharing = false;
 async function shareTrip() {
-  const url = location.href.split('#')[0] + '#r=' + T.encodeTrip(trip);
-  try {
-    if (navigator.share) await navigator.share({ title: P.tripName(trip), url });
-    else { await navigator.clipboard.writeText(url); toast('Link copied. Anyone with it can open this ride.'); }
-  } catch (e) {
-    if (e.name !== 'AbortError') prompt('Copy this link:', url);
-  }
+  if (sharing) return;
+  sharing = true;
+  const packed = T.encodeTrip(trip), base = location.href.split('#')[0], title = P.tripName(trip);
+  const id = await A.shortLink(packed, title.replace(/^Ride: /, ''));
+  sharing = false;
+  const url = id ? `${base}#s=${id}` : `${base}#r=${packed}`;
+  const send = async () => {
+    try {
+      if (navigator.share) await navigator.share({ title, url });
+      else { await navigator.clipboard.writeText(url); toast('Link copied. Anyone with it can open this ride.'); }
+    } catch (e) {
+      if (e.name === 'NotAllowedError') toast('Your link is ready', { label: navigator.share ? 'Share' : 'Copy', run: send });
+      else if (e.name !== 'AbortError') prompt('Copy this link:', url);
+    }
+  };
+  send();
 }
 
 // ---------- top bar: search & chips ----------
@@ -1767,6 +1958,7 @@ $('#qClear').addEventListener('click', () => {
   if (view === 'place') go('home');
   q.focus();
 });
+$('#sheetBody').addEventListener('focusout', e => { if (e.target.matches('input[type=text]')) setTimeout(renderSoon); });
 document.addEventListener('keydown', e => {
   if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); }
   if (e.key === 'Escape') closeMenu();

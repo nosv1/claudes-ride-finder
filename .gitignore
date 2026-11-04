@@ -2,3 +2,6 @@
 raw/
 .vscode/
 __pycache__/
+
+# Cloudflare dev state and local database (tests/worker.test.mjs)
+worker/.wrangler/

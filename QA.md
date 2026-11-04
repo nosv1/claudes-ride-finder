@@ -123,6 +123,20 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - With the router down or busy (DevTools → Network → block `valhalla1.openstreetmap.de` and `router.project-osrm.org`),
   a ride says why it couldn't route, and so does Generate.
 
+## Accounts
+
+- Home list: "Sign in to keep rides on every device" opens the account page with Google's Sign in button. Sign in
+  with your Google account: the page becomes Your rides, with your email under the title.
+- On a ride: Save to your rides. The name box and "In your rides. Changes save as you go." show; rename it; add a
+  stop: "Saving…", then saved.
+- On the phone: sign in with the same account. The ride is under Your rides on the home list; tapping it opens it
+  with the same stops. A setting changed on the PC (say 50+ mph) and a road tag show on the phone after reopening.
+- Share a ride: the link is short (`…#s=` and 10 characters) and opens the ride in a private window, signed out.
+  It's listed under Rides you’ve shared; Take down makes it stop opening.
+- Clear all: the saved ride stays as it was in Your rides; Undo brings it back on screen.
+- Sign out, then sign in again: everything's still there. Delete account (tap twice): you're signed out and the
+  rides are gone from the other device too after it reopens.
+
 ## Looks and layout
 
 - Nothing wraps awkwardly or gets cut off in the side panel (buttons, chips, card text), on desktop or phone.

@@ -11,28 +11,10 @@ Ideas that came up, roughly in order of how much they'd help.
   is normal for Esri; restrict it to the site's address). A key-free alternative is OpenFreeMap's vector styles
   (already used for the fonts), but they look different and have no satellite. Fine to leave as is while it's a
   handful of friends.
-- **Accounts: your rides on every device, and short share links** (decided 2026-11-04; waiting on the rider's
-  two free accounts). Signing in is optional; without it the app works as now, and anyone can open a shared ride.
-  - **What it adds:** rides saved under your account and synced between PC and phone (today one ride per browser),
-    a list of named saved rides, starred roads, settings, and short share links you own and can take down.
-  - **Short links:** `…/claudes-ride-finder/#s=<id>`, ~55 characters (packed `#r=` links are ~380 for 3 h, ~780 for
-    6 h, and still fill a Discord box or an iMessage). The id is 10 characters from the ride's hash: same ride,
-    same link, and too long to guess, which matters since a start is often someone's home. A shared ride opens
-    without signing in. If the service doesn't answer in ~3 s, Share falls back to the `#r=` link. A free is.gd
-    link was ruled out: guessable codes, and it would hold the whole ride.
-  - **How:** all on Cloudflare's free tier, one account: a Worker for the API, D1 (or KV) for rides and links,
-    later R2 for the tiles (see Bottlenecks). Sign in with Google (Google Identity Services in the page; the Worker
-    checks the ID token against Google's keys). Apple sign-in needs the $99/yr developer account, so later.
-    Firebase (sign-in plus storage bundled) was the alternative; not chosen, to keep it to one company.
-  - **Guards:** allow only the site's origin, cap a ride at 8 KB, limit writes per user. Add it to the About
-    page's "Your data", with a way to delete your account and rides.
-  - **Needed from the rider (free, ~10 min each, walk them through it):**
-    1. A Cloudflare account (cloudflare.com).
-    2. A Google OAuth client ID for the site: Google Cloud console → new project → OAuth consent screen
-       (External, app name Ride Finder) → Credentials → OAuth client ID (Web), with authorized JavaScript origin
-       `https://nosv1.github.io` (plus `http://127.0.0.1` for testing).
-  - **Needed in Claude Code:** permission to run `npx wrangler` (it was blocked on 2026-11-04); then
-    `npx wrangler login`, which the rider approves in the browser.
+- **Accounts, what's left** (accounts shipped 2026-11-04: see FEATURES.md, Accounts). Sign in with Apple needs the
+  $99/yr developer account, so it waits for the iPhone app. Saved rides edited on two devices at once: the last save
+  wins (fine for one rider; a merge would be needed for sharing a ride to plan together). The Google consent screen
+  has no logo on purpose: adding one means Google reviews the app first.
 - **A proper app, still on PC**: one codebase for all three. Android: wrap the web app for the Play Store
   (Trusted Web Activity via Bubblewrap; $25 once). iPhone: Capacitor wrapper ($99/yr developer account,
   built on a Mac or a cloud build). PC keeps using the website or the installed web app. Worth it mainly for
