@@ -72,7 +72,7 @@ export function turnOnto(t) {
 }
 
 // An arrow for a Valhalla maneuver type.
-const RIGHT = new Set([9, 10, 11, 18, 20, 23, 36]), LEFT = new Set([14, 15, 16, 19, 21, 24, 37]);
+const RIGHT = new Set([9, 10, 11, 18, 20, 23, 37]), LEFT = new Set([14, 15, 16, 19, 21, 24, 38]);  // 37, 38: merge right, left
 export const turnArrow = type => RIGHT.has(type) ? '↱' : LEFT.has(type) ? '↰' : type === 12 || type === 13 ? '↶'
   : type === 26 || type === 27 ? '⟲' : '↑';
 

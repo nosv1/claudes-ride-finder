@@ -32,6 +32,12 @@ Ideas that came up, roughly in order of how much they'd help.
   a free tier (Stadia Maps; check its current limits and price). Either way, keep the motorcycle costing
   and point `valhalla` in `js/config.js` at it. Photon search and Open-Meteo weather are fine for a group
   of riders as they are.
+- **Natural recorded voices**: Ride mode speaks with recorded clips (they play over music on iPhone), recorded for now
+  with Windows' robotic Zira and David. `tools/make_voice.py` is set up for Kokoro (free, open, natural voices: Heart,
+  Michael, Emma), which needs `pip install kokoro-onnx soundfile` and its model files (about 115 MB, in `raw/kokoro/`,
+  not committed); installing it needs the rider's OK. Then `python tools/make_voice.py` records them and they're the
+  default. Road names in the recorded voice would need clips made per ride on a server (Cloudflare Workers AI has
+  text-to-speech; the accounts Worker could do it), fetched when the ride starts.
 - **Ride mode next** (Ride mode is in, 2026-11-04): gas callouts ("Casey's in 4 mi, next gas 38 mi"), the ridden track
   saved (for Roads you've ridden), Valhalla avoiding roads tagged Don't ride between stops (`exclude_polygons` or
   `avoid_locations`), and screen-off guidance, which needs a native app (see the Play Store / iPhone entry).

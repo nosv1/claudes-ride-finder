@@ -70,6 +70,7 @@ async function valhalla(pts, useHighways, uTurns) {
           km: m.length * 1.609, s: m.time, names: m.street_names || [], text: m.instruction || '',
           // What Ride mode says: a heads-up a way off, and the call as the turn comes up.
           alert: m.verbal_transition_alert_instruction || '', pre: m.verbal_pre_transition_instruction || '',
+          exit: m.roundabout_exit_count || 0,  // which exit off a roundabout
         });
       }
       result.path.push(...decodePolyline(leg.shape));

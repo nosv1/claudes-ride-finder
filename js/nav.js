@@ -165,19 +165,35 @@ export function shown(m) {
 
 const lowerFirst = s => s ? s[0].toLowerCase() + s.slice(1) : s;
 
+// The recorded clips for a turn (voice/phrases.json): what to do, and which exit off a roundabout; and for a heads-up
+// distance (they come between about 500 feet and a mile out).
+const ACTION = { 9: 'bearright', 10: 'right', 11: 'sharpright', 12: 'uturn', 13: 'uturn', 14: 'sharpleft', 15: 'left', 16: 'bearleft',
+  17: 'ramp', 18: 'rampright', 19: 'rampleft', 20: 'exitright', 21: 'exitleft', 23: 'keepright', 24: 'keepleft',
+  25: 'merge', 37: 'merge', 38: 'merge', 26: 'roundabout', 28: 'ferry' };
+export function turnClips(turn) {
+  const a = ACTION[turn.type] || 'continue';
+  return a === 'roundabout' && turn.exit >= 1 && turn.exit <= 4 ? [a, `exit${turn.exit}`] : [a];
+}
+export function distanceClip(m) {
+  const mi = m / 1609.34;
+  return mi < 0.18 ? 'd500ft' : mi < 0.375 ? 'dquarter' : mi < 0.625 ? 'dhalf' : mi < 0.875 ? 'd3quarter' : 'd1';
+}
+
 // What to say about a turn inM ahead at speed (m/s): a heads-up a way off ("In half a mile, turn right onto MO D"),
-// then the call as it comes up, each once (marked on the turn). Text, or null.
+// then the call as it comes up, each once (marked on the turn). { text, clips } (the words for the phone's voice, the
+// recorded clips otherwise), or null. Not the arrival: the end of the ride says that.
 export function callout(turn, inM, speed) {
+  if (ARRIVE.has(turn.type)) return null;
   const v = Math.max(speed || 0, 8);
   const callM = Math.max(NAV.callM, v * NAV.callS), headsUpM = Math.max(NAV.headsUpM, v * NAV.headsUpS);
   if (inM <= callM) {
     if (turn.said === 'call') return null;
     turn.said = 'call';
-    return turn.pre || turn.text;
+    return { text: turn.pre || turn.text, clips: turnClips(turn) };
   }
   if (inM <= headsUpM && inM > callM * 1.6 && !turn.said) {
     turn.said = 'heads-up';
-    return `In ${spoken(inM)}, ${lowerFirst((turn.alert || turn.text).replace(/\.$/, ''))}.`;
+    return { text: `In ${spoken(inM)}, ${lowerFirst((turn.alert || turn.text).replace(/\.$/, ''))}.`, clips: [distanceClip(inM), ...turnClips(turn)] };
   }
   return null;
 }

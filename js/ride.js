@@ -8,7 +8,16 @@ import { bearing, distance, relAngle, miles, fmtDuration } from './geo.js';
 import { turnArrow, turnOnto, turn } from './fly.js';
 import { icon, h, toast } from './ui.js';
 import { TAGS } from './tags.js';
-import { speak } from './voice.js';
+import { speak, hush, preload } from './voice.js';
+
+// What Ride mode says besides the turns: the words (for the phone's voice) and the recorded clip.
+const LINES = {
+  start: 'Starting your ride.', detour: 'Here’s a way back to your ride.', skipahead: 'Finding a way back further on.',
+  voiceon: 'Voice on.', off: 'You’re off the ride. Finding a way back.', back: 'Back on your ride.',
+  skipped: 'Picking up your ride from here.', crest: 'Blind crest ahead.',
+  arrive: 'You’ve arrived. Nice ride.', arriveloop: 'You’re back where you started. Nice ride.',
+};
+const line = k => ({ text: LINES[k], clips: [k] });
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const clock = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -31,7 +40,7 @@ export class Ride {
     this.loop = loop;
     this.onClose = onClose;
     this.crests = (crests || []).map(c => ({ m: c.mile * 1609.34 }));
-    this.guide = new Guide(route, { reroute, onDetour: () => { this.say('Here’s a way back to your ride.'); this.showDetour(); this.update(); } });
+    this.guide = new Guide(route, { reroute, onDetour: () => { this.say(line('detour')); this.showDetour(); this.update(); } });
     this.fix = null;          // the latest GPS fix
     this.shownAt = null;      // where the arrow is drawn, gliding from fix to fix
     this.glide = null;        // { from, to, t0, ms }
@@ -59,7 +68,8 @@ export class Ride {
     this.awake = () => { if (!document.hidden) this.keepAwake(); };
     document.addEventListener('visibilitychange', this.awake);
     this.keepAwake();
-    this.say('Starting your ride.');  // in the tap that opened Ride mode: iPhones only talk once a tap has let them
+    this.say(line('start'));  // in the tap that opened Ride mode: iPhones only play sound once a tap has let them
+    preload();  // every clip, while there's signal
     this.watch = navigator.geolocation ? navigator.geolocation.watchPosition(p => this.onFix(p), e => this.gpsError(e),
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }) : null;
     if (this.watch == null) this.gpsError({ code: 2 });
@@ -75,7 +85,7 @@ export class Ride {
     this.distEl = h('div.ride-dist');
     this.ontoEl = h('div.ride-onto');
     this.thenEl = h('div.ride-then', { hidden: true });
-    this.skipBtn = h('button.btn.small.ride-skip', { hidden: true, onclick: () => { this.guide.skip(); this.say('Finding a way back further on.'); this.update(); } }, 'Skip ahead');
+    this.skipBtn = h('button.btn.small.ride-skip', { hidden: true, onclick: () => { this.guide.skip(); this.say(line('skipahead')); this.update(); } }, 'Skip ahead');
     this.banner = h('div.ride-banner', {}, h('div.ride-next', {}, this.arrowEl, h('div.ride-words', {}, this.distEl, this.ontoEl)),
       this.thenEl, this.skipBtn);
     this.crestEl = h('div.fly-crest.ride-crest', { hidden: true });
@@ -109,13 +119,14 @@ export class Ride {
   setVoice(on, quiet = false) {
     this.voice = on;
     this.voiceBtn.replaceChildren(h('span', { html: on ? icon.sound : icon.mute }), on ? 'Voice on' : 'Voice off');
-    if (!on && globalThis.speechSynthesis) speechSynthesis.cancel();
-    if (!quiet) { this.onVoice(on); if (on) this.say('Voice on.'); }
+    if (!on) hush();
+    if (!quiet) { this.onVoice(on); if (on) this.say(line('voiceon')); }
   }
 
-  say(text) {
-    this.lastSaid = text;
-    if (this.voice) speak(text);
+  // A phrase: { text, clips }.
+  say(phrase) {
+    this.lastSaid = phrase.text;
+    if (this.voice) speak(phrase);
   }
 
   async keepAwake() {
@@ -144,9 +155,8 @@ export class Ride {
     this.fix = f;
     this.gpsTrouble = null;
     const event = this.guide.fix(f);
-    if (event === 'off') this.say('You’re off the ride. Finding a way back.');
-    else if (event === 'back') { this.say('Back on your ride.'); this.showDetour(); }
-    else if (event === 'skipped') { this.say('Picking up your ride from here.'); this.showDetour(); }
+    if (event === 'off') this.say(line('off'));
+    else if (event === 'back' || event === 'skipped') { this.say(line(event)); this.showDetour(); }
     else if (event === 'done') this.finish();
     // On the ride, the arrow sits on its line; off it, where the GPS says.
     const leg = this.guide.leg.track, at = leg.on && leg.spot && leg.spot.d < 30 ? leg.spot.p : p;
@@ -161,11 +171,11 @@ export class Ride {
   speak() {
     if (this.guide.done) return;
     const [next] = this.guide.upcoming(1), v = this.fix.speed;
-    const text = next && callout(next.turn, next.inM, v);
-    if (text) return this.say(text);
+    const call = next && callout(next.turn, next.inM, v);
+    if (call) return this.say(call);
     if (this.guide.state !== 'on') return;
     const m = this.guide.main.m, c = this.crests.find(x => x.m - m > 0 && x.m - m < Math.max(150, v * 12));
-    if (c && !c.said) { c.said = true; this.say('Blind crest ahead.'); }
+    if (c && !c.said) { c.said = true; this.say(line('crest')); }
   }
 
   frame(now) {
@@ -223,7 +233,7 @@ export class Ride {
   }
 
   finish() {
-    this.say(this.loop ? 'You’re back where you started. Nice ride.' : 'You’ve arrived. Nice ride.');
+    this.say(line(this.loop ? 'arriveloop' : 'arrive'));
     this.doneEl.replaceChildren(
       h('b', {}, this.loop ? 'Back where you started' : 'You made it'),
       h('div.muted', {}, `${miles(this.ridden)} mi ridden in ${fmtDuration((Date.now() - this.t0) / 1000)}`),
@@ -288,7 +298,7 @@ export class Ride {
     if (this.watch != null) navigator.geolocation.clearWatch(this.watch);
     cancelAnimationFrame(this.raf);
     clearTimeout(this.ending);
-    if (globalThis.speechSynthesis) speechSynthesis.cancel();
+    hush();
     if (this.lock) this.lock.release().catch(() => {});
     document.removeEventListener('visibilitychange', this.awake);
     removeEventListener('resize', this.resize);

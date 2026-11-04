@@ -10,7 +10,7 @@ import { profile } from './elevation.js';
 import * as W from './weather.js';
 import { Fly } from './fly.js';
 import { Ride } from './ride.js';
-import { voices, voicePick, setVoicePick, speak, SAMPLE, RATES } from './voice.js';
+import { phoneVoices, recorded, loadVoices, voicePick, setVoicePick, speak, SAMPLE, RATES } from './voice.js';
 import { TAGS, allTags, tagOf, setTags, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged } from './tags.js';
 import * as A from './account.js';
 import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox, loadSignals } from './store.js';
@@ -105,6 +105,7 @@ async function start() {
   applySettings();
   loadSavedTrip();
   addEventListener('hashchange', onLinkPasted);
+  loadVoices().then(() => { if (view === 'trip') renderSoon(); });
   // Phones list their voices a moment after the page loads.
   if (globalThis.speechSynthesis) speechSynthesis.addEventListener('voiceschanged', () => { if (view === 'trip') renderSoon(); });
   // Signed in: settings and road tags follow the account (whichever copy changed last), and so do saved rides.
@@ -1873,22 +1874,27 @@ function exportSection() {
     h('p.fineprint', {}, 'Google Maps gets extra stops just past key turns so it sticks to this route (skip one and it sends you back for it). GPX keeps the exact route for riding apps (OsmAnd is free).'));
 }
 
-// Ride mode's voice and how fast it talks, with a sample on each change (and Test).
+// Ride mode's voice and how fast it talks, with a sample on each change (and Test). Recorded voices first: on iPhone
+// they play over your music, where the phone's own voices stop it.
 function voiceField() {
-  const list = voices(), pick = voicePick();
+  const pick = voicePick(), phone = phoneVoices();
   const set = patch => { const p = { ...voicePick(), ...patch }; setVoicePick(p); speak(SAMPLE, p); renderSoon(); };
+  const choose = value => set(value.startsWith('rec:') ? { id: value.slice(4), phone: false } : { phone: true, uri: value.slice(6) });
+  const now = pick.phone ? `phone:${pick.uri || ''}` : `rec:${pick.id}`;
+  const opt = (value, label) => h('option', { value, selected: value === now }, label);
   return h('div.field.voice-field', {}, h('label', {}, 'Voice'),
     h('div.voice-row', {},
-      h('select', { onchange: e => set({ uri: e.target.value }), 'aria-label': 'Voice' },
-        h('option', { value: '' }, 'Phone’s default'),
-        list.map(v => h('option', { value: v.voiceURI, selected: v.voiceURI === pick.uri }, v.lang === 'en-US' ? v.name : `${v.name} (${v.lang.slice(3) || v.lang})`))),
+      h('select', { onchange: e => choose(e.target.value), 'aria-label': 'Voice' },
+        recorded().length ? h('optgroup', { label: 'Keep your music playing' }, recorded().map(v => opt(`rec:${v.id}`, v.label))) : '',
+        h('optgroup', { label: 'Your phone’s voices: say road names, stop music on iPhone' },
+          opt('phone:', 'Phone’s default'),
+          phone.map(v => opt(`phone:${v.voiceURI}`, v.lang === 'en-US' ? v.name : `${v.name} (${v.lang.slice(3) || v.lang})`)))),
       h('button.btn.small', { onclick: () => speak(SAMPLE) }, iconEl(icon.sound), 'Test')),
     h('div.seg', {}, RATES.map(([v, l]) => h(`button${String(pick.rate || '1') === v ? '.on' : ''}`, { onclick: () => set({ rate: v }) }, l))),
-    h('p.fineprint', {}, iPhone()
-      ? 'More voices: Settings → Accessibility → Spoken Content → Voices → English. Download an Enhanced or Premium one and it shows up here.'
-      : 'Voices come from your phone or computer; ones marked Natural or Enhanced sound best.',
-      // Opens in the same window, so in the installed app it tests the installed app.
-      ' Music stops when it talks? ', h('a', { href: 'sound-check.html' }, 'Sound check'), ' finds what this phone allows.'));
+    h('p.fineprint', {}, pick.phone
+      ? ['Your phone’s voices say road names, but on iPhone they stop your music. ',
+        iPhone() ? 'More voices: Settings → Accessibility → Spoken Content → Voices → English (Enhanced or Premium ones sound best).' : '']
+      : 'Recorded voices play over your music, at its volume, and work without signal. They don’t say road names: the banner shows them.'));
 }
 
 function openGoogle() {

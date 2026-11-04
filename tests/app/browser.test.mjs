@@ -503,14 +503,17 @@ test('fly-through: rides the route low in 3D, plays and pauses, seeks, and puts 
 // Ride mode on MO-150: a fake GPS (the test hands the app each fix) and a voice that writes down what it says.
 test('Ride mode: follows you along the ride, says the turn, notices you left it, tags the road you’re on, and ends', async () => {
   await page.eval(pointTrip);
-  await page.eval(`(() => {
+  await page.eval(`(async () => {
     const g = RF.store.byId.get(${MO150}).geom, mid = Math.floor(g.length / 2);
     RF.setRoute({ path: g, meters: 5000, seconds: 300, maneuvers: [
       { type: 1, at: 0, end: mid, s: 150, km: 2.5, names: ['MO 150'], text: 'Head east on MO 150.' },
       { type: 10, at: mid, end: g.length - 1, s: 150, km: 2.5, names: ['MO Y'], text: 'Turn right onto MO Y.', alert: 'Turn right onto Missouri Y.', pre: 'Turn right onto Missouri Y.' },
       { type: 4, at: g.length - 1, end: g.length - 1, s: 0, km: 0, names: [], text: 'You have arrived.' }] });
-    window.__said = [];
-    speechSynthesis.speak = u => __said.push(u.text);
+    // What's said, in words, whichever voice says it (the recorded clips by default).
+    const V = await import('./js/voice.js');
+    V.log.length = 0;
+    window.__said = V.log;
+    speechSynthesis.speak = () => {};
     navigator.geolocation.watchPosition = ok => { window.__gps = ok; return 7; };
     navigator.geolocation.clearWatch = id => { window.__cleared = id; };
     RF.go('trip');
@@ -527,6 +530,8 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   assert.equal(await page.eval("getComputedStyle(document.getElementById('sheet')).display"), 'none', 'the panel steps aside');
   assert.match(await page.eval("document.querySelector('.ride-banner').innerText"), /Finding you/);
   assert.ok(await page.eval("__said.includes('Starting your ride.')"));
+  // In the recorded voice (it plays over music on iPhone), every clip loaded at the start for riding without signal.
+  await page.waitFor("import('./js/voice.js').then(V => V.clipsLoaded() >= 38)", 15000);
   // GPS fixes riding along the road, at 50 mph.
   const gps = (k, off = 0) => page.eval(`(() => {
     const g = RF.store.byId.get(${MO150}).geom, i = Math.min(g.length - 2, ${k});

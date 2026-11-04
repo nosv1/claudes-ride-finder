@@ -725,7 +725,7 @@ test('the app says the same version as version.json (tools/bump_version.mjs sets
 });
 
 // ---------- Ride mode (nav.js) and road tags (tags.js) ----------
-import { Track, Guide, rejoinTarget, turnsOf, callout, spoken, shown } from '../../js/nav.js';
+import { Track, Guide, rejoinTarget, turnsOf, callout, spoken, shown, turnClips, distanceClip } from '../../js/nav.js';
 import { setTags, tagOf, weightOf, avoidedIds, restoreTags, allTags, thin, tagsForMap } from '../../js/tags.js';
 
 // An L: ~2.2 km north, then ~2.2 km east, with a stop at the corner (the router ends a leg there and starts the next
@@ -836,15 +836,33 @@ test('Ride mode: the end of the ride is the end', () => {
   assert.equal(g.state, 'done');
 });
 
-test('Ride mode: a heads-up, then the call, each once', () => {
+test('Ride mode: a heads-up, then the call, each once, in words and in recorded clips', () => {
   const turn = { type: 10, text: 'Turn right onto MO Y', alert: 'Turn right onto Missouri Y.', pre: 'Turn right onto Missouri Y. Then turn left.' };
   assert.equal(callout(turn, 3000, 20), null, 'too far yet');
-  assert.equal(callout(turn, 650, 20), 'In half a mile, turn right onto Missouri Y.');
+  assert.deepEqual(callout(turn, 650, 20), { text: 'In half a mile, turn right onto Missouri Y.', clips: ['dhalf', 'right'] });
   assert.equal(callout(turn, 600, 20), null);
-  assert.equal(callout(turn, 170, 20), 'Turn right onto Missouri Y. Then turn left.');
+  assert.deepEqual(callout(turn, 170, 20), { text: 'Turn right onto Missouri Y. Then turn left.', clips: ['right'] });
   assert.equal(callout(turn, 100, 20), null);
+  assert.deepEqual(callout({ type: 26, exit: 2, text: 'Enter the roundabout' }, 100, 10).clips, ['roundabout', 'exit2']);
+  assert.equal(callout({ type: 4, text: 'You have arrived.' }, 100, 10), null, 'the end of the ride says that');
   assert.deepEqual([spoken(100), spoken(1609), spoken(5000), spoken(20000)], ['300 feet', '1 mile', '3 miles', '12 miles']);
   assert.deepEqual([shown(90), shown(800), shown(30000)], ['300 ft', '0.5 mi', '19 mi']);
+});
+
+test('Ride mode: every clip it can ask for is recorded, in every voice', async () => {
+  const { readdirSync } = await import('node:fs');
+  const phrases = JSON.parse(readFileSync(new URL('../../voice/phrases.json', import.meta.url), 'utf8'));
+  const voices = JSON.parse(readFileSync(new URL('../../voice/voices.json', import.meta.url), 'utf8'));
+  const asked = new Set(['continue', 'arrive', 'arriveloop', 'start', 'off', 'detour', 'back', 'skipped', 'skipahead', 'crest', 'voiceon',
+    ...[9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24, 25, 26, 28, 37, 38].flatMap(type => turnClips({ type })),
+    ...[1, 2, 3, 4].map(exit => `exit${exit}`), ...[100, 400, 800, 1200, 1500].map(distanceClip)]);
+  for (const k of asked) assert.ok(phrases[k], `a phrase for ${k}`);
+  assert.ok(voices.length >= 1);
+  for (const v of voices) {
+    const files = new Set(readdirSync(new URL(`../../voice/${v.id}/`, import.meta.url)));
+    for (const k of Object.keys(phrases)) assert.ok(files.has(`${k}.${v.ext}`), `${v.id}/${k}.${v.ext}`);
+    if (v.chime) assert.ok(existsSync(new URL('../../voice/chime.wav', import.meta.url)), 'the beep-boop');
+  }
 });
 
 test('road tags: a stretch tagged, found by any of its pieces, left out or ranked by its tags, and undone', () => {

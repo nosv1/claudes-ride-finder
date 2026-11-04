@@ -603,16 +603,24 @@ colored road), Add a stop here, Street View here.
   the next is within 400 m). **Voice** (on by default, the setting kept): a heads-up about 35 s ahead (at least
   700 m: "In half a mile, turn right onto Missouri D") and the call about 9 s ahead (at least 120 m), each once, plus
   "Blind crest ahead", off/back/rejoined, and the arrival. Spoken in the tap that starts it (iPhones need that).
-- **Which voice** (`js/voice.js`): on the ride page under Ride it, the phone's English voices (Premium, Enhanced and
-  Natural ones first), Slower / Normal / Faster, and Test; each change says a sample. Kept on the device
-  (`rf2-voice-pick`: each phone has its own voices). On iPhone it says where to download better voices.
-- **Music**: each call sets Safari's audio session to `transient` (`navigator.audioSession`), which is meant to turn
-  other apps' audio down under the voice and back up after, instead of taking over (which stops the music for good).
-  Whether Safari's speech follows it is up to iOS (WebKit's support is patchy); a native app can duck music reliably.
-  On the rider's iPhone (home-screen app, 2026-11-04) the music stopped and didn't come back. **Sound check**
-  (`sound-check.html`, linked under the voice picker, opening in the same window so it tests the installed app) plays
-  the voice and a recorded clip (`sound-check.wav`) under each audio session type, to find which leave the music
-  playing; Ride mode's voice then follows whichever does. Every browser on iPhone is Safari underneath (Edge too).
+- **The voice** (`js/voice.js`): **recorded clips** by default, because on iPhone an audio file plays over music in
+  another app while the phone's own voice stops it for good (the rider's Sound check, 2026-11-04: speech under any
+  audio session stopped the music; an `<audio>` file with the `transient` or `ambient` session kept it playing, at the
+  same volume; a plain one stopped it; Web Audio made no sound). Every browser on iPhone is Safari underneath.
+  - The phrases are in `voice/phrases.json` (distances "In half a mile,", actions "Turn right.", roundabout exits,
+    and the other lines); `python tools/make_voice.py` records each voice into `voice/<id>/` (trimmed,
+    turned up to just under full volume, 16 kHz WAV) and lists them in `voice/voices.json`. A heads-up is two clips
+    back to back ("In half a mile," + "Turn right."). Clips can't say road names; the banner shows them.
+  - All of a voice's clips load into memory when a ride starts (Safari plays audio from the site in parts, which an
+    offline cache can't serve), so the calls work without signal. One player for all of them, first played by the
+    tap that starts the ride (iPhones only allow sound after a tap).
+  - Voices now: Zira and David (Windows' built-in, robotic), labelled "(robot)". A robotic voice beeps first
+    (`voice/chime.wav`: a high note then a lower one, like an old computer, made by `make_voice.py`), so it comes
+    across as a robot calling in rather than one trying to pass for a person; `"chime": true` in `voices.json`. Natural ones (Kokoro) are set up in `make_voice.py` and
+    wait on installing it (BACKLOG.md).
+  - On the ride page under Ride it: the recorded voices ("Keep your music playing") and the phone's voices ("say
+    road names, stop music on iPhone"), Slower / Normal / Faster, and Test; each change plays a sample. Kept on the
+    device (`rf2-voice-pick`). **Sound check** (`sound-check.html`, `sound-check.wav`) stays for checking other phones.
 - **The map**: heading-up, tilted 50°, you low on the screen as a blue arrow gliding between fixes, closer in slowly and
   further out at speed (a pinch is kept); the part ridden greys out. A finger or mouse on the map holds the camera
   still (moving it every frame would cancel the drag as it starts); a drag stops following: **Recenter**. A tap doesn't.

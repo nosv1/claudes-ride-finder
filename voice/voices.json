@@ -1,0 +1,14 @@
+[
+ {
+  "id": "zira",
+  "label": "Zira (robot)",
+  "ext": "wav",
+  "chime": true
+ },
+ {
+  "id": "david",
+  "label": "David (robot)",
+  "ext": "wav",
+  "chime": true
+ }
+]

@@ -40,7 +40,7 @@ async function networkFirst(req, name) {
     // Asks the site each time (a quick "not modified" when nothing changed): GitHub Pages lets browsers reuse
     // files for 10 minutes, which held updates back.
     const res = await fetch(req, { cache: 'no-cache' });
-    if (res.ok) cache.put(req, res.clone());
+    if (res.status === 200) cache.put(req, res.clone());  // not a 206 (part of an audio file)
     return res;
   } catch (e) {
     return (await cache.match(req)) || Response.error();

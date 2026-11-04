@@ -92,8 +92,9 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   "Picking up your ride from here". Ride off the route: within a few seconds "off the ride", a purple way back, and
   it never sends you back to where you left. Skip ahead aims further on.
 - Drag the map mid-ride: it moves and stays; Recenter brings it back. A tap on the map doesn't stop following.
-- The voice: pick one on the ride page (Test says a sample), ride, and it's that voice. With music playing in another
-  app: does it dip under the voice and come back, or stop? (Report back: that's up to iOS.)
+- The voice, with music playing in another app: the recorded voice plays over it and the music keeps going. Pick
+  another on the ride page (Test plays a sample); a phone voice says road names but stops the music. Start a ride,
+  turn off data (airplane mode with Wi-Fi off): the calls still play. ✱ With the ring switch on silent, is it heard?
 - Speed against the bike's speedometer at a steady 45: the GPS usually reads 1–3 mph lower (speedos read high).
 - Tag road while riding (big buttons, gloves) tags about a mile of the road you're on; it shows on the map after.
 - Speed and speed limit look right; miles left goes down; End needs two taps; the arrival says miles and time.
