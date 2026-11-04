@@ -155,6 +155,25 @@ test('Share makes a short link that opens the ride without signing in, and shows
   await phone.waitFor("document.getElementById('sheetBody').innerText.includes('Rides you’ve shared')");
 });
 
+test('a ride deleted on the PC leaves the phone’s list when the phone comes back to the app', async () => {
+  const id = await pc.eval('RF.account.rideId()');
+  assert.equal(await phone.eval('RF.account.rideId()'), id, 'the phone has it open');
+  const stops = await phone.eval('RF.trip.items.length');
+  await pc.eval(`RF.account.deleteRide(${JSON.stringify(id)})`);
+  // Switching back to the app: the page becomes visible again (looks are at most every 30 s, so as if it's been that long).
+  await phone.eval(`(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    Date.realNow = Date.realNow || Date.now;
+    const later = Date.realNow() + 31000;
+    Date.now = () => later;
+    document.dispatchEvent(new Event('visibilitychange'));
+    Date.now = Date.realNow;
+  })()`);
+  await phone.waitFor('RF.account.account.rides.length === 0');
+  assert.equal(await phone.eval('RF.account.rideId()'), null, 'no longer saving to the deleted ride');
+  assert.equal(await phone.eval('RF.trip.items.length'), stops, 'its stops stay on screen');
+});
+
 test('with the service down, Share falls back to the long link', async () => {
   await phone.eval(`(async () => {
     window.realFetch = window.realFetch || fetch;

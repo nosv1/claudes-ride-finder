@@ -141,6 +141,7 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Share a ride: the link is short (`…#s=` and 16 characters) and opens the ride in a private window, signed out.
   It's listed under Rides you’ve shared; Take down makes it stop opening.
 - Clear all: the saved ride stays as it was in Your rides; Undo brings it back on screen.
+- Delete a ride on the PC, then switch to the app on the phone (after 30 s or so): it's gone from Your rides there.
 - Sign out, then sign in again: everything's still there. Delete account (tap twice): you're signed out and the
   rides are gone from the other device too after it reopens.
 

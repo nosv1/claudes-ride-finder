@@ -142,8 +142,18 @@ async function findKey(id) {
   return r.keyId === kid ? k : (read(KEYS_KEY) || {})[r.keyId] || null;  // another device got there first
 }
 
+// Coming back to the app (switching to it, or unlocking the phone): changes made on another device show up. At most
+// every 30 s, so flipping between apps doesn't keep asking.
+let lastLook = 0;
+export function lookAgain() {
+  if (!session || Date.now() - lastLook < 30000) return;
+  lastLook = Date.now();
+  refresh().catch(() => { /* offline: the next look gets it */ });
+}
+
 // Your rides and links, and whichever copy of your settings and tags is newer, all unlocked here.
 export async function refresh() {
+  lastLook = Date.now();
   if (!session) return;
   const me = await api('GET', '/me'), k = await findKey(me.keyId);
   account.key = k;
@@ -152,6 +162,8 @@ export async function refresh() {
     Object.assign(account, { rides: [], links: [] });
     return changed();
   }
+  // The ride on screen was deleted on another device: it's just a ride on this one now.
+  if (rideId() && !me.rides.some(r => r.id === rideId())) write(RIDE_KEY, null);
   const old = [];  // saved before locking existed: their name came back as it is, and they're locked now
   account.rides = await Promise.all(me.rides.map(async r => {
     const name = await unlock(k, r.name);

@@ -140,7 +140,11 @@ async function start() {
   mapView.map.on('movestart', closeMenu);
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
   checkForUpdate();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    checkForUpdate();
+    A.lookAgain();  // rides, settings and tags changed on another device
+  });
 }
 
 // ---------- updates ----------

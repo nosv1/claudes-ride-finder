@@ -569,6 +569,9 @@ colored road), Add a stop here, Street View here.
   go."), and its name is editable there. **Clear all** starts a new ride (Undo puts it back, saved ride and all);
   opening a shared link does too. The home list shows the latest 3 (and the empty ride page 5) under **Your rides**;
   the account page lists them all, each with delete (with Undo). Opening one replaces the ride on screen (Undo).
+- **Other devices' changes** show when the app opens and each time you come back to it (switching to it, unlocking
+  the phone; at most every 30 s). A ride deleted elsewhere drops out of the list, and if it's the one on screen,
+  its stops stay there as an unsaved ride.
 - **Settings and road tags** follow the account as one blob with the time it last changed: whichever copy is newer
   wins when the app opens; changes are sent 2 s after they settle. The first sign-in on a device merges its tags
   with the account's (the newer tag wins where both tag a road) and takes the account's settings.
