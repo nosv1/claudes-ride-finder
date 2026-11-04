@@ -65,12 +65,28 @@ committed as `tiles/`. The app needs no OSM server at runtime.
     **60 mph** on everything else, county roads (`CR`) included. The region comes from the `.pbf` file name.
   - Regression case: the Twisted Sisters (RM 335/336/337 by Leakey) top Best roads in the Hill Country.
 
-**Hills and blind crests** (curvy roads and sweepers only)
+**Hills and blind crests** (curvy roads, sweepers and straight back roads)
 - **Hill:** total climbing plus descending in m per km, using a 2 m hysteresis.
 - **Hill levels:** flat <12, rolling ≥12, hilly ≥22, very hilly ≥35.
   - Calibrated on real roads: western Kansas ≈11, around KC ≈18, Ozarks ≈30.
 - **Blind crest corner:** a point ≥ 3 m above the average of the points 75 m before and after it, a local maximum, with a turn of radius < 120 m within 25 m before to 75 m after it.
   - One flag per crest.
+
+**Roller coasters** (straight back roads that go up and down a lot)
+- Every `primary`/`secondary`/`tertiary`/`unclassified` road over 1 km that isn't curvy or a sweeper is measured
+  too. Hilly or more (≥ 22 m/km, 115 ft/mi) makes it a roller coaster, kept in the main `x_y` tiles; the rest
+  stay speed-only (or are dropped when they have no posted limit, as before).
+  - For these roads the hills are only the climbing that's matched by dropping (2 × the smaller of up and down), so
+    one long grade doesn't count: the Red Route in Branson only goes downhill and used to read 43 m/km.
+  - A road whose smoothed profile is steeper than 18% over 100 m isn't rated: that's the hillside or bluff beside
+    the road in the bare-earth terrain (MO 39 by Shell Knob read as 28% grades along Table Rock Lake).
+  - Under 1 km is mostly bridges (the bare-earth terrain has the valley under them) and corners. Highways are left
+    out: road cuts and fills make the terrain beside them hillier than the road.
+- The build has to keep unposted straight back roads until it has measured them, so a full build reads elevation
+  for nearly every rural road, not only the curvy ones.
+- `python tools/add_hills.py` does this on the built tiles without the raw files, for the straight roads in them:
+  only those with a posted limit (the build drops the others), so a full build finds more.
+- Same numbers in `build_tiles.py` (`ROLLER_*`) and `js/config.js` (`ROLLER`).
 
 **Fast ramps** (`motorway_link`, `trunk_link`)
 - OSM splits ramps into short pieces, so pieces are joined end to end where nothing merges or splits, then
@@ -210,6 +226,13 @@ class (from `about` in `config.js`), plus dashed lines, blind crests and hill le
 very hilly 185+). Desktop also shows each class's rule as a tooltip. The road and ramp cards repeat their class's rule
 under the tag, and the Hills chip lists ft/mi.
 
+**Roller coasters** (a chip in the key, off by default, not in Highways)
+- Draws the roller coasters in tan (`#c08457`). The hills, mph, Paved and blind-crest filters apply to them too.
+- Under Best roads in view: "Roller coasters in view", the top 3 by hills × length. They're never in Best roads,
+  and the loop generator doesn't build loops around them (to be aware of, not to ride for). They can still be
+  added to a ride by hand.
+- Their card says Roller coaster, with the rule, its length and its hills instead of curve miles.
+
 **Filters**
 - **Hills:** any / rolling+ / hilly+ / very hilly, in the curvy modes. Only applied when set above "any".
 - **Paved** (default on) hides roads recorded as gravel or dirt.
@@ -292,9 +315,12 @@ colored road), Add a stop here, Street View here.
   or parking lot: a pin by Oldham Road in Swope Park routed in and out of a private drive.
 - **The public server takes at most 10 locations per request.** Longer trips are sent in overlapping chunks and joined.
 - **No U-turns at stops** (Valhalla `break_through`; the start and finish stay `break`), so a route doesn't ride
-  back down a road it just finished. If Valhalla answers with no route that way (a dead end), it's asked again
-  allowing them.
+  back down a road it just finished. If Valhalla answers with no route that way (a dead end; HTTP 400), it's asked
+  again allowing them. Not when it's busy (429, 502–504, or no answer in 30 s): that would double the load.
 - Falls back to OSRM (fastest only, with a note shown) if Valhalla fails. OSRM can't avoid motorways.
+- **When neither answers**, the message says why, judged by Valhalla's failure: offline ("Planning a route needs
+  signal"), busy ("The free route server is busy right now… Give it a minute"), or just unreachable. The same
+  message shows for a ride, for the generator (when no loop at all could be routed) and for Try fixing.
 - Arrows along the route line show the direction of travel (zoom 10+).
 
 **Summary**
@@ -487,8 +513,22 @@ colored road), Add a stop here, Street View here.
 - A quick, rough fix first (or one the phone already has), then a precise GPS fix.
 - Errors say which problem it was: blocked permission (with iPhone steps), no fix, a timeout, or a non-https page.
 
+**About**
+- "About, credits and riding safe" under the home list opens the About page: what the app is, **Ride safe** (map
+  data can be wrong, rural limits are estimates, always check conditions, plan before you leave), credits for
+  every data source and service, what data leaves the device, and the source link.
+
+**Link preview**
+- Open Graph and Twitter card tags in `index.html`, so a pasted link shows a card with `preview.png` (1200×630,
+  `node tools/make_preview.mjs`: the curvy roads around Branson from the built tiles, in the map's colors).
+- A shared ride is in the link's `#fragment`, which preview fetchers never see, so every link shows the same card.
+  The image URL is absolute (`https://nosv1.github.io/claudes-ride-finder/preview.png`); a new address needs it changed.
+
 **Installable and offline**
 - Web app manifest and icons (`tools/make_icons.py`).
+- **Install app** (under the home list, and on the About page) when the browser offers to install (Chrome, Edge,
+  Android: the `beforeinstallprompt` prompt is kept and shown on the tap). On iPhone it says how instead (Share →
+  Add to Home Screen). Hidden once opened as the installed app.
 - The service worker serves app files network-first, so updates show at once and the cache covers offline use.
 - Map imagery, terrain and fonts are cached as you browse (cache-first), up to ~4,000 tiles.
 
@@ -506,7 +546,8 @@ colored road), Add a stop here, Street View here.
 - Elements with the `hidden` attribute need `[hidden] { display: none !important }`, because `display: flex` rules override it.
 - **Hosts and access:**
   - Terrain Tiles, Photon, OpenFreeMap fonts, FOSSGIS Valhalla and OSRM allow cross-origin reads.
-  - Esri tiles need no key.
+  - Esri tiles need no key, but no published Esri terms clearly allow keyless use in a public app (checked
+    2026-11-04; see BACKLOG.md).
 - **Google Maps URLs:** the reliable forms are `/maps/@?api=1&map_action=pano&viewpoint=…&heading=…` (Street View)
   and `/maps/dir/?api=1&…&waypoints=a|b` (directions).
   - "No Street View" means Google has no imagery near that spot, and it offers no way to search farther.

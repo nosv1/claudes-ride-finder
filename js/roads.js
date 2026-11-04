@@ -1,6 +1,6 @@
 // Roads: decoding tile rows, classifying them, filtering, and grouping pieces into stretches.
 // Pure: no DOM, no map library.
-import { CURVE_CLASSES, SPEED_BINS, HILLS, MINOR_TYPES, RAMP_TIERS, RAMP_TYPES, HIGHWAY_TYPES, HIGHWAY_LANES_BONUS, tiersFor } from './config.js';
+import { CURVE_CLASSES, SPEED_BINS, HILLS, MINOR_TYPES, RAMP_TIERS, RAMP_TYPES, HIGHWAY_TYPES, HIGHWAY_LANES_BONUS, ROLLER, tiersFor } from './config.js';
 import { decodeDeltas, boundsOf, extend, pad, intersects, contains, spotOnLine, distance } from './geo.js';
 
 // Row: [id, highway, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords, hill, blind, lanes]
@@ -21,8 +21,13 @@ export function decodeRow(row) {
   r.cls = r.oneway || r.loop ? -1 : curveClass(r);  // ramps are their own thing (Interchanges mode)
   r.speed = mph ?? estMph;
   r.hillLevel = hillLevel(hill);
+  r.roller = isRoller(r);
   return r;
 }
+
+// A straight back road that goes up and down a lot (see ROLLER).
+export const isRoller = r => r.cls < 0 && !r.oneway && !r.loop && ROLLER.types.has(r.hw) && r.length >= ROLLER.minM
+  && r.hill != null && r.hill >= ROLLER.minHill;
 
 // Sweepers: a good run of wide curves, or a short road that's mostly curve.
 export const isSweeper = r => r.sweep >= 800 || (r.sweep >= 400 && r.sweep / r.length >= 0.5);
@@ -64,7 +69,7 @@ export const isMinor = r => MINOR_TYPES.has(r.hw.replace('_link', ''));
 
 // Whether a road shows under the current filters (the map's layer filters mirror this).
 // f: { mode: 'ride'|'curvy'|'speed', roadType: 'all'|'back'|'highway', minSpeed, minHills, hideUnpaved, classes: Set,
-//      speedBins: Set, rampTiers: Set, zoom }
+//      speedBins: Set, rampTiers: Set, rollers, zoom }
 export function visible(r, f) {
   if (f.mode !== 'speed' && r.rampTier >= 0) return tiersFor(f.roadType, f.rampTiers).includes(r.rampTier);
   if (f.mode !== 'speed' && f.roadType === 'highway') return false;
@@ -73,7 +78,8 @@ export function visible(r, f) {
     // Highway sweeps repeat highway pieces from the speed-limit tiles, so they'd draw twice.
     return r.mph != null && !r.highway && f.speedBins.has(speedBin(r.mph)) && (!isMinor(r) || f.zoom >= 11);
   }
-  if (r.cls < 0 || !f.classes.has(r.cls) || (f.minHills > 0 && r.hillLevel < f.minHills)) return false;
+  if (r.roller ? !f.rollers : r.cls < 0 || !f.classes.has(r.cls)) return false;
+  if (f.minHills > 0 && r.hillLevel < f.minHills) return false;
   return f.mode !== 'ride' || r.speed >= f.minSpeed;
 }
 
@@ -106,6 +112,8 @@ export function summarize(c, key) {
   const measured = c.roads.filter(r => r.hill != null), len = measured.reduce((s, r) => s + r.length, 0);
   g.hill = len ? measured.reduce((s, r) => s + r.hill * r.length, 0) / len : null;
   g.cls = Math.max(...c.roads.map(r => r.cls));  // sweepers (0) rank below the tight-curve bins
+  g.roller = g.cls < 0 && c.roads.some(r => r.roller);
+  g.length = c.roads.reduce((s, r) => s + r.length, 0);
   g.rampTier = Math.max(...c.roads.map(r => r.rampTier));
   g.oneway = c.roads.every(r => r.oneway);
   g.blind = c.roads.reduce((s, r) => s + r.blind.length, 0);
@@ -117,7 +125,7 @@ export function summarize(c, key) {
 // pieces the map shows count, so a tap doesn't select (and light up) pieces drawn without color.
 export function stretchOf(roads, r, filters = null) {
   if (!r.key) return summarize({ roads: [r], bounds: r.bounds }, 'Unnamed road');
-  const same = roads.filter(x => x === r || (x.key === r.key && (x.cls >= 0 || x.rampTier >= 0) && x.oneway === r.oneway
+  const same = roads.filter(x => x === r || (x.key === r.key && (x.cls >= 0 || x.rampTier >= 0 || x.roller) && x.oneway === r.oneway
     && (!filters || visible(x, filters))));
   return summarize(clusterRoads(same).find(c => c.roads.includes(r)), r.key);
 }
@@ -145,15 +153,26 @@ export function roadAlong(roads, at, heading, maxM = 25) {
   return best;
 }
 
-// The best named stretches among visible roads in view.
-export function bestInView(roads, view, filters, limit = 8) {
+// Named stretches among visible roads in view that `ok` accepts.
+function stretchesInView(roads, view, filters, ok) {
   const byKey = new Map();
   for (const r of roads) {
-    if (!r.key || !intersects(view, r.bounds) || !visible(r, filters)) continue;
+    if (!r.key || !ok(r) || !intersects(view, r.bounds) || !visible(r, filters)) continue;
     if (!byKey.has(r.key)) byKey.set(r.key, []);
     byKey.get(r.key).push(r);
   }
   const groups = [];
   byKey.forEach((list, key) => clusterRoads(list).forEach(c => groups.push(summarize(c, key))));
-  return groups.sort((a, b) => b.score - a.score).slice(0, limit);
+  return groups;
+}
+
+// The best named stretches among visible roads in view. Roller coasters have their own list.
+export function bestInView(roads, view, filters, limit = 8) {
+  return stretchesInView(roads, view, filters, r => !r.roller).sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+// The roller coasters in view, the most up and down first (hills × miles).
+export function rollersInView(roads, view, filters, limit = 3) {
+  const ups = g => g.roads.reduce((s, r) => s + (r.roller ? r.hill * r.length : 0), 0);
+  return stretchesInView(roads, view, filters, r => r.roller).sort((a, b) => ups(b) - ups(a)).slice(0, limit);
 }

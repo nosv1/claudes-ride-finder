@@ -372,3 +372,12 @@ body.flying #map, body.tilted #map { background: #9db4c8; }
   display: block; background: #fff; color: #111; font-weight: 700; font-size: 13px; padding: 5px 10px; border-radius: 8px;
   white-space: nowrap; box-shadow: 0 3px 10px rgba(0,0,0,.5);
 }
+
+/* About page and the home page's footer links */
+.foot-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 2px 8px; }
+button.link { display: inline-flex; align-items: center; gap: 5px; padding: 4px 0; border: 0; background: none;
+  color: #74c0fc; font: inherit; font-size: 12.5px; text-align: left; }
+button.link:hover { text-decoration: underline; }
+button.link .i, button.link svg { width: 14px; height: 14px; }
+.credits { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.5; }
+.credits li { margin-bottom: 4px; }

@@ -2,10 +2,15 @@
 
 Ideas that came up, roughly in order of how much they'd help.
 
-- **Ready to share** (before handing the link around): an About page with credits and "check conditions"
-  wording; check Esri's terms for keyless basemap use in a public app (else switch to a keyed free tier);
-  a link preview (title, image) so a shared ride looks good in a text; a friendly message when the free
-  router is busy. Then a small "Install" button in the app (it's already installable from the browser).
+- **Esri basemap: keyless or keyed?** (the one open part of Ready to share; the About page, link preview, busy
+  message and Install button are done). Checked 2026-11-04: the `server.arcgisonline.com` tiles load without a key,
+  but no published Esri terms clearly allow keyless use in a public app. Esri forum answers say the keyless basemaps
+  need an ArcGIS subscription or license; nothing official says otherwise. The keyed route is ArcGIS Location Platform's
+  free tier: 2,000,000 basemap tiles a month free, then $0.15 per 1,000 (Esri's numbers; they say these change, so
+  check location.arcgis.com/pricing). It needs an account and an API key in `js/mapview.js` (a key in a public site
+  is normal for Esri; restrict it to the site's address). A key-free alternative is OpenFreeMap's vector styles
+  (already used for the fonts), but they look different and have no satellite. Fine to leave as is while it's a
+  handful of friends.
 - **A proper app, still on PC**: one codebase for all three. Android: wrap the web app for the Play Store
   (Trusted Web Activity via Bubblewrap; $25 once). iPhone: Capacitor wrapper ($99/yr developer account,
   built on a Mac or a cloud build). PC keeps using the website or the installed web app. Worth it mainly for
@@ -28,6 +33,20 @@ Ideas that came up, roughly in order of how much they'd help.
   from Valhalla's turn instructions, screen kept awake, re-routing back onto the planned roads,
   gas and blind-crest callouts. Limits: screen on and app in front (phone mounted on a charger),
   no CarPlay/Android Auto, re-routing needs signal, iPhone voice can be finicky.
+- **Weather layer: ride or not, at a glance**. Not a weather app: only what decides a ride (wet roads, storms,
+  wind, cold), shown on the map before there's a ride to plan. The ride weather already comes from Open-Meteo for
+  points along a route; the layer (in the layers menu, off by default) would show the same over the whole map.
+  - **Forecast at your leave time**: Open-Meteo takes many points in one request (the ride weather already does),
+    so a coarse grid over the view (about every 25 km) gives rain chance, storms and gusts for any hour of the next
+    7 days. Shade rain chance, mark storms, and let the Leaving time pick the hour. Open-Meteo counts each point as a
+    request (free up to about 10,000 a day, non-commercial), so fetch only when the map moves well away, and reuse
+    grid cells already loaded.
+  - **Radar for right now**: live radar tiles with the last hour or two looping, for "is it raining out there and
+    which way is it moving". RainViewer has free radar tiles (it cut back its free use in 2025; check what's left
+    and the credit it wants). Only now, not later, so it goes with the forecast, not instead of it.
+  - **One line on top** that answers the question: "Dry until 4 pm, gusts 30 after 2", for the area in view at the
+    leave time.
+  - With a ride, color its line by the rain chance when you'd pass (that data is already there).
 - **Fly-through extras**: a chase camera that banks into corners; a "skip the boring parts" toggle that
   speeds through highways and town; curve callouts ("Tight curves next 2.1 mi", hairpins); gas stops as you
   pass them ("Casey's, 90+ likely, next gas 38 mi"); recording it as a video to share.
@@ -58,8 +77,7 @@ Ideas that came up, roughly in order of how much they'd help.
   (drawn dashed today). Many are gravel in the Ozarks.
 - **Generator avoids city traffic**: today loops through town only rank lower. Penalize
   connecting routes through built-up areas directly.
-- **Straight but hilly "roller coaster" roads**: only curvy roads get elevation data now.
-  Scoring hills on every rural road would find them.
+- **Roller coasters, next**: blind crests on straight roads (a hilltop you can't see over, no turn needed).
 - **More states**: Arkansas (Eureka Springs, the Pig Trail), Oklahoma, Iowa, Nebraska. (Texas is in.)
   Check each state's default speed limits in `estimate_mph`.
   Download the `.osm.pbf` into `raw/` and rebuild.

@@ -58,6 +58,13 @@ export const HILLS = [
   { label: 'Very hilly', min: 35, ft: 185 },
 ];
 
+// Roller coasters: straight back roads that go up and down a lot (Hilly or more, over half a mile). A map layer to be
+// aware of, off by default; the generator doesn't ride for them. build_tiles.py's ROLLER_* have the same numbers.
+export const ROLLER = {
+  label: 'Roller coasters', color: '#c08457', minHill: 22, minM: 1000, types: new Set(['primary', 'secondary', 'tertiary', 'unclassified']),
+  about: 'Straight roads that go up and down a lot: 115+ ft of climbing and dropping per mile, for over half a mile. Not curvy, but you feel the hills (and crests hide what’s past them).',
+};
+
 export const FUEL_STATUS = {
   2: { label: '90+ listed', color: '#40c057' },
   1: { label: '90+ likely', color: '#c0eb75' },

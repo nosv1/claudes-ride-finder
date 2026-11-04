@@ -2,16 +2,29 @@
 import { ROUTING } from './config.js';
 import { decodePolyline } from './geo.js';
 
+// A busy server can answer with an HTML error page, so the status counts even when the body isn't JSON.
 async function fetchJson(url, ms) {
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), ms);
   try {
     const res = await fetch(url, { signal: ctl.signal });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) throw Object.assign(new Error(data.error || data.message || `HTTP ${res.status}`), { status: res.status });
     return data;
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Why the last route failed: 'offline', 'busy' (too many requests, overloaded or too slow to answer) or 'down'.
+let trouble = null;
+const BUSY = new Set([429, 502, 503, 504]);
+const kindOf = e => globalThis.navigator?.onLine === false ? 'offline' : e.name === 'AbortError' || BUSY.has(e.status) ? 'busy' : 'down';
+
+// What to tell the rider when no route came back.
+export function routerTrouble() {
+  if (trouble === 'offline') return 'You’re offline. Planning a route needs signal; the map and roads you’ve looked at still work.';
+  if (trouble === 'busy') return 'The free route server is busy right now (it’s shared by everyone who uses it). Give it a minute and try again.';
+  return 'Couldn’t reach the routing servers. Try again in a minute.';
 }
 
 // Answers by request, so trying a change to one stop of a long trip (the loop generator does, a lot)
@@ -71,18 +84,25 @@ async function osrm(pts) {
 }
 
 // Null if neither router answers. If Valhalla answers but finds no route without turning around
-// at a stop (a dead end, say), it's asked again allowing that.
+// at a stop (a dead end, say: it says so with a 400), it's asked again allowing that. Not when it's
+// busy: asking again would only add to the load.
 export async function fetchRoute(pts, useHighways) {
   try {
     try {
       return await valhalla(pts, useHighways, false);
     } catch (e) {
-      if (!e.status) throw e;
+      if (e.status !== 400) throw e;
       return await valhalla(pts, useHighways, true);
     }
   } catch (e) {
     console.warn('Valhalla failed, trying OSRM', e);
-    try { return await osrm(pts); } catch (e2) { console.warn(e2); return null; }
+    try {
+      return await osrm(pts);
+    } catch (e2) {
+      console.warn(e2);
+      trouble = kindOf(e);  // Valhalla is the one that matters: OSRM is only a stopgap
+      return null;
+    }
   }
 }
 

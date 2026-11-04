@@ -4,8 +4,8 @@ Usage:  python build_tiles.py
 
 Uses every *.osm.pbf in raw/. Get more states from
 https://download.geofabrik.de/north-america/us.html (e.g. arkansas-latest.osm.pbf),
-put them in raw/, and re-run. Elevation tiles for curvy roads are downloaded once
-into raw/terrain/ (a few hundred MB per state).
+put them in raw/, and re-run. Elevation tiles for curvy roads and the other rural roads (for roller
+coasters) are downloaded once into raw/terrain/ (several hundred MB per state).
 """
 import bisect
 import glob
@@ -65,6 +65,13 @@ def radius_weight(r):
 SWEEP_STEP = 100
 SWEEP_RADIUS = (150, 600)
 MIN_SWEEP = 300  # metres of sweeping curve before a road counts as a sweeper
+
+# Roller coasters: straight (not curvy, not a sweeper) back roads that go up and down a lot. Shown as a layer to be
+# aware of, not used for rides. Every rural road this long is measured; the hilly ones go in the main tiles.
+# The app's ROLLER in js/config.js has the same numbers.
+ROLLER_TYPES = CURVY_TYPES
+ROLLER_MIN_M = 1000   # shorter pieces are mostly bridges and corners, where bare-earth elevation misleads
+ROLLER_HILL = 22.0    # metres up and down per km: "Hilly" in the app (115 ft per mile)
 
 
 # Ramps built for highway speed curve wider than back roads, so their sweeps count up to 1.5 km radius.
@@ -158,6 +165,7 @@ USER_AGENT = "ride-finder/1.0 (personal project)"
 CLIMB_STEP = 2.0     # ignore wiggles in the elevation profile smaller than this (metres)
 CREST_M = 3.0        # how far a point must rise above the road 75 m either side to be a crest
 BLIND_RADIUS = 120   # a turn this tight (metres) at or just past a crest hides what's beyond it
+ROAD_GRADE = 0.18    # steeper than this over 100 m is the hillside beside the road read as the road, not the road
 
 
 def world_px(lat, lon):
@@ -246,8 +254,34 @@ def terrain_tiles_for(coords):
     return tiles
 
 
-def hills_and_blind(coords, elev):
-    """Up-and-down per km, and spots where a tight turn sits on a crest."""
+def up_and_down(e):
+    """Metres climbed and dropped along an elevation profile, ignoring wiggles under CLIMB_STEP."""
+    up = down = 0.0
+    ref = e[0]
+    for v in e[1:]:
+        if abs(v - ref) >= CLIMB_STEP:
+            if v > ref:
+                up += v - ref
+            else:
+                down += ref - v
+            ref = v
+    return up, down
+
+
+def rolling(e, length):
+    """How much a straight road keeps going up and down, per km: only climbing that's matched by dropping counts,
+    so one long grade doesn't (the Red Route in Branson only goes downhill). None when the profile is steeper than a
+    road can be: next to a lake or bluff the bare-earth terrain has the hillside beside the road in it (MO 39 by
+    Shell Knob read as 28% grades)."""
+    s = [sum(e[max(0, i - 2):i + 3]) / len(e[max(0, i - 2):i + 3]) for i in range(len(e))]
+    if any(abs(s[i + 4] - s[i]) > ROAD_GRADE * 4 * STEP for i in range(len(s) - 4)):
+        return None
+    return round(2 * min(up_and_down(e)) / max(length, 1) * 1000, 1)
+
+
+def hills_and_blind(coords, elev, straight=False):
+    """Up-and-down per km, and spots where a tight turn sits on a crest. For a straight road (a possible roller
+    coaster), the up-and-down is only what it keeps doing (see rolling)."""
     lat0 = math.radians(coords[0][0])
     kx, ky = 111320 * math.cos(lat0), 110540
     samples, length = resample([(lon * kx, lat * ky) for lat, lon in coords], STEP)
@@ -256,12 +290,7 @@ def hills_and_blind(coords, elev):
     if len(e) < 7 or None in e:
         return None, []
 
-    climb, ref = 0.0, e[0]
-    for v in e[1:]:
-        if abs(v - ref) >= CLIMB_STEP:
-            climb += abs(v - ref)
-            ref = v
-    hill = round(climb / max(length, 1) * 1000, 1)
+    hill = rolling(e, length) if straight else round(sum(up_and_down(e)) / max(length, 1) * 1000, 1)
 
     r = [math.inf, *radii(samples), math.inf]  # turn radius at each sample
     blind, skip_to = [], 0
@@ -273,6 +302,20 @@ def hills_and_blind(coords, elev):
             blind += [round(latlon[i][0] * 1e5), round(latlon[i][1] * 1e5)]
             skip_to = i + 8  # one flag per crest
     return hill, blind
+
+
+def is_curvy_row(row):
+    return bool(row[7] or row[9])
+
+
+def roller_candidate(row):
+    """A straight back road long enough to measure for hills (rows before or after the hill is added)."""
+    return not is_curvy_row(row) and row[1] in ROLLER_TYPES and row[10] >= ROLLER_MIN_M
+
+
+def is_roller(row):
+    """A measured straight back road that's hilly. Row: [..., length (10), coords (11), hill (12), ...]."""
+    return roller_candidate(row) and len(row) > 12 and row[12] is not None and row[12] >= ROLLER_HILL
 
 
 def decode(deltas):
@@ -422,7 +465,8 @@ class Roads(osmium.SimpleHandler):
         length, score, curvy, sweep = analyze(coords)
         is_curvy = hw in CURVY_TYPES and score >= MIN_SCORE
         is_sweeper = hw in CURVY_TYPES and sweep >= MIN_SWEEP
-        if not is_curvy and not is_sweeper and mph is None:
+        # Unposted straight roads are kept for now in case they're roller coasters; main() drops the flat ones.
+        if not is_curvy and not is_sweeper and mph is None and not (hw in ROLLER_TYPES and length >= ROLLER_MIN_M):
             return
         self.add_row(w.id, hw, tags, mph, coords, (length, score if is_curvy else 0, curvy, sweep if is_sweeper else 0))
 
@@ -736,16 +780,16 @@ def write_signals(lights):
 
 
 def write_tiles(tiles, regions):
-    """Each tile in two files: {x}_{y}.js with the curvy roads, sweepers and fast ramps (what the
-    ride modes use) and {x}_{y}.s.js with the roads kept only for their speed limit, about 70% of
-    the data, loaded only in Speed limits mode. Zoomed out over Texas, loading everything took
+    """Each tile in two files: {x}_{y}.js with the curvy roads, sweepers, fast ramps and roller coasters
+    (what the ride modes use) and {x}_{y}.s.js with the roads kept only for their speed limit, about
+    70% of the data, loaded only in Speed limits mode. Zoomed out over Texas, loading everything took
     ~67 MB and crashed phones."""
     shutil.rmtree(OUT_DIR, ignore_errors=True)
     os.makedirs(OUT_DIR)
     main_keys, speed_keys = [], []
     for key, rows in tiles.items():
-        curvy = [r for r in rows if r[7] or r[9]]
-        speed = [r for r in rows if not (r[7] or r[9])]
+        curvy = [r for r in rows if is_curvy_row(r) or is_roller(r)]
+        speed = [r for r in rows if not (is_curvy_row(r) or is_roller(r))]
         for name, part, keys in ((key, curvy, main_keys), (f"{key}.s", speed, speed_keys)):
             if not part:
                 continue
@@ -783,19 +827,23 @@ def main(args):
                 row[5] = estimate_mph(row, residential)
             del row[-2:]  # midpoint and region
 
-    # Elevation, only for the curvy roads and sweepers (rows with a curve score or sweep).
-    curvy_rows = [row for rows in tiles.values() for row in rows if (row[7] or row[9]) and row[1] not in RAMP_TYPES]
+    # Elevation for the curvy roads and sweepers (rows with a curve score or sweep), and the straight back roads, to
+    # find the roller coasters. Bare-earth elevation means nothing on a flyover, so not for ramps.
+    measure = lambda row: (is_curvy_row(row) and row[1] not in RAMP_TYPES) or roller_candidate(row)
+    measured = [row for rows in tiles.values() for row in rows if measure(row)]
     needed = set()
-    for row in curvy_rows:
+    for row in measured:
         needed |= terrain_tiles_for(decode(row[11]))
     download_terrain(needed)
-    print(f"Measuring hills on {len(curvy_rows):,} curvy roads...", flush=True)
+    print(f"Measuring hills on {len(measured):,} roads...", flush=True)
     elev = Elevation()
     for rows in tiles.values():
         for row in rows:
-            curvy_road = (row[7] or row[9]) and row[1] not in RAMP_TYPES  # bare-earth elevation means nothing on a flyover
-            row += hills_and_blind(decode(row[11]), elev) if curvy_road else (None, [])
+            row += hills_and_blind(decode(row[11]), elev, roller_candidate(row)) if measure(row) else (None, [])
             row.append(lanes.get(row[0]))
+        # Straight roads with no posted limit were only kept in case they were roller coasters.
+        rows[:] = [r for r in rows if r[4] is not None or is_curvy_row(r) or is_roller(r)]
+    print(f"Roller coasters: {sum(is_roller(r) for rows in tiles.values() for r in rows):,}", flush=True)
     print(f"Highway sweeps: {highway_sweeps(tiles):,}", flush=True)
 
     regions = sorted(os.path.basename(p).replace("-latest.osm.pbf", "") for p in paths)

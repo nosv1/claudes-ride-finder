@@ -258,6 +258,56 @@ class TestElevation(unittest.TestCase):
         self.assertEqual(blind, [])
 
 
+class TestRollerCoasters(unittest.TestCase):
+    @staticmethod
+    def row(hw="secondary", score=0, sweep=0, length=2000, hill=None):
+        # [id, highway, name, ref, mph, estMph, surface, score, curvy, sweep, length, coords, hill, blind, lanes]
+        return [1, hw, "", "", None, 55, 0, score, 0, sweep, length, [], hill, [], None]
+
+    def test_a_long_straight_back_road_that_goes_up_and_down(self):
+        self.assertTrue(bt.is_roller(self.row(hill=30)))
+        self.assertFalse(bt.is_roller(self.row(hill=15)), "rolling isn't enough")
+        self.assertFalse(bt.is_roller(self.row(hill=None)), "not measured")
+        self.assertFalse(bt.is_roller(self.row(hill=30, length=600)), "too short: mostly bridges and corners")
+        self.assertFalse(bt.is_roller(self.row(hill=30, score=400)), "curvy roads are already on the map")
+        self.assertFalse(bt.is_roller(self.row(hill=30, hw="motorway")), "only back roads")
+        self.assertFalse(bt.is_roller(self.row(hill=30, hw="residential")))
+
+    def test_rolling_road_from_the_elevation_is_one(self):
+        roller = FakeElevation(lambda x, y: 250 + 10 * math.sin(y / 400 * 2 * math.pi))
+        r = self.row()
+        r[12], r[13] = bt.hills_and_blind(to_latlon(line(0, 0, 0, 2000)), roller, straight=True)
+        self.assertTrue(bt.is_roller(r))
+
+    def test_one_long_grade_is_not_one(self):
+        # 60 m down over 1.3 km, like the Red Route in Branson: hilly as a curvy road would read it, but no ups.
+        grade = FakeElevation(lambda x, y: 300 - y * 0.046)
+        self.assertGreater(bt.hills_and_blind(to_latlon(line(0, 0, 0, 1300)), grade)[0], 22)
+        r = self.row(length=1300)
+        r[12], r[13] = bt.hills_and_blind(to_latlon(line(0, 0, 0, 1300)), grade, straight=True)
+        self.assertFalse(bt.is_roller(r))
+
+    def test_steeper_than_a_road_is_the_hillside_not_the_road(self):
+        # 30 m up and down every 250 m: the bluff beside MO 39 by Shell Knob, not grades a highway has.
+        bluff = FakeElevation(lambda x, y: 400 + 15 * math.sin(y / 250 * 2 * math.pi))
+        hill, _ = bt.hills_and_blind(to_latlon(line(0, 0, 0, 2000)), bluff, straight=True)
+        self.assertIsNone(hill)
+
+    def test_roller_coasters_go_in_the_main_tile(self):
+        import tempfile
+        out = bt.OUT_DIR
+        with tempfile.TemporaryDirectory() as tmp:
+            bt.OUT_DIR = os.path.join(tmp, "tiles")
+            try:
+                bt.write_tiles({"0_0": [self.row(hill=30), self.row(hill=5)]}, [])
+                main, speed = (json.loads((s := open(os.path.join(bt.OUT_DIR, f), encoding="utf-8").read())[s.index(",") + 1:s.rindex(")")])
+                               for f in ("0_0.js", "0_0.s.js"))
+            finally:
+                bt.OUT_DIR = out
+        self.assertEqual([r[12] for r in main], [30])
+        self.assertEqual([r[12] for r in speed], [5])
+
+
 class TestEncoding(unittest.TestCase):
     def test_round_trip(self):
         coords = [(38.12345, -93.54321), (38.12401, -93.54011), (38.2, -93.5)]
@@ -314,8 +364,8 @@ class TestBuiltData(unittest.TestCase):
         # The ride modes load only the curvy files; the speed-only ones are most of the data.
         main = [r for k in ("-189_77", "-194_65") for r in self.load_tile(k)]
         speed = [r for k in ("-189_77.s", "-194_65.s") for r in self.load_tile(k)]
-        self.assertTrue(all(r[7] or r[9] for r in main))
-        self.assertFalse(any(r[7] or r[9] for r in speed))
+        self.assertTrue(all(r[7] or r[9] or bt.is_roller(r) for r in main))
+        self.assertFalse(any(r[7] or r[9] or bt.is_roller(r) for r in speed))
         self.assertGreater(len(speed), len(main))
 
     def test_rows_have_the_expected_shape(self):
@@ -338,6 +388,12 @@ class TestBuiltData(unittest.TestCase):
         sweeps = [r for r in rows if r[1] in bt.HIGHWAY_TYPES and r[9]]
         self.assertTrue(any(r[3].startswith("I 435") for r in sweeps))
         self.assertTrue(all(r[0] < 0 and r[4] >= bt.HIGHWAY_MIN_MPH and r[9] >= bt.HIGHWAY_MIN_SWEEP for r in sweeps))
+
+    def test_roller_coasters_are_in_the_curvy_files(self):
+        # Measured from the elevation (tools/add_hills.py or a full build): south and east of Springfield there are dozens.
+        rollers = [r for r in self.load_tile("-187_74") if bt.is_roller(r)]
+        self.assertGreater(len(rollers), 20)
+        self.assertTrue(all(r[1] in bt.ROLLER_TYPES and not (r[7] or r[9]) for r in rollers))
 
     def test_fuel_and_search_files(self):
         fuel = self.load(os.path.join(TILES, "fuel.js"), "[", "]")

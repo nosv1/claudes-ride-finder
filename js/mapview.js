@@ -2,7 +2,7 @@
 // and GeoJSON sources for roads, the route, gas stations and blind crests. Everything here
 // works in [lat, lon]; MapLibre's [lon, lat] stays inside this file.
 /* global maplibregl */
-import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN, HIGHWAYS, tiersFor } from './config.js';
+import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN, HIGHWAYS, ROLLER, tiersFor } from './config.js';
 import { speedBin, isMinor } from './roads.js';
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
@@ -28,7 +28,8 @@ function roadFilter(f) {
     return all;
   }
   const highways = ['in', ['get', 'rt'], ['literal', tiersFor(f.roadType, f.rampTiers)]];
-  const curvy = ['all', ['in', ['get', 'cls'], ['literal', [...f.classes]]]];
+  const classes = ['in', ['get', 'cls'], ['literal', [...f.classes]]];
+  const curvy = ['all', f.rollers ? ['any', classes, ['==', ['get', 'rc'], 1]] : classes];
   if (f.minHills > 0) curvy.push(['>=', ['get', 'hill'], f.minHills]);
   if (f.mode === 'ride') curvy.push(['>=', ['get', 'spd'], f.minSpeed]);
   all.push(f.roadType === 'highway' ? highways : f.roadType === 'back' ? curvy : ['any', highways, curvy]);
@@ -196,7 +197,7 @@ export class MapView {
   setRoads(roads) {
     const features = roads.map(r => r.feature || (r.feature = line(r.geom, {
       i: r.id, cls: r.cls, spd: r.speed ?? -1, posted: r.mph != null ? 1 : 0, sbin: speedBin(r.mph), hill: r.hillLevel,
-      surf: r.surface, minor: isMinor(r) ? 1 : 0, rt: r.rampTier, hwy: r.highway ? 1 : 0, ...(r.ref && SHIELD_TYPES.has(r.hw) ? { ref: r.ref } : {}),
+      surf: r.surface, minor: isMinor(r) ? 1 : 0, rt: r.rampTier, hwy: r.highway ? 1 : 0, rc: r.roller ? 1 : 0, ...(r.ref && SHIELD_TYPES.has(r.hw) ? { ref: r.ref } : {}),
     })));
     this.map.getSource('roads').setData(fc(features));
     const crests = [];
@@ -216,7 +217,7 @@ export class MapView {
     // Highways and ramps: by tier in Highways, one color next to the curvy roads in All.
     const highway = ['>=', ['get', 'rt'], 0];
     const tierColor = f.roadType === 'highway' ? ['match', ['get', 'rt'], ...RAMP_TIERS.flatMap((t, i) => [i, t.color]), '#888'] : HIGHWAYS.color;
-    const color = curvyModes ? ['case', highway, tierColor, ['match', ['get', 'cls'], ...CURVE_CLASSES.flatMap((c, i) => [i, c.color]), '#888']]
+    const color = curvyModes ? ['case', highway, tierColor, ['==', ['get', 'rc'], 1], ROLLER.color, ['match', ['get', 'cls'], ...CURVE_CLASSES.flatMap((c, i) => [i, c.color]), '#888']]
       : ['match', ['get', 'sbin'], ...SPEED_BINS.flatMap((b, i) => [i, b.color]), '#888'];
     const width = curvyModes ? zoomWidth(['case', highway, f.roadType === 'highway' ? 4 : 3, ['match', ['get', 'cls'], ...CURVE_CLASSES.flatMap((c, i) => [i, c.width]), 2.5]])
       : zoomWidth(['case', ['==', ['get', 'minor'], 1], 2, 3]);

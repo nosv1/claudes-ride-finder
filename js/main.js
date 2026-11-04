@@ -1,11 +1,11 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, tiersFor } from './config.js';
+import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
-import { visible, stretchOf, bestInView, clusterRoads, summarize, roadNear, roadAlong } from './roads.js';
+import { visible, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong } from './roads.js';
 import * as T from './trip.js';
 import * as P from './plan.js';
 import { localResults, photonResults } from './search.js';
-import { fetchRoute, routeRefs } from './routing.js';
+import { fetchRoute, routeRefs, routerTrouble } from './routing.js';
 import { profile } from './elevation.js';
 import * as W from './weather.js';
 import { Fly } from './fly.js';
@@ -22,7 +22,7 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 // ---------- state ----------
 
 const settings = Object.assign({
-  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, showBlind: true, showFuel: false,
+  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, showBlind: true, showFuel: false, rollers: false,
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
   basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1,
 }, load(SETTINGS_KEY));
@@ -183,7 +183,7 @@ async function computeRoute() {
   const r = await fetchRoute(pts, +trip.pref);
   if (seq !== routeSeq) return;
   if (!r) {
-    info = { error: 'Couldn’t reach the routing servers. Try again in a minute.' };
+    info = { error: routerTrouble() };
     return renderSoon();
   }
   setRoute(r);
@@ -339,6 +339,7 @@ async function fixDoubleBack() {
   const roads = trip.items.filter(it => it.type === 'road' && !it.oneway);
   let best = { r: route, back: info.back.meters };
   const flipped = [];
+  let failed = false;
   clearTimeout(routeTimer);
   const seq = ++routeSeq;
   for (const it of roads) {
@@ -347,6 +348,7 @@ async function fixDoubleBack() {
     renderSoon();
     const r = await fetchRoute(T.routablePoints(trip), +trip.pref);
     if (seq !== routeSeq) { it.pts.reverse(); fixing = ''; return; }  // the ride changed meanwhile
+    if (!r) failed = true;
     const back = r && !r.fallback ? P.retrace(r.path).meters : Infinity;
     if (back < best.back - 200 && r.meters < best.r.meters * 1.15) {
       best = { r, back };
@@ -357,7 +359,7 @@ async function fixDoubleBack() {
   }
   fixing = '';
   if (!flipped.length) {
-    toast('Riding the roads the other way doesn’t help. Try dragging the stops into another order.');
+    toast(failed ? routerTrouble() : 'Riding the roads the other way doesn’t help. Try dragging the stops into another order.');
     return renderSoon();
   }
   tripChanged({ reroute: false });
@@ -402,7 +404,7 @@ async function generate() {
   if (oneWay) {
     const direct = await fetchRoute([{ p: s, via: false }, { p: e, via: false }], +trip.pref);
     if (!direct) {
-      gen = { options: [], index: -1, running: false, status: 'Couldn’t reach the router right now. Try again in a minute.' };
+      gen = { options: [], index: -1, running: false, status: routerTrouble() };
       return renderSoon();
     }
     hours = direct.seconds / 3600 + settings.genExtra;
@@ -413,7 +415,8 @@ async function generate() {
   loadTiles([c[0] - dLat, c[1] - dLon, c[0] + dLat, c[1] + dLon]);
   await Promise.all([tilesSettled(), loadSignals()]);  // the lights, to rank loops by stoplights
   // The roads the map shows, by road type: curvy roads, highway sweeps or both (ramps aren't stops, yet).
-  const f = filters(), worthy = r => visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
+  // Not the roller coasters: they're shown to be aware of, not to build rides on.
+  const f = filters(), worthy = r => !r.roller && visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
   const options = P.buildOptions(P.candidateGroups(store.roads, s, reach, worthy, e), s, hours, required, e);
   if (!options.length) {
     gen = { options: [], index: -1, running: false, status: oneWay ? 'No good roads on the way. Try more extra time, or loosen the filters.'
@@ -433,6 +436,10 @@ async function generate() {
   };
   progress();
   await Promise.all([worker(), worker()]);
+  if (!options.some(o => o.route)) {
+    gen = { options: [], index: -1, running: false, status: routerTrouble() };
+    return renderSoon();
+  }
   // Only loops within 80–120% of the chosen time; if none came out that close, the nearest.
   const worth = o => o.route ? o.worth : -1, twice = o => o.route && o.back > GEN.hideBack * o.route.meters;
   const target = hours * 3600, fits = o => o.route && o.route.seconds >= GEN.under * target && o.route.seconds <= GEN.overrun * target;
@@ -735,7 +742,7 @@ function renderSoon() {
 
 function render() {
   if (dragging) return;
-  const views = { home: homeView, road: roadView, station: stationView, place: placeView, plan: planView, trip: tripView };
+  const views = { home: homeView, road: roadView, station: stationView, place: placeView, plan: planView, trip: tripView, about: aboutView };
   $('#sheetBody').replaceChildren(...[(views[view] || homeView)()].flat(Infinity).filter(Boolean));
 }
 
@@ -761,9 +768,69 @@ function homeView() {
         ? h('div.cards', {}, groups.map(roadCard))
         : h('p.empty', {}, !store.roads.length || mapView.zoom() < LOAD_ZOOM ? 'Zoom in to see roads.'
           : highwaysOnly() ? 'No fast ramps or highway sweeps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
+    rollerList(),
     h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
+    h('div.foot-links', {},
+      h('button.link', { onclick: () => go('about') }, 'About, credits and riding safe'),
+      canInstall() ? h('button.link', { onclick: install }, iconEl(icon.download), 'Install app') : ''),
   ];
+}
+
+// ---------- about & installing ----------
+
+// Chrome, Edge and Android offer an install prompt (beforeinstallprompt), kept for the Install button; iPhones
+// have none, only Share → Add to Home Screen. Installed and opened from the icon, there's nothing to offer.
+let installPrompt = null;
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const iPhone = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const canInstall = () => !standalone() && (!!installPrompt || iPhone());
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; renderSoon(); });
+addEventListener('appinstalled', () => { installPrompt = null; toast('Installed. Open Ride Finder from its icon from now on.'); renderSoon(); });
+
+async function install() {
+  if (!installPrompt) return toast('On iPhone: tap Share (the square with the arrow), then Add to Home Screen.');
+  const p = installPrompt;
+  installPrompt = null;  // a prompt can only be shown once
+  await p.prompt();
+  renderSoon();
+}
+
+function aboutView() {
+  const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
+  const credit = (what, ...who) => h('li', {}, h('b', {}, what), ': ', ...who);
+  return [
+    backBar('About Ride Finder'),
+    h('p', {}, 'A map for finding motorcycle roads worth riding (curvy roads, fast sweepers and hills) and planning a ride on them for the time you have. Free, with no account and no ads.'),
+    h('div.section', {}, h('h3', {}, iconEl(icon.warn), 'Ride safe'),
+      h('p.small', {}, 'Everything here comes from open map data and free services, and it can be wrong or out of date. Roads close, surfaces change, gravel and leaves wash onto curves, and many of the rural speed limits shown are estimates, not posted limits. A road marked Twisty is a description, not a dare.'),
+      h('p.small', {}, h('b', {}, 'Always check conditions before you ride'), ', go by the posted signs and limits, and ride within your ability. Plan before you leave, not on the move. How and where you ride is up to you.')),
+    canInstall() || standalone() ? h('div.section', {}, h('h3', {}, iconEl(icon.download), 'Install it'),
+      standalone() ? h('p.small', {}, 'Installed. It opens full screen from its icon and works offline on the roads you’ve looked at.')
+        : [h('p.small', {}, 'Put it on your home screen or apps list to open it like an app, full screen, and to use it offline on roads you’ve looked at.'),
+          h('button.btn', { onclick: install }, iconEl(icon.download), installPrompt ? 'Install Ride Finder' : 'How to install on iPhone')]) : '',
+    h('div.section', {}, h('h3', {}, iconEl(icon.globe), 'Credits'),
+      h('ul.credits', {},
+        credit('Road data', '© ', link('https://www.openstreetmap.org/copyright', 'OpenStreetMap contributors'), ', under the Open Database License'),
+        credit('Basemap and imagery', '© Esri and its data providers'),
+        credit('Elevation and 3D terrain', link('https://registry.opendata.aws/terrain-tiles/', 'AWS Terrain Tiles'), ', from USGS and other public sources'),
+        credit('Routing', link('https://valhalla.github.io/valhalla/', 'Valhalla'), ' on the free ', link('https://www.fossgis.de/', 'FOSSGIS'), ' server, with ', link('https://project-osrm.org/', 'OSRM'), '’s demo server as a backup'),
+        credit('Place search', link('https://photon.komoot.io/', 'Photon'), ' by Komoot'),
+        credit('Weather', link('https://open-meteo.com/', 'Weather data by Open-Meteo.com'), ' (CC BY 4.0)'),
+        credit('Map', link('https://maplibre.org/', 'MapLibre GL JS'), ', with fonts from ', link('https://openfreemap.org/', 'OpenFreeMap')))),
+    h('div.section', {}, h('h3', {}, iconEl(icon.person), 'Your data'),
+      h('p.small', {}, 'No account and no tracking. Your rides and settings are saved in this browser, not on a server. Some things do get sent out to work: your stops, to the route planner; what you type in search, to the place search; and spots along your ride, to the weather service. Your location is only used when you tap My location, or when you generate a ride without picking a start. A share link has the whole ride in the link, so nothing is stored anywhere.')),
+    h('p.fineprint', {}, 'Ride Finder is open source: ', link('https://github.com/nosv1/claudes-ride-finder', 'github.com/nosv1/claudes-ride-finder'), '.'),
+  ];
+}
+
+// With the Roller coasters chip on: the ones in view, the most up and down first.
+function rollerList() {
+  if (!settings.rollers || settings.mode === 'speed' || highwaysOnly() || mapView.zoom() < LOAD_ZOOM) return null;
+  const groups = rollersInView(store.roads, mapView.view(), filters());
+  return h('div.section', {}, h('h3', {}, h('span.swatch', { style: `background:${ROLLER.color}` }), 'Roller coasters in view'),
+    groups.length ? h('div.cards', {}, groups.map(roadCard))
+      : h('p.muted.small', {}, 'None here. They’re mostly in the Ozarks and the river bluffs.'));
 }
 
 // The map key: tap a class to hide or show it; "What's this?" explains what puts a road in each.
@@ -779,6 +846,7 @@ function legend() {
     h('div.legend', {},
       classes.map((c, i) => legendChip(c, on.includes(i), () => toggleIn(ramps ? 'rampTiers' : 'classes', i))),
       settings.roadType === 'all' ? legendChip(HIGHWAYS, anyHighways, () => setSetting({ rampTiers: anyHighways ? [] : allTiers })) : null,
+      ramps ? null : legendChip(ROLLER, settings.rollers, () => setSetting({ rollers: !settings.rollers })),
       h(`button.legend-chip.key-btn${showKey ? '.on' : ''}`, { title: 'What do these mean?', 'aria-expanded': showKey ? 'true' : 'false',
         onclick: () => { showKey = !showKey; render(); } }, iconEl(icon.help), showKey ? 'Hide' : 'What’s this?')),
     showKey ? keyHelp(classes, ramps, settings.roadType === 'all') : null,
@@ -792,13 +860,14 @@ function keyHelp(classes, ramps, withHighways) {
     h('p', {}, ramps ? RAMP_ABOUT : CORNER_ABOUT),
     classes.map(c => row(sw(c.color), c.label, c.about)),
     withHighways ? row(sw(HIGHWAYS.color), HIGHWAYS.label, HIGHWAYS.about) : '',
+    ramps ? '' : row(sw(ROLLER.color), ROLLER.label, `${ROLLER.about} Off unless you turn them on; loops aren’t built around them.`),
     ramps ? '' : [
       row(h('span.swatch.dashed'), 'Dashed', 'Surface not recorded, so it could be gravel.'),
       row(h('span.key-icon', {}, '⚠'), 'Blind crest', 'A tight turn at or just past the top of a rise, so you can’t see through it.'),
       row(iconEl(icon.mountain, 'key-icon'), 'Hills', `Feet of up and down per mile: ${HILLS.slice(1).map(l => `${l.label.toLowerCase()} ${l.ft}+`).join(', ')}. Around KC is about 95, the Ozarks about 160.`),
     ]);
 }
-const groupColor = g => g.rampTier >= 0 ? (highwaysOnly() ? RAMP_TIERS[g.rampTier].color : HIGHWAYS.color) : CURVE_CLASSES[Math.max(0, g.cls)].color;
+const groupColor = g => g.rampTier >= 0 ? (highwaysOnly() ? RAMP_TIERS[g.rampTier].color : HIGHWAYS.color) : g.roller ? ROLLER.color : CURVE_CLASSES[Math.max(0, g.cls)].color;
 const legendChip = (c, on, onclick) => h(`button.legend-chip${on ? '' : '.off'}`, {
   onclick, title: `${c.about ? `${c.label}: ${c.about}\n` : ''}Tap to ${on ? 'hide' : 'show'} these`,
 }, h('span.swatch', { style: `background:${c.color}` }), c.label);
@@ -817,7 +886,7 @@ function roadCard(g) {
   h('span.bar', { style: `background:${groupColor(g)}` }),
   h('div.card-main', {},
     h('div.card-title', {}, g.key),
-    g.oneway ? h('div.card-sub', {}, rampFacts(g).join(' · ')) : h('div.card-sub', {}, `${miles(g.curvy)} mi of curves`, hill && hill !== 'Flat' ? ` · ${hill.toLowerCase()}` : '',
+    g.oneway ? h('div.card-sub', {}, rampFacts(g).join(' · ')) : h('div.card-sub', {}, g.roller ? `${miles(g.length)} mi, straight` : `${miles(g.curvy)} mi of curves`, hill && hill !== 'Flat' ? ` · ${hill.toLowerCase()}` : '',
       g.blind ? h('span.warn', {}, ` · ⚠ ${g.blind}`) : '')),
   h('button.icon-btn.add', { title: 'Add to ride', onclick: e => { e.stopPropagation(); addRoad(g); }, html: icon.plus }));
 }
@@ -884,10 +953,10 @@ function roadView() {
     : h('div.muted.small', {}, 'Elevation unavailable right now.')));
   return [
     backBar(g.key, r.name && r.name !== g.key ? r.name : (r.ref && r.ref !== g.key ? r.ref : null)),
-    h('div.tag', { style: `--c:${cls.color}` }, g.cls >= 0 ? cls.label : 'Mostly straight'),
-    g.cls >= 0 ? h('p.about', {}, cls.about) : '',
+    h('div.tag', { style: `--c:${g.roller ? ROLLER.color : cls.color}` }, g.cls >= 0 ? cls.label : g.roller ? 'Roller coaster' : 'Mostly straight'),
+    g.cls >= 0 ? h('p.about', {}, cls.about) : g.roller ? h('p.about', {}, ROLLER.about) : '',
     h('div.stats', {},
-      stat(`${miles(g.curvy)} mi`, 'of curves'),
+      g.roller ? stat(`${miles(g.length)} mi`, 'long, straight') : stat(`${miles(g.curvy)} mi`, 'of curves'),
       stat(hillWord(g.hill) || '—', g.hill != null ? `${Math.round(g.hill * 5.28)} ft/mi up & down` : 'hills'),
       stat(r.mph != null ? `${r.mph} mph` : `~${r.estMph} mph`, r.mph != null ? 'posted limit' : 'estimated limit'),
       stat(g.blind ? `⚠ ${g.blind}` : 'None', 'blind crest corners')),
