@@ -33,6 +33,20 @@ Ideas that came up, roughly in order of how much they'd help.
   from Valhalla's turn instructions, screen kept awake, re-routing back onto the planned roads,
   gas and blind-crest callouts. Limits: screen on and app in front (phone mounted on a charger),
   no CarPlay/Android Auto, re-routing needs signal, iPhone voice can be finicky.
+- **Weather layer: ride or not, at a glance**. Not a weather app: only what decides a ride (wet roads, storms,
+  wind, cold), shown on the map before there's a ride to plan. The ride weather already comes from Open-Meteo for
+  points along a route; the layer (in the layers menu, off by default) would show the same over the whole map.
+  - **Forecast at your leave time**: Open-Meteo takes many points in one request (the ride weather already does),
+    so a coarse grid over the view (about every 25 km) gives rain chance, storms and gusts for any hour of the next
+    7 days. Shade rain chance, mark storms, and let the Leaving time pick the hour. Open-Meteo counts each point as a
+    request (free up to about 10,000 a day, non-commercial), so fetch only when the map moves well away, and reuse
+    grid cells already loaded.
+  - **Radar for right now**: live radar tiles with the last hour or two looping, for "is it raining out there and
+    which way is it moving". RainViewer has free radar tiles (it cut back its free use in 2025; check what's left
+    and the credit it wants). Only now, not later, so it goes with the forecast, not instead of it.
+  - **One line on top** that answers the question: "Dry until 4 pm, gusts 30 after 2", for the area in view at the
+    leave time.
+  - With a ride, color its line by the rain chance when you'd pass (that data is already there).
 - **Fly-through extras**: a chase camera that banks into corners; a "skip the boring parts" toggle that
   speeds through highways and town; curve callouts ("Tight curves next 2.1 mi", hairpins); gas stops as you
   pass them ("Casey's, 90+ likely, next gas 38 mi"); recording it as a video to share.
