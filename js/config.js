@@ -5,7 +5,7 @@ export const DATA_URL = 'tiles/';
 // Accounts (optional sign-in): the API in worker/, and the site's Google sign-in client. The tests point the app at a
 // local copy of the API with localStorage 'rf2-api'.
 export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } catch (e) { return null; } })()
-  || 'https://ride-finder-api.SUBDOMAIN.workers.dev';
+  || 'https://ride-finder-api.nosv1.workers.dev';
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
