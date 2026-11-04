@@ -266,7 +266,7 @@ test('stops can be dragged on a phone too', async () => {
   }
 });
 
-test('on a phone, hold a stop pin to pick it up and drag it; a quick swipe over it pans the map', async () => {
+test('on a phone, hold a stop pin to pick it up and drag it: it rides above the thumb, and the map stays out of it', async () => {
   const phone = await launch({ mobile: true });
   try {
     await phone.goto(base);
@@ -284,27 +284,32 @@ test('on a phone, hold a stop pin to pick it up and drag it; a quick swipe over 
     const before = await phone.eval('JSON.stringify(RF.trip.items[1].pts[0])');
     const center = await phone.eval('JSON.stringify(RF.mapView.map.getCenter())');
 
-    // A swipe that starts on the pin: the map pans, the stop stays.
+    // A swipe that starts on the pin: nothing moves (the pin is the pin's, and it wasn't picked up).
     let [x, y] = await pin();
     await phone.touch('touchStart', x, y);
     for (let k = 1; k <= 5; k++) { await phone.touch('touchMove', x + 12 * k, y); await sleep(16); }
     await phone.touch('touchEnd', x + 60, y);
     await sleep(500);
     assert.equal(await phone.eval('JSON.stringify(RF.trip.items[1].pts[0])'), before, 'a swipe doesn’t move the stop');
-    assert.notEqual(await phone.eval('JSON.stringify(RF.mapView.map.getCenter())'), center, 'it pans the map');
+    assert.equal(await phone.eval('JSON.stringify(RF.mapView.map.getCenter())'), center, 'or the map');
 
-    // Press and hold, then drag: the stop moves, the map doesn't.
+    // Press and hold past the map's long-press time, then drag: the stop moves, the map doesn't, no menu.
     [x, y] = await pin();
-    const panned = await phone.eval('JSON.stringify(RF.mapView.map.getCenter())');
     await phone.touch('touchStart', x, y);
-    await sleep(500);
+    await sleep(800);
     assert.equal(await phone.eval("document.querySelector('.stop-marker.lifted')?.textContent"), '2', 'picked up');
+    assert.equal(await phone.eval("document.getElementById('menu').hidden"), true, 'the map’s long-press menu stays shut');
+    const [hx, hy] = await pin();
+    assert.ok(Math.abs(hx - x) < 3 && Math.abs(y - hy - 40) < 3, `risen 40 px over the thumb, not thrown off: ${[hx - x, hy - y]}`);
     for (let k = 1; k <= 5; k++) { await phone.touch('touchMove', x - 16 * k, y + 10 * k); await sleep(16); }
+    const [mx, my] = await pin();
+    assert.ok(Math.abs(mx - (x - 80)) < 3 && Math.abs(my - (y + 50 - 40)) < 3, `follows the thumb: ${[mx - x, my - y]}`);
     await phone.touch('touchEnd', x - 80, y + 50);
     await sleep(500);
     assert.notEqual(await phone.eval('JSON.stringify(RF.trip.items[1].pts[0])'), before, 'the stop moved');
-    assert.equal(await phone.eval('JSON.stringify(RF.mapView.map.getCenter())'), panned, 'the map stayed put');
+    assert.equal(await phone.eval('JSON.stringify(RF.mapView.map.getCenter())'), center, 'the map stayed put');
     assert.equal(await phone.eval("document.querySelectorAll('.stop-marker.lifted').length"), 0, 'and it was put down');
+    assert.equal(await phone.eval("document.getElementById('menu').hidden"), true);
   } finally {
     phone.close();
   }

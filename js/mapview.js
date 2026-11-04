@@ -281,28 +281,43 @@ export class MapView {
   // ---------- markers ----------
 
   // stops: [{ p, label, n, draggable, index }]. Tapping one (not dragging it) emits 'stop' with its index.
-  // Stop pins. With a mouse, drag one; on a touchscreen, press and hold to pick it up (it lifts above the finger,
-  // like the text cursor), then drag. A quick swipe over a pin still pans the map. onDrop(index, [lat, lon]).
+  // Stop pins. With a mouse, drag one; on a touchscreen, press and hold to pick it up, then drag. Picked up, it
+  // stays where it was grabbed and rises 40 px over the finger, so it can be seen (like the text cursor). A touch on
+  // a pin is the pin's alone: the map doesn't pan under it or open its long-press menu. onDrop(index, [lat, lon]).
   setStops(stops, onDrop) {
     this.markers.forEach(m => m.remove());
     this.markers = stops.map(s => {
-      const el = document.createElement('div');
-      el.className = 'stop-marker';
-      el.textContent = s.n;
+      // The map moves el with a transform; the dot inside is what grows when picked up (scaling el would scale
+      // its position too, throwing the pin across the screen).
+      const el = document.createElement('div'), dot = document.createElement('div');
+      dot.className = 'stop-marker';
+      dot.textContent = s.n;
       el.title = s.label;
+      el.append(dot);
       const m = new maplibregl.Marker({ element: el }).setLngLat(ll(s.p)).addTo(this.map);
       let press = null, dragged = false;
-      const box = () => this.map.getContainer().getBoundingClientRect();
+      // Where the pin goes: the finger plus where on the pin it was grabbed, rising over the first 150 ms.
+      const place = () => {
+        cancelAnimationFrame(press.raf);
+        const t = Math.min(1, (performance.now() - press.liftedAt) / 150), up = press.touch ? 40 * t : 0;
+        const b = this.map.getContainer().getBoundingClientRect();
+        const { lat, lng } = this.map.unproject([press.fx + press.dx - b.left, press.fy + press.dy - up - b.top]);
+        m.setLngLat([lng, lat]);
+        if (t < 1) press.raf = requestAnimationFrame(place);
+      };
       const lift = () => {
         press.lifted = true;
-        el.classList.add('lifted');
+        press.liftedAt = performance.now();
+        dot.classList.add('lifted');
         this.map.dragPan.disable();
         if (navigator.vibrate) navigator.vibrate(15);
+        place();
       };
       const end = drop => {
         clearTimeout(press.timer);
+        cancelAnimationFrame(press.raf);
         if (press.lifted) {
-          el.classList.remove('lifted');
+          dot.classList.remove('lifted');
           this.map.dragPan.enable();
           dragged = true;
           setTimeout(() => { dragged = false; }, 0);  // the click that follows the drop isn't a tap
@@ -312,28 +327,29 @@ export class MapView {
       };
       el.addEventListener('pointerdown', e => {
         if (!e.isPrimary || e.button > 0) return;
-        const touch = e.pointerType !== 'mouse';
-        press = { id: e.pointerId, x: e.clientX, y: e.clientY, touch, lifted: false };
+        const r = dot.getBoundingClientRect(), touch = e.pointerType !== 'mouse';
+        press = { id: e.pointerId, x: e.clientX, y: e.clientY, fx: e.clientX, fy: e.clientY, touch, lifted: false,
+          dx: r.x + r.width / 2 - e.clientX, dy: r.y + r.height / 2 - e.clientY };
         el.setPointerCapture(e.pointerId);
         if (touch) press.timer = setTimeout(() => press && lift(), 350);
-        else e.stopPropagation();  // a mouse drag on a pin moves the pin, not the map
       });
       el.addEventListener('pointermove', e => {
         if (!press || e.pointerId !== press.id) return;
-        const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y);
+        press.fx = e.clientX;
+        press.fy = e.clientY;
         if (!press.lifted) {
-          if (press.touch) { if (moved > 10) end(false); return; }  // a swipe: let the map pan
+          const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y);
+          if (press.touch) { if (moved > 10) end(false); return; }  // slid off before it was picked up
           if (moved < 4) return;
           lift();
         }
-        const b = box(), up = press.touch ? 44 : 0;  // above the finger, so it can be seen
-        const { lat, lng } = this.map.unproject([e.clientX - b.left, e.clientY - b.top - up]);
-        m.setLngLat([lng, lat]);
+        place();
       });
       el.addEventListener('pointerup', e => { if (press && e.pointerId === press.id) end(true); });
       el.addEventListener('pointercancel', e => { if (press && e.pointerId === press.id) end(false); });
-      el.addEventListener('mousedown', e => e.stopPropagation());  // the map pans on mousedown, not pointerdown
-      el.addEventListener('contextmenu', e => e.preventDefault());  // a long press isn't a right-click
+      // The map listens for these on its container: keep a press on a pin from panning it or opening its menu.
+      for (const type of ['mousedown', 'touchstart', 'touchmove', 'touchend', 'dblclick']) el.addEventListener(type, e => e.stopPropagation());
+      el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); });
       el.addEventListener('click', e => { e.stopPropagation(); if (!dragged) this.emit('stop', s.index); });
       return m;
     });

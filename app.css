@@ -147,6 +147,9 @@ h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0 0 
 .about { margin: -4px 0 12px; font-size: 13px; color: var(--muted); }
 
 .cards { display: flex; flex-direction: column; gap: 8px; }
+/* Room between the blue buttons and the loop cards they make and ride. */
+.cta + .cards, .cta + p + .cards { margin-top: 12px; }
+.cards + .btn.wide { margin-top: 12px; }
 .card {
   display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; cursor: pointer;
   background: var(--raise); border: 1px solid var(--border);
@@ -184,7 +187,7 @@ h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0 0 
 }
 .cta:disabled { opacity: .6; cursor: default; }
 /* The main action stays in reach at the bottom of the sheet while the list scrolls under it. */
-.cta.sticky { position: sticky; bottom: 10px; z-index: 1; box-shadow: 0 -10px 24px 6px var(--panel-solid); }
+.cta.sticky, .btn.sticky { position: sticky; bottom: 10px; z-index: 1; box-shadow: 0 -10px 24px 6px var(--panel-solid); }
 
 .ride-bar {
   display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 14px; border-radius: 12px;
@@ -313,7 +316,8 @@ select { min-height: 38px; padding: 0 8px; border-radius: 10px; border: 1px soli
   touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
 /* Picked up: bigger, with a shadow below as if off the map. */
-.stop-marker.lifted { cursor: grabbing; scale: 1.35; box-shadow: 0 10px 18px rgba(0,0,0,.55); z-index: 5; }
+.stop-marker.lifted { cursor: grabbing; scale: 1.35; box-shadow: 0 10px 18px rgba(0,0,0,.55); }
+.maplibregl-marker:has(.lifted) { z-index: 5; }
 .search-pin {
   width: 22px; height: 22px; border-radius: 50%; background: #e64980; border: 3px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.6);
   cursor: pointer;

@@ -1076,7 +1076,7 @@ function planView() {
     h('button.cta', { onclick: generate }, iconEl(icon.route), gen.running ? 'Stop' : oneWay ? 'Find fun ways there' : 'Generate loops'),
     gen.status ? h('p.muted', {}, gen.status) : '',
     gen.options.length ? h('div.cards', {}, gen.options.map(optionCard)) : '',
-    gen.index >= 0 ? h('button.btn.primary.wide', { onclick: () => go('trip') }, gen.options[gen.index] && gen.options[gen.index].oneWay ? 'Ride this way →' : 'Ride this loop →') : '',
+    gen.index >= 0 ? h('button.btn.primary.wide.sticky', { onclick: () => go('trip') }, gen.options[gen.index] && gen.options[gen.index].oneWay ? 'Ride this way →' : 'Ride this loop →') : '',
     h('p.fineprint', {}, 'Uses the filters at the top (speed, hills, paved). Riding time doesn’t include stops. Or build your own: tap roads on the map and Add to ride.'),
   ];
 }

@@ -294,8 +294,11 @@ colored road), Add a stop here, Street View here.
 **Stops** (Your ride)
 - **Pinned points:** the start (my location, a map spot, or a search result) and stops added on the map. Pins can be dragged.
   - **Moving a pin:** with a mouse, drag it. On a touchscreen, press and hold (350 ms) to pick it up: it grows, the
-    phone buzzes, and it rides 44 px above the finger so it can be seen; let go to drop it. A swipe that starts on a
-    pin pans the map. Rows say "drag its pin to move" or, on touch, "hold its pin to move it".
+    phone buzzes, and it stays where it was grabbed but rises 40 px over the thumb (over 150 ms) so it can be seen;
+    let go to drop it where it's drawn. A touch on a pin is the pin's alone: the map doesn't pan under it or open
+    its long-press menu. Rows say "drag its pin to move" or, on touch, "hold its pin to move it".
+  - The dot inside the marker is what grows: the map places markers with a CSS transform, and scaling that element
+    would scale its position too (the pin jumped down and right of the thumb).
   - **A road stop's pin** dropped on another colored road becomes that road (the toast can undo it). Dropped anywhere
     else it goes back, with a toast saying to drop it on a colored road.
 - **Roads:** ridden end to end. Each has an entry, up to 2 "through" points that keep the router on the road, and an exit.

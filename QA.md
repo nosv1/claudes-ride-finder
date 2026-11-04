@@ -68,8 +68,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 ## The ride
 
 - Stops can be dragged into a new order (mouse and touch), removed, and Clear all can be undone.
-- On a phone: hold a stop pin until it lifts, drag it, let go; it moves and the ride reroutes. A quick swipe over a
-  pin pans the map. A road stop's pin dropped on another colored road swaps to that road (Undo in the toast).
+- On a phone: hold a stop pin until it lifts, drag it, let go; it moves and the ride reroutes. While held it sits
+  just above the thumb (no jump), the map doesn't pan and the start/end/stop menu doesn't open. A road stop's pin dropped on another colored road swaps to that road (Undo in the toast).
 - Under the stats: focus tags, the color bar, and the roads that fit your filters. Change a filter chip and the
   list follows. Share is at the top of the page.
 - Hovering a tag (Some curves, Hilly…), a bar segment or a road in that list lights up just those parts of the route
