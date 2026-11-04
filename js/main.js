@@ -1,5 +1,5 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor } from './config.js';
+import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor, APP_VERSION } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
 import { visible, hillLevel, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong } from './roads.js';
 import * as T from './trip.js';
@@ -113,6 +113,34 @@ async function start() {
   mapView.on('menu', spotMenu);
   mapView.map.on('movestart', closeMenu);
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+  checkForUpdate();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+}
+
+// ---------- updates ----------
+
+// The site's version.json says the latest version. An app added to the home screen often just resumes where it was,
+// so check when it opens and each time it comes back to the front; a newer one gets a toast and an Update link on
+// the home list until it's loaded. Rides and settings are saved, so reloading loses nothing.
+let updateTo = null;
+const newer = (a, b) => {
+  const x = a.split('.').map(Number), y = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+};
+async function checkForUpdate() {
+  try {
+    const { version } = await (await fetch('version.json', { cache: 'no-store' })).json();
+    if (!version || !newer(version, APP_VERSION) || version === updateTo) return;
+    updateTo = version;
+    if (!fly) toast(`A new version of Ride Finder is out (${version})`, { label: 'Update', run: applyUpdate });
+    renderSoon();
+  } catch (e) { /* offline: nothing to compare with */ }
+}
+async function applyUpdate() {
+  const reg = 'serviceWorker' in navigator && await navigator.serviceWorker.getRegistration();
+  if (reg) await reg.update().catch(() => {});
+  location.reload();
 }
 
 // Roads for what's on screen. None when zoomed out past where the list says "Zoom in": that
@@ -825,7 +853,9 @@ function homeView() {
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
     h('div.foot-links', {},
       h('button.link', { onclick: () => go('about') }, 'About, credits and riding safe'),
-      canInstall() ? h('button.link', { onclick: install }, iconEl(icon.download), 'Install app') : ''),
+      canInstall() ? h('button.link', { onclick: install }, iconEl(icon.download), 'Install app') : '',
+      updateTo ? h('button.link.update', { onclick: applyUpdate }, `Update to ${updateTo}`) : ''),
+    h('p.fineprint.version', {}, `Version ${APP_VERSION}`),
   ];
 }
 
@@ -872,6 +902,8 @@ function aboutView() {
         credit('Map', link('https://maplibre.org/', 'MapLibre GL JS'), ', with fonts from ', link('https://openfreemap.org/', 'OpenFreeMap')))),
     h('div.section', {}, h('h3', {}, iconEl(icon.person), 'Your data'),
       h('p.small', {}, 'No account and no tracking. Your rides and settings are saved in this browser, not on a server. Some things do get sent out to work: your stops, to the route planner; what you type in search, to the place search; and spots along your ride, to the weather service. Your location is only used when you tap My location, or when you generate a ride without picking a start. A share link has the whole ride in the link, so nothing is stored anywhere.')),
+    h('p.fineprint', {}, `Version ${APP_VERSION}${updateTo ? ` (${updateTo} is out: ` : ''}`,
+      updateTo ? h('button.link', { onclick: applyUpdate }, 'update') : '', updateTo ? ')' : '', '.'),
     h('p.fineprint', {}, 'Ride Finder is open source: ', link('https://github.com/nosv1/claudes-ride-finder', 'github.com/nosv1/claudes-ride-finder'), '.'),
   ];
 }

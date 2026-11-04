@@ -559,7 +559,14 @@ colored road), Add a stop here, Street View here.
 - **Install app** (under the home list, and on the About page) when the browser offers to install (Chrome, Edge,
   Android: the `beforeinstallprompt` prompt is kept and shown on the tap). On iPhone it says how instead (Share →
   Add to Home Screen). Hidden once opened as the installed app.
-- The service worker serves app files network-first, so updates show at once and the cache covers offline use.
+- The service worker serves app files network-first, asking the site each time (`cache: 'no-cache'`: GitHub Pages
+  lets browsers reuse files for 10 minutes), so updates show at once and the cache covers offline use.
+- **Versions**: `APP_VERSION` in `js/config.js` is the version running, shown at the bottom of the home list and on the
+  About page ("Version 2026.11.04.1": the date, then a count for the day). `version.json` on the site is the latest.
+  The app checks it when it opens and whenever it comes back to the front (an app added to the home screen
+  usually just resumes); a newer one gets a toast with **Update** and an "Update to …" link on the home list until
+  it's loaded. Update reloads (rides and settings are saved). **Before pushing a change to what the site serves,
+  run `node tools/bump_version.mjs`**, which sets both; a test checks they agree.
 - Map imagery, terrain and fonts are cached as you browse (cache-first), up to ~4,000 tiles.
 
 ## 6. Constraints and lessons (don't relearn these)

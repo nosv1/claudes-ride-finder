@@ -15,6 +15,9 @@ Screen on a phone, the install button in the address bar in Chrome or Edge) to u
 - **Ride it**: open in Google Maps (with extra stops so it sticks to the route), download a GPX for riding apps,
   or share a link (it shows a preview card in texts and chats).
 
+**Pushing an update** (to `main`, which is the live site): run `node tools/bump_version.mjs` first. It sets the version
+the app shows and the one phones compare against to offer the update.
+
 The app's About page has the credits and the riding-safe wording. See [FEATURES.md](FEATURES.md) for the full feature list and requirements, [tests/README.md](tests/README.md)
 for the tests, and [BACKLOG.md](BACKLOG.md) for what's next.
 

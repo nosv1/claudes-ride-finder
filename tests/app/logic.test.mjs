@@ -716,3 +716,10 @@ test('a ride says what it rides, in the filters’ words, and which roads fit th
   assert.deepEqual(rideFocus(mix).map(f => f.label), ['Sweepers', 'Curvy', 'Hilly']);
   assert.deepEqual(rideFocus(rideMix(path, [])), [], 'nothing to say about a ride on no fun roads');
 });
+
+test('the app says the same version as version.json (tools/bump_version.mjs sets both)', async () => {
+  const { APP_VERSION } = await import('../../js/config.js');
+  const { version } = JSON.parse(readFileSync(new URL('../../version.json', import.meta.url), 'utf8'));
+  assert.equal(APP_VERSION, version);
+  assert.match(version, /^\d{4}\.\d{2}\.\d{2}\.\d+$/);
+});

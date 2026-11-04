@@ -1,8 +1,8 @@
 // Offline support. The app and road data come from the network when there is one (so updates
-// show up straight away) and from cache when there isn't;
+// show up straight away; version.json says which is the latest) and from cache when there isn't;
 // map imagery, terrain and fonts are kept as you browse (up to a limit), so areas you've looked
 // at keep working without signal. Routing and place search always need the network.
-const VERSION = 'v4';
+const VERSION = 'v5';
 const APP = `rf-app-${VERSION}`, MAP = `rf-map-${VERSION}`;
 const MAP_LIMIT = 4000;   // map tiles to keep (~150 MB at most)
 const SHELL = [
@@ -37,7 +37,9 @@ self.addEventListener('fetch', e => {
 async function networkFirst(req, name) {
   const cache = await caches.open(name);
   try {
-    const res = await fetch(req);
+    // Asks the site each time (a quick "not modified" when nothing changed): GitHub Pages lets browsers reuse
+    // files for 10 minutes, which held updates back.
+    const res = await fetch(req, { cache: 'no-cache' });
     if (res.ok) cache.put(req, res.clone());
     return res;
   } catch (e) {

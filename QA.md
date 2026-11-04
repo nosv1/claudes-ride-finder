@@ -94,6 +94,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 ## Ready to share
 
 - Under the home list: "About, credits and riding safe" opens the About page; Back returns home.
+- The version shows under the home list and on the About page. After pushing an update (with the version bumped),
+  the installed app on a phone offers "Update" when it's opened or switched back to, and shows the new version after.
 - The About page's links open in a new tab, and every service the app uses is credited.
 - Chrome or Edge on a PC, or Chrome on Android: "Install app" shows under the home list; tapping it brings up the
   browser's install prompt. Opened from the installed icon, it doesn't show.

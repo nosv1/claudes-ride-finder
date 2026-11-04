@@ -315,6 +315,19 @@ test('on a phone, hold a stop pin to pick it up and drag it: it rides above the 
   }
 });
 
+test('the version shows on the home list, and a newer one on the site is offered when the app comes back', async () => {
+  await page.eval("RF.go('home')");
+  await sleep(300);
+  const { APP_VERSION } = await import('../../js/config.js');
+  assert.match(await sheetText(), new RegExp(`Version ${APP_VERSION.replace(/\./g, '\.')}`));
+  await page.eval(`(() => { const f = window.fetch; window.fetch = (u, o) => /version\.json/.test(String(u))
+    ? Promise.resolve(new Response('{ "version": "2999.01.01.1" }')) : f(u, o); })()`);
+  await page.eval("void document.dispatchEvent(new Event('visibilitychange'))");
+  await sleep(500);
+  assert.match(await page.eval("document.getElementById('toast').innerText"), /new version[\s\S]*2999\.01\.01\.1[\s\S]*Update/);
+  assert.match(await sheetText(), /Update to 2999\.01\.01\.1/, 'and it stays on the home list');
+});
+
 test('the ride summary says what it rides, and hovering or tapping a tag lights up those parts of the route', async () => {
   await showMo150();
   await page.eval(`(async () => {

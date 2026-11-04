@@ -403,6 +403,8 @@ body.flying #map, body.tilted #map { background: #9db4c8; }
 
 /* About page and the home page's footer links */
 .foot-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 2px 8px; }
+button.link.update { color: var(--blue); font-weight: 700; }
+.fineprint.version { margin-top: 0; }
 button.link { display: inline-flex; align-items: center; gap: 5px; padding: 4px 0; border: 0; background: none;
   color: #74c0fc; font: inherit; font-size: 12.5px; text-align: left; }
 button.link:hover { text-decoration: underline; }
