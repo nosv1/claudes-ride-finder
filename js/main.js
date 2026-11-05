@@ -1497,9 +1497,10 @@ function tripView() {
       h('button.btn.primary.wide', { onclick: () => { if (!gen.running) go('plan'); generate(); } },
         iconEl(icon.route), gen.running ? 'Stop' : ownStops().length ? 'Generate loops through these stops' : 'Generate loops from this start'),
       h('p.muted.small', {}, `Keeps your own stops and fills the time with the best ${{ all: 'roads nearby, sweeping highways included', back: 'back roads nearby', highway: 'highway sweeps nearby' }[settings.roadType] || 'roads nearby'}. The road type on the map decides which.`)),
-    h('div.field', {}, h('label.switch', {},
-      h('input', { type: 'checkbox', checked: trip.loop, onchange: e => { trip.loop = e.target.checked; tripChanged(); } }),
-      h('span', {}, 'Return to start'))),
+    // A loop rides back to the start after the last stop; one way finishes at the last stop.
+    h('div.field', {}, h('label', {}, 'Ride ends'),
+      h('div.seg.ride-ends', {}, [[true, 'Back at the start'], [false, 'At the last stop']].map(([loop, l]) =>
+        h(`button${trip.loop === loop ? '.on' : ''}`, { onclick: () => { if (trip.loop !== loop) { trip.loop = loop; tripChanged(); } } }, l)))),
     h('div.field', {}, h('label', {}, 'Between roads'),
       h('div.seg', {}, [['1', 'Fastest'], ['0.5', 'Balanced'], ['0', 'Back roads']].map(([v, l]) =>
         h(`button${trip.pref === v ? '.on' : ''}`, { onclick: () => { trip.pref = v; tripChanged(); } }, l)))),

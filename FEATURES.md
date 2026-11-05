@@ -318,7 +318,7 @@ colored road), Add a stop here, Street View here.
 - Rows can be reordered by dragging their grip (touch too), flipped (⇄) and removed (✕).
   - The drag is followed on the whole window: moving the row in the list drops the grip's pointer capture.
     Re-renders wait until the row is dropped.
-- **Options:** "Return to start" (loop); between roads: Fastest / Balanced / Back roads.
+- **Options:** Ride ends: Back at the start (a loop) / At the last stop (one way); between roads: Fastest / Balanced / Back roads.
 
 **Routing**
 - Valhalla motorcycle profile (valhalla1.openstreetmap.de) with `use_highways` 1 / 0.5 / 0.

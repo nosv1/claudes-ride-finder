@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;  /* the browser's own controls (checkboxes, dropdowns, date picker) drawn dark too */
   --bg: #0f1115;
   --panel: rgba(22, 24, 30, 0.96);
   --panel-solid: #16181e;

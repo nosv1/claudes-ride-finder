@@ -273,7 +273,7 @@ test('on a phone, hold a stop pin to pick it up and drag it: it rides above the 
     await phone.waitFor('window.RF && RF.store.roads.length > 0', 60000);
     await phone.eval(pointTrip);
     await sleep(400);
-    await phone.eval("document.querySelector('#sheetBody label.switch input').click()");  // the pins go up with the next change
+    await phone.eval("document.querySelector('#sheetBody .ride-ends button:not(.on)').click()");  // the pins go up with the next change
     await phone.eval("document.getElementById('sheet').dataset.snap = 'peek'");
     await phone.waitFor('RF.route', 60000);  // routing fits the map to the ride: after that, put the pin in view
     await sleep(1000);
@@ -340,7 +340,7 @@ test('the ride summary says what it rides, and hovering or tapping a tag lights 
     RF.go('trip');
   })()`);
   await sleep(300);
-  await page.eval("document.querySelector('#sheetBody label.switch input').click()");  // routes it
+  await page.eval("document.querySelector('#sheetBody .ride-ends button:not(.on)').click()");  // routes it
   await page.waitFor("document.querySelector('.ride-mix .tag')", 60000);
   assert.match(await page.eval("document.querySelector('.ride-mix').innerText"), /Sweepers[\s\S]*fits your filters[\s\S]*MO 150/);
   const lit = () => page.eval("(async () => { await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); return RF.mapView.map.queryRenderedFeatures({ layers: ['focus'] }).length; })()");
