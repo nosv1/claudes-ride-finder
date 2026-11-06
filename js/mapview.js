@@ -4,7 +4,7 @@
 /* global maplibregl */
 import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN, HIGHWAYS, ROLLER, tiersFor } from './config.js';
 import { TAGS } from './tags.js';
-import { speedBin, isMinor } from './roads.js';
+import { speedBin, isMinor, limitOf } from './roads.js';
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
 const raster = (service, maxzoom, attribution) => ({
@@ -219,7 +219,7 @@ export class MapView {
 
   setRoads(roads) {
     const features = roads.map(r => r.feature || (r.feature = line(r.geom, {
-      i: r.id, cls: r.cls, spd: r.speed ?? -1, posted: r.mph != null ? 1 : 0, sbin: speedBin(r.mph), hill: r.hillLevel,
+      i: r.id, cls: r.cls, spd: r.speed ?? -1, posted: limitOf(r) != null ? 1 : 0, sbin: speedBin(limitOf(r)), hill: r.hillLevel,
       surf: r.surface, minor: isMinor(r) ? 1 : 0, rt: r.rampTier, hwy: r.highway ? 1 : 0, rc: r.roller ? 1 : 0, ...(r.ref && SHIELD_TYPES.has(r.hw) ? { ref: r.ref } : {}),
     })));
     this.map.getSource('roads').setData(fc(features));

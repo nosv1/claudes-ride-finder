@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 
 import { boundsOf, distance, decodePolyline, spotOnLine, headingOnPath, alongRoute, nearestIndex } from '../../js/geo.js';
-import { decodeRow, visible, clusterRoads, stretchOf, bestInView, rollersInView, hillLevel, roadNear, roadAlong } from '../../js/roads.js';
+import { decodeRow, visible, clusterRoads, stretchOf, bestInView, rollersInView, hillLevel, roadNear, roadAlong, setMyMph, limitOf } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
 import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn } from '../../js/plan.js';
@@ -726,7 +726,7 @@ test('the app says the same version as version.json (tools/bump_version.mjs sets
 
 // ---------- Ride mode (nav.js) and road tags (tags.js) ----------
 import { Track, Guide, rejoinTarget, turnsOf, callout, spoken, shown, turnClips, distanceClip } from '../../js/nav.js';
-import { setTags, tagOf, weightOf, avoidedIds, restoreTags, allTags, thin, tagsForMap } from '../../js/tags.js';
+import { setTags, setSpeed, speedFixes, tagOf, weightOf, avoidedIds, restoreTags, allTags, thin, tagsForMap } from '../../js/tags.js';
 
 // An L: ~2.2 km north, then ~2.2 km east, with a stop at the corner (the router ends a leg there and starts the next
 // with "head east", which is really a right turn).
@@ -884,3 +884,38 @@ test('road tags: a stretch tagged, found by any of its pieces, left out or ranke
   restoreTags(was);
   assert.equal(allTags().length, 0);
 });
+
+test('your speed limit: kept with the tags, used for the whole stretch, and back to the map’s when cleared', () => {
+  const geom = east(38, -93, 40, 0.0001);
+  const g = { key: 'MO D', roads: [{ id: 1, geom }, { id: 2, geom: east(38, -92.996, 10) }] };
+  const was = setTags(g, ['great'], 'nice');
+  setSpeed(g, 45);
+  assert.deepEqual([tagOf([2]).tags, tagOf([2]).note, tagOf([2]).mph], [['great'], 'nice', 45], 'tags and note kept');
+  assert.deepEqual([...speedFixes()], [[1, 45], [2, 45]]);
+  // Changing the tags keeps the speed; clearing the tags keeps the record for the speed.
+  setTags(g, []);
+  assert.equal(tagOf([1]).mph, 45);
+  assert.equal(tagsForMap().length, 0, 'no tag to draw');
+  setSpeed(g, null);
+  assert.equal(tagOf([1]), null, 'nothing left: no record');
+  restoreTags(was);
+});
+
+test('your speed limit on a road: Best rides’ speed chip and the Speed limits mode use it', () => {
+  // A sweeper guessed at 30 (town), like NE Strother Rd by Lee's Summit.
+  const r = row({ hw: 'tertiary', est: 30, sweep: 800, length: 2400 });
+  assert.equal(visible(r, FILTERS), false, 'hidden at 45+');
+  assert.equal(visible(r, { ...FILTERS, mode: 'speed' }), false, 'no limit to color by');
+  assert.equal(setMyMph(r, 45), true);
+  assert.equal(setMyMph(r, 45), false, 'no change');
+  assert.deepEqual([r.speed, limitOf(r)], [45, 45]);
+  assert.equal(visible(r, FILTERS), true);
+  assert.equal(visible(r, { ...FILTERS, mode: 'speed' }), true);
+  setMyMph(r, null);
+  assert.deepEqual([r.speed, limitOf(r)], [30, null]);
+  // Yours wins over a posted one too (signs change).
+  const posted = row({ mph: 55, sweep: 800 });
+  setMyMph(posted, 40);
+  assert.equal(visible(posted, FILTERS), false);
+});
+

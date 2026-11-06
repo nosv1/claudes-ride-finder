@@ -19,11 +19,25 @@ export function decodeRow(row) {
   const a = geom[0], b = geom[geom.length - 1];
   r.loop = length < 1000 && Math.abs(a[0] - b[0]) < 1e-5 && Math.abs(a[1] - b[1]) < 1e-5;
   r.cls = r.oneway || r.loop ? -1 : curveClass(r);  // ramps are their own thing (Interchanges mode)
+  r.myMph = null;  // your own limit for it (tags.js), set by setMyMph
   r.speed = mph ?? estMph;
   r.hillLevel = hillLevel(hill);
   r.roller = isRoller(r);
   return r;
 }
+
+// Your speed limit on a road (null: back to the map's). It counts as a known limit: Best rides' speed chip, the
+// Speed limits mode and Ride mode all use it. True if it changed (its map feature is then rebuilt).
+export function setMyMph(r, mph) {
+  mph = mph ?? null;
+  if (r.myMph === mph) return false;
+  r.myMph = mph;
+  r.speed = mph ?? r.mph ?? r.estMph;
+  r.feature = null;
+  return true;
+}
+// The limit known for a road: yours, else the posted one (null if neither; the estimate isn't a known limit).
+export const limitOf = r => r.myMph ?? r.mph;
 
 // A straight back road that goes up and down a lot (see ROLLER).
 export const isRoller = r => r.cls < 0 && !r.oneway && !r.loop && ROLLER.types.has(r.hw) && r.length >= ROLLER.minM
@@ -76,7 +90,7 @@ export function visible(r, f) {
   if (f.hideUnpaved && r.surface === 1) return false;
   if (f.mode === 'speed') {
     // Highway sweeps repeat highway pieces from the speed-limit tiles, so they'd draw twice.
-    return r.mph != null && !r.highway && f.speedBins.has(speedBin(r.mph)) && (!isMinor(r) || f.zoom >= 11);
+    return limitOf(r) != null && !r.highway && f.speedBins.has(speedBin(limitOf(r))) && (!isMinor(r) || f.zoom >= 11);
   }
   if (r.roller ? !f.rollers : r.cls < 0 || !f.classes.has(r.cls)) return false;
   if (f.minHills > 0 && r.hillLevel < f.minHills) return false;

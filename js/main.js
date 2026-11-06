@@ -1,7 +1,7 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
 import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor, APP_VERSION } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
-import { visible, hillLevel, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong } from './roads.js';
+import { visible, hillLevel, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong, setMyMph, limitOf } from './roads.js';
 import * as T from './trip.js';
 import * as P from './plan.js';
 import { localResults, photonResults } from './search.js';
@@ -11,7 +11,7 @@ import * as W from './weather.js';
 import { Fly } from './fly.js';
 import { Ride } from './ride.js';
 import { phoneVoices, recorded, loadVoices, voicePick, setVoicePick, speak, SAMPLE, RATES } from './voice.js';
-import { TAGS, allTags, tagOf, setTags, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged } from './tags.js';
+import { TAGS, allTags, tagOf, setTags, setSpeed, speedFixes, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged } from './tags.js';
 import * as A from './account.js';
 import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox, loadSignals } from './store.js';
 import { MapView } from './mapview.js';
@@ -91,6 +91,7 @@ async function start() {
   // Road tiles start loading now; the map may still be fetching its basemap and terrain.
   onRoadsChanged(async () => {
     await mapView.ready;
+    applySpeedFixes();
     mapView.setRoads(store.roads);
     if (route) refreshInfo(false);
     if (view === 'home') renderSoon();
@@ -101,7 +102,12 @@ async function start() {
   addEventListener('resize', () => mapView.updateInsets());
   mapView.setStations(store.fuel);
   mapView.setTags(tagsForMap());
-  onTagsChanged(() => { mapView.setTags(tagsForMap()); A.dataChanged(); renderSoon(); });
+  onTagsChanged(() => {
+    mapView.setTags(tagsForMap());
+    if (applySpeedFixes()) mapView.setRoads(store.roads);
+    A.dataChanged();
+    renderSoon();
+  });
   applySettings();
   loadSavedTrip();
   addEventListener('hashchange', onLinkPasted);
@@ -819,8 +825,23 @@ function speedText(r) {
   const name = (r.ref || r.name || 'Unnamed road').replace(/;/g, ' / ');
   // The estimate is a rule of thumb for ordinary roads (30 in town): none on highways or ramps.
   const guess = /^(motorway|trunk)|_link$/.test(r.hw) ? null : r.estMph;
+  if (r.myMph != null) return `${name} · ${r.myMph} mph (yours)`;
   return r.mph != null ? `${name} · ${r.mph} mph` : guess != null ? `${name} · about ${guess} mph (not posted)` : `${name} · no posted limit`;
 }
+
+// Your speed limits (tags.js) on the roads loaded. True if any changed, so the map needs the roads again.
+function applySpeedFixes() {
+  const fixes = speedFixes();
+  let changed = false;
+  for (const r of store.roads) changed = setMyMph(r, fixes.get(r.id)) || changed;
+  return changed;
+}
+
+// OpenStreetMap's editor on this road (or, for a road the app made up, like a highway sweep, on this spot), to fix
+// its speed limit or road type for everyone.
+const OSM_EDIT = 'https://www.openstreetmap.org/edit';
+const osmEditAt = ([lat, lon], zoom = 18) => `${OSM_EDIT}#map=${zoom}/${lat.toFixed(5)}/${lon.toFixed(5)}`;
+const osmEditUrl = (r, at) => r.id > 0 ? `${OSM_EDIT}?way=${r.id}` : osmEditAt(at);
 
 async function speedAt(at) {
   const z = mapView.zoom(), tap = ++speedTap;
@@ -881,6 +902,7 @@ function spotMenu(at, pt) {
     g ? { label: `Ride ${g.key} end to end`, icon: icon.route, run: () => addRoad(g) } : null,
     { label: 'Add a stop here', icon: icon.plus, run: () => { T.addPoint(trip, at, 'Stop'); tripChanged(); toast('Stop added. Drag its pin to adjust.'); } },
     { label: 'Street View here', icon: icon.person, run: () => window.open(sv, '_blank', 'noopener') },
+    { label: 'Edit OpenStreetMap here', icon: icon.edit, run: () => window.open(osmEditAt(at), '_blank', 'noopener') },
   ].filter(Boolean), { x: pt.x, y: pt.y });
 }
 
@@ -1262,6 +1284,35 @@ function tagSection(g) {
     h('p.fineprint', {}, 'Kept on this device. Loops made for you leave out roads tagged Don’t ride, and rank Rough, Gravel and Busy ones lower and Great ones higher. In Ride mode, Tag road tags the mile or so of road around you.'));
 }
 
+// Why the map guessed the limit it did, for a road with none posted (build_tiles.py's estimate_mph).
+function guessWhy(r) {
+  if (r.estMph === 30) return 'lots of side streets nearby, so it’s taken to be in town';
+  if (r.estMph >= 60) return 'the Texas default outside town';
+  return r.hw === 'unclassified' ? 'the default for county roads' : 'the default for main roads outside town';
+}
+
+// Your own speed limit for a road, when the map's is missing or wrong. It counts in Best rides' speed chip, the
+// Speed limits mode and Ride mode, on the whole stretch, and follows your account.
+const MY_SPEEDS = [15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75];
+function speedSection(g, r) {
+  const t = tagOf(g.ids), mine = t && t.mph != null ? t.mph : null;
+  const map = r.mph != null ? `${r.mph} mph` : `~${r.estMph} mph`;
+  return h('div.section.speed-section', {},
+    h('h3', {}, iconEl(icon.edit), 'Speed limit'),
+    h('p.muted.small', {}, r.mph != null ? `Posted ${r.mph} mph on the map.` : `None posted on the map, so it’s guessed at ${r.estMph} mph: ${guessWhy(r)}.`),
+    h('div.speed-row', {},
+      h('label', { for: 'my-speed' }, 'Your limit'),
+      h('select', { id: 'my-speed', onchange: e => {
+        const v = e.target.value ? +e.target.value : null;
+        setSpeed(g, v);
+        mapView.setTapTag(null);  // it showed the old limit
+        toast(v != null ? `${g.key} set to ${v} mph` : `${g.key} back to the map’s ${map}`);
+      } },
+      h('option', { value: '', selected: mine == null }, `The map’s (${map})`),
+      MY_SPEEDS.map(v => h('option', { value: v, selected: mine === v }, `${v} mph`)))),
+    h('p.fineprint', {}, 'Yours, for the whole stretch (kept in your account). To fix it for everyone, tap Edit in OpenStreetMap below and set Speed Limit to what the signs say, like “45 mph”. It opens the piece you tapped; long roads are often in several pieces. The app gets OpenStreetMap edits when its map is rebuilt.'));
+}
+
 // Ride mode's Tag road: the road under you, about a mile either way (a rough patch, not all 20 miles of the road). Its
 // name, or null if there's no mapped road there.
 function tagHere(k, p, heading) {
@@ -1327,6 +1378,8 @@ function roadView() {
       g.oneway ? '' : h('a.btn', { href: sv(heading + 180), target: '_blank', rel: 'noopener', title: 'Street View facing the other way',
         'aria-label': 'Street View facing the other way', html: icon.swap })),
     h('a.btn', { href: `${gm}map&center=${lat},${lon}&zoom=17&basemap=satellite`, target: '_blank', rel: 'noopener' }, iconEl(icon.globe), 'Satellite'),
+    h('a.btn.wide.osm-edit', { href: osmEditUrl(r, [lat, lon]), target: '_blank', rel: 'noopener',
+      title: 'Fix its speed limit or road type in OpenStreetMap, for everyone' }, iconEl(icon.edit), 'Edit in OpenStreetMap'),
   ];
   if (g.oneway) return rampView(g, r, links);
   const cls = CURVE_CLASSES[Math.max(0, g.cls)];
@@ -1342,10 +1395,12 @@ function roadView() {
     h('div.stats', {},
       g.roller ? stat(`${miles(g.length)} mi`, 'long, straight') : stat(`${miles(g.curvy)} mi`, 'of curves'),
       stat(hillWord(g.hill) || '—', g.hill != null ? `${Math.round(g.hill * 5.28)} ft/mi up & down` : 'hills'),
-      stat(r.mph != null ? `${r.mph} mph` : `~${r.estMph} mph`, r.mph != null ? 'posted limit' : 'estimated limit'),
+      stat(r.myMph != null ? `${r.myMph} mph` : r.mph != null ? `${r.mph} mph` : `~${r.estMph} mph`,
+        r.myMph != null ? 'your limit' : r.mph != null ? 'posted limit' : 'estimated limit'),
       stat(g.blind ? `⚠ ${g.blind}` : 'None', 'blind crest corners')),
     h('div.surface', { class: r.surface ? 'surface warn' : 'surface' }, `Surface: ${SURFACE[r.surface]}`),
     tagSection(g),
+    speedSection(g, r),
     prof,
     h('div.actions', {},
       h('button.btn.primary.wide', { onclick: () => addRoad(g) }, iconEl(icon.plus), 'Add to ride'),
@@ -1659,7 +1714,7 @@ function roadAt(p, heading) {
   const x = roadAlong(store.roads, p, heading);
   // The estimate is a rule of thumb for ordinary roads (30 in town): none on highways or ramps.
   const guess = /^(motorway|trunk)|_link$/.test(x && x.hw) ? null : x && x.estMph;
-  return x && { ref: (x.ref || '').replace(/;/g, ' / '), name: x.name, curvy: x.cls >= 0, limit: x.mph ?? guess, posted: x.mph != null };
+  return x && { ref: (x.ref || '').replace(/;/g, ' / '), name: x.name, curvy: x.cls >= 0, limit: limitOf(x) ?? guess, posted: limitOf(x) != null };
 }
 
 // Turn by turn on this ride, in the app (ride.js): it follows the ride's line, so a skipped stop needs no removing.

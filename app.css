@@ -474,6 +474,8 @@ body.riding .stop-marker { display: none; }
 .tag-note, .ride-name { width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
 .tag-mark { margin-left: 8px; font-size: 12px; font-weight: 700; color: var(--c); }
 .tags-on-ride.warn { color: var(--warn); }
+.speed-row { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.speed-row select { flex: 1; min-width: 0; }
 
 /* ---------- your rides & account ---------- */
 .card.here { border-color: rgba(77,171,247,.55); background: var(--blue-soft); }

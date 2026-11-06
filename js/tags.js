@@ -1,6 +1,7 @@
-// Your own tags on roads ("Rough", "Don't ride"), kept on this device (accounts would sync them: see BACKLOG.md). One
-// record per stretch tagged: { key: its name, tags: [TAGS keys], note, at: ms, pieces: [{ id: OSM way id, g: [[lat, lon]…] }] },
-// each piece's line kept so the map shows the tag before that part of the map's roads has loaded.
+// Your own tags on roads ("Rough", "Don't ride"), kept on this device and in your account if you sign in. One
+// record per stretch tagged: { key: its name, tags: [TAGS keys], note, mph?, at: ms, pieces: [{ id: OSM way id, g: [[lat, lon]…] }] },
+// each piece's line kept so the map shows the tag before that part of the map's roads has loaded. mph is your own
+// speed limit for the stretch, used in place of the map's (posted or guessed) everywhere in the app.
 import { distance } from './geo.js';
 
 // Worst first: a road's main tag (its color on the map) is the first of its tags here. weight: what a loop made for
@@ -42,18 +43,29 @@ export function tagOf(ids) {
   return list.find(t => t.pieces.some(x => want.has(x.id))) || null;
 }
 
-// Tag a stretch ({ key, roads: [{ id, geom }] }) with these tags and note; none of either removes its tag. A record
-// that overlaps it is replaced, keeping the pieces it had beyond this stretch. Returns the list as it was, for undo.
-export function setTags(g, tags, note = '') {
+// Tag a stretch ({ key, roads: [{ id, geom }] }) with these tags, note and speed limit (mph: a number, null for none,
+// or left out to keep the one it has); none of the three removes its record. A record that overlaps it is replaced,
+// keeping the pieces it had beyond this stretch. Returns the list as it was, for undo.
+export function setTags(g, tags, note = '', mph) {
   const was = list, ids = new Set(g.roads.map(r => r.id)), old = list.filter(t => t.pieces.some(x => ids.has(x.id)));
+  if (mph === undefined) mph = old.find(t => t.mph != null)?.mph ?? null;
   list = list.filter(t => !old.includes(t));
-  if (tags.length || note.trim()) {
+  if (tags.length || note.trim() || mph != null) {
     const pieces = [...g.roads.map(r => ({ id: r.id, g: thin(r.geom) })), ...old.flatMap(t => t.pieces.filter(x => !ids.has(x.id)))];
-    list = [...list, { key: g.key, tags: TAGS.map(t => t.k).filter(k => tags.includes(k)), note: note.trim(), at: Date.now(), pieces }];
+    list = [...list, { key: g.key, tags: TAGS.map(t => t.k).filter(k => tags.includes(k)), note: note.trim(),
+      ...(mph != null ? { mph } : {}), at: Date.now(), pieces }];
   }
   saved();
   return was;
 }
+
+// Your speed limit for a stretch (null: use the map's), keeping its tags and note.
+export function setSpeed(g, mph) {
+  const t = tagOf(g.roads.map(r => r.id));
+  return setTags(g, t ? t.tags : [], t ? t.note : '', mph);
+}
+// Way id -> your speed limit, for every piece you've set one on.
+export const speedFixes = () => new Map(list.filter(t => t.mph != null).flatMap(t => t.pieces.map(x => [x.id, t.mph])));
 export function restoreTags(was) { list = was; saved(); }
 
 // Way ids tagged Don't ride, and what a stretch counts for in a loop made for you (the product of its tags' weights).
