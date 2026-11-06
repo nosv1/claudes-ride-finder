@@ -609,6 +609,25 @@ test('road tags: tag a road on its card, see it on the map and in the list, and 
   await page.eval("import('./js/tags.js').then(T => T.restoreTags([]))");
 });
 
+test('your speed limit: set on a road’s card, the map follows it, and it links to OpenStreetMap to fix it there', async () => {
+  await showMo150();
+  await page.eval(`(() => { const r = RF.store.byId.get(${MO150}); RF.mapView.emit('road', r.id, r.geom[2]); })()`);
+  await page.waitFor("!!document.querySelector('#my-speed')", 5000);
+  assert.match(await page.eval("document.querySelector('.osm-edit').href"), new RegExp(`openstreetmap\\.org/edit\\?way=${MO150}$`));
+  // 40 mph: below the 45+ chip, so MO-150 leaves Best rides' map.
+  await page.eval("(() => { const s = document.querySelector('#my-speed'); s.value = '40'; s.dispatchEvent(new Event('change')); })()");
+  await page.waitFor(`RF.store.byId.get(${MO150}).speed === 40`, 5000);
+  await page.waitFor(`!RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).some(f => f.properties.i === ${MO150})`, 5000);
+  assert.equal(JSON.parse(await page.eval("localStorage.getItem('rf2-tags')"))[0].mph, 40, 'kept with the tags');
+  await page.waitFor("/40 mph/.test(document.querySelector('.stats').innerText) && /your limit/.test(document.querySelector('.stats').innerText)", 5000);
+  // Back to the map's: it's back on the map.
+  await page.eval("(() => { const s = document.querySelector('#my-speed'); s.value = ''; s.dispatchEvent(new Event('change')); })()");
+  await page.waitFor(`RF.store.byId.get(${MO150}).myMph === null`, 5000);
+  await page.waitFor(`RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).some(f => f.properties.i === ${MO150})`, 5000);
+  assert.equal(await page.eval("localStorage.getItem('rf2-tags')"), '[]');
+  await page.eval("RF.go('home')");
+});
+
 test('pop-ups go away on their own in a few seconds, or at a tap', async () => {
   await page.eval("import('./js/ui.js').then(u => u.toast('Short note'))");
   assert.equal(await page.eval("document.getElementById('toast').hidden"), false);

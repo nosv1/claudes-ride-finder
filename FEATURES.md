@@ -647,6 +647,15 @@ colored road), Add a stop here, Street View here.
 - **Generate** leaves out roads tagged Don't ride, and counts a road at Rough ×0.5, Gravel ×0.6, Busy ×0.7, Great ×1.3.
   The router itself doesn't know them: it can still pass along one between stops.
 - The ride page lists **Your tags on this ride** (roads with 200 m or more on it), in yellow if Don't ride or Rough.
+- **Your speed limit**: on a road's page (not ramps or highway sweeps), under Speed limit, which also says what the map
+  has (posted, or the guess and why: "lots of side streets nearby, so it's taken to be in town"). Pick 15–75 mph, or
+  The map's to go back. Kept in the stretch's tag record (`mph`), so it follows the account like the tags. It counts
+  as a known limit everywhere: Best rides' speed chip, the Speed limits mode (drawn as if posted), the tap tag
+  ("45 mph (yours)"), and Ride mode's bar (solid, not dashed). Yours wins over a posted one (signs change).
+- **Edit in OpenStreetMap**, on every road's page: opens OSM's editor on the piece tapped (`/edit?way=<id>`; on the
+  spot for highway sweeps, which the build makes up), to fix a speed limit (`maxspeed`) or road type for everyone.
+  The map's menu (right-click or long-press) has **Edit OpenStreetMap here** for roads the app doesn't have. OSM
+  edits reach the app when the tiles are rebuilt from fresh state files (Geofabrik updates daily).
 
 **Location**
 - A quick, rough fix first (or one the phone already has), then a precise GPS fix.

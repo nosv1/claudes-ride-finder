@@ -35,6 +35,10 @@ but not what it feels like to use. These checks are for that.
 - ✱ The first tap in a new area says "Checking the speed limit…" and then answers (no silent wait).
 - Tapping a colored road shows its speed tag and opens its card.
 - The tag goes away on its own after about 5 seconds, and when a fly-through starts.
+- On NE Strother Rd (Lee's Summit, guessed 30): All curvy roads, tap it, set Your limit to 45. Back in Best rides at
+  45+ it shows; the tap tag says "45 mph (yours)"; The map's puts it back. Signed in, a second device gets it too.
+- Edit in OpenStreetMap opens the editor on that road (selected), on a phone and a PC; Edit OpenStreetMap here in the
+  map's menu opens it at that spot.
 
 ## Generating loops
 
