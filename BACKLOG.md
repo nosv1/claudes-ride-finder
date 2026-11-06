@@ -14,7 +14,10 @@ Ideas that came up, roughly in order of how much they'd help.
 - **Accounts, what's left** (accounts shipped 2026-11-04: see FEATURES.md, Accounts). Sign in with Apple needs the
   $99/yr developer account, so it waits for the iPhone app. Saved rides edited on two devices at once: the last save
   wins (fine for one rider; a merge would be needed for sharing a ride to plan together). The Google consent screen
-  has no logo on purpose: adding one means Google reviews the app first.
+  has no logo on purpose: adding one means Google reviews the app first. A ride edited on one device while another
+  has it open: the other's list updates when it comes back to the app, but the stops on its screen only change when
+  the ride is opened again. Not yet confirmed by the rider (2026-11-06): a real Google sign-in on the live site, and
+  adding the phone with the device link (the tests use made-up sign-ins against a local copy of the API).
 - **A proper app, still on PC**: one codebase for all three. Android: wrap the web app for the Play Store
   (Trusted Web Activity via Bubblewrap; $25 once). iPhone: Capacitor wrapper ($99/yr developer account,
   built on a Mac or a cloud build). PC keeps using the website or the installed web app. Worth it mainly for
