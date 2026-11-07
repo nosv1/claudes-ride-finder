@@ -92,6 +92,9 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Ride it here (or Ride on the ride bar) asks for location once, says "Starting your ride", and the screen doesn't
   dim. Heading-up map, blue arrow on the line, the next turn in the banner with its distance.
 - Each turn: a heads-up about half a mile out at 45+, the call just before it. Through a helmet headset too.
+- ✱ Voice Helena (the default) and Apollo sound natural, with no beep; Zira and David still beep first. Spotify keeps
+  playing under them. Once the Worker has `/speak` (BACKLOG.md): Test says "…turn right. Onto Missouri D.", and on a
+  ride the turns name the road; with no signal at the start, the turns still play, just without names.
 - Skip a stop or a road on purpose: no "make a U-turn", no going back for it. Back on the line further along it says
   "Picking up your ride from here". Ride off the route: within a few seconds "off the ride", a purple way back, and
   it never sends you back to where you left. Skip ahead aims further on.

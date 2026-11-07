@@ -12,3 +12,7 @@ GOOGLE_CLIENT_ID = "103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleuse
 binding = "DB"
 database_name = "ride-finder"
 database_id = "1524d1fd-54cb-4a71-8d47-11be9cecc9ee"
+
+# Workers AI, for Ride mode's natural voice (/speak). wrangler dev runs it on the real service (it counts).
+[ai]
+binding = "AI"

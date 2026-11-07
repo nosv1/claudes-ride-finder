@@ -10,7 +10,7 @@ import { profile } from './elevation.js';
 import * as W from './weather.js';
 import { Fly } from './fly.js';
 import { Ride } from './ride.js';
-import { phoneVoices, recorded, loadVoices, voicePick, setVoicePick, speak, SAMPLE, RATES } from './voice.js';
+import { phoneVoices, recorded, loadVoices, voicePick, setVoicePick, speak, loadNames, SAMPLE, RATES } from './voice.js';
 import { TAGS, allTags, tagOf, setTags, setSpeed, speedFixes, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged } from './tags.js';
 import * as A from './account.js';
 import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox, loadSignals } from './store.js';
@@ -1288,6 +1288,7 @@ function tagSection(g) {
 function guessWhy(r) {
   if (r.estMph === 30) return 'lots of side streets nearby, so it’s taken to be in town';
   if (r.estMph >= 60) return 'the Texas default outside town';
+  if (r.estMph === 45 && r.hw !== 'unclassified') return 'lots of side streets nearby, but few meet it, so it’s taken to be the edge of town';
   return r.hw === 'unclassified' ? 'the default for county roads' : 'the default for main roads outside town';
 }
 
@@ -1937,7 +1938,8 @@ function exportSection() {
 // Ride mode's voice and how fast it talks, with a sample on each change (and Test). Recorded voices first: on iPhone
 // they play over your music, where the phone's own voices stop it.
 function voiceField() {
-  const pick = voicePick(), phone = phoneVoices();
+  const pick = voicePick(), phone = phoneVoices(), natural = !pick.phone && recorded().find(v => v.id === pick.id && v.speaker);
+  if (natural) loadNames([SAMPLE.name], pick);  // so Test says the road too
   const set = patch => { const p = { ...voicePick(), ...patch }; setVoicePick(p); speak(SAMPLE, p); renderSoon(); };
   const choose = value => set(value.startsWith('rec:') ? { id: value.slice(4), phone: false } : { phone: true, uri: value.slice(6) });
   const now = pick.phone ? `phone:${pick.uri || ''}` : `rec:${pick.id}`;
@@ -1954,7 +1956,8 @@ function voiceField() {
     h('p.fineprint', {}, pick.phone
       ? ['Your phone’s voices say road names, but on iPhone they stop your music. ',
         iPhone() ? 'More voices: Settings → Accessibility → Spoken Content → Voices → English (Enhanced or Premium ones sound best).' : '']
-      : 'Recorded voices play over your music, at its volume, and work without signal. They don’t say road names: the banner shows them.'));
+      : natural ? 'Plays over your music, at its volume. Road names load when the ride starts, so start it with signal; the turns work without it.'
+        : 'Recorded voices play over your music, at its volume, and work without signal. They don’t say road names: the banner shows them.'));
 }
 
 function openGoogle() {

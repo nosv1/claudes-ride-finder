@@ -8,6 +8,7 @@ put them in raw/, and re-run. Elevation tiles for curvy roads and the other rura
 coasters) are downloaded once into raw/terrain/ (several hundred MB per state).
 """
 import bisect
+from array import array
 import glob
 import json
 import math
@@ -375,9 +376,19 @@ def fuel_row(tags, lat, lon):
 
 
 # Roads with no posted limit: rural state routes get Missouri/Kansas's 55 mph default,
-# county roads 45, and anything among lots of residential streets is treated as town (30).
+# county roads 45, and a road among lots of residential streets is in town (30) if streets actually
+# meet it often; one that only skirts subdivisions (a few entrances) is the edge of town (45).
 CELL = 0.01           # degrees, roughly 1 km
 URBAN_STREETS = 40    # residential streets within the surrounding 3x3 cells
+# In town: at least this many residential streets meet it per km, or this many streets and business
+# entrances of any kind (not driveways). Measured around KC: town streets ~6-10 and up, NE Strother
+# Rd 0.8 and 1.7, SW Scherer Rd 2.3 and 4.3, Swope Pkwy 2.2 and 6.6, a mall road 0 and 9.6.
+TOWN_RESIDENTIAL_PER_KM = 3
+TOWN_STREETS_PER_KM = 6
+EDGE_OF_TOWN_MPH = 45
+# Roads whose meeting a candidate counts as a junction (driveways and tracks don't).
+JUNCTION_TYPES = {"residential", "living_street", "unclassified", "service", "tertiary", "secondary", "primary",
+                  "trunk", "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"}
 
 
 PLACE_KINDS = ("city", "town", "village")
@@ -408,6 +419,7 @@ class Roads(osmium.SimpleHandler):
         # 2, ways ending there 1. A road only starting there (1) is a fork the ramp carries on past.
         self.crossing = defaultdict(int)
         self.count = 0
+        self.unposted = {}    # id -> (midpoint, node ids) of kept roads with no limit, for count_junctions()
 
     def node(self, n):
         if n.tags.get("highway") in ("traffic_signals", "stop") and n.id in self.ramp_nodes:
@@ -468,6 +480,8 @@ class Roads(osmium.SimpleHandler):
         # Unposted straight roads are kept for now in case they're roller coasters; main() drops the flat ones.
         if not is_curvy and not is_sweeper and mph is None and not (hw in ROLLER_TYPES and length >= ROLLER_MIN_M):
             return
+        if mph is None:
+            self.unposted[w.id] = (coords[len(coords) // 2], array("q", (n.ref for n in w.nodes)))
         self.add_row(w.id, hw, tags, mph, coords, (length, score if is_curvy else 0, curvy, sweep if is_sweeper else 0))
 
     def add_row(self, wid, hw, tags, mph, coords, scores, name=None, ref=None):
@@ -533,19 +547,64 @@ def cell_of(lat, lon):
     return math.floor(lat / CELL), math.floor(lon / CELL)
 
 
-def estimate_mph(row, residential):
-    """Guess a limit for roads with none on record, so curvy-and-fast can include them.
-    row ends with the road's midpoint and region; row[1] is its highway type, row[3] its ref."""
-    hw, ref, (lat, lon), region = row[1], row[3], row[-2], row[-1]
+def streets_near(lat, lon, residential):
     cy, cx = cell_of(lat, lon)
-    nearby = sum(residential[(cy + dy, cx + dx)] for dy in (-1, 0, 1) for dx in (-1, 0, 1))
-    if nearby >= URBAN_STREETS:
-        return 30
+    return sum(residential[(cy + dy, cx + dx)] for dy in (-1, 0, 1) for dx in (-1, 0, 1))
+
+
+def estimate_mph(row, residential, junctions=None):
+    """Guess a limit for roads with none on record, so curvy-and-fast can include them.
+    row ends with the road's midpoint and region; row[1] is its highway type, row[3] its ref, row[10] its length.
+    junctions: id -> (residential streets, streets of any kind) meeting it partway along (count_junctions)."""
+    hw, ref, (lat, lon), region = row[1], row[3], row[-2], row[-1]
     if region == "texas":
         # Texas law outside towns: 70 on numbered highways (US, TX, FM/RM, Loop...), 60 on other
         # roads, county roads (CR) included.
-        return 70 if ref and not ref.startswith("CR") else 60
-    return 45 if hw == "unclassified" else 55
+        default = 70 if ref and not ref.startswith("CR") else 60
+    else:
+        default = 45 if hw == "unclassified" else 55
+    if streets_near(lat, lon, residential) >= URBAN_STREETS:
+        j = (junctions or {}).get(row[0])
+        if j is None:  # no count (ramps, or near a state line): town, as before
+            return 30
+        km = max(row[10] / 1000, 0.05)
+        if j[0] / km >= TOWN_RESIDENTIAL_PER_KM or j[1] / km >= TOWN_STREETS_PER_KM:
+            return 30
+        return min(EDGE_OF_TOWN_MPH, default)
+    return default
+
+
+class Junctions(osmium.SimpleHandler):
+    """Which roads meet the given nodes: node -> [(way id, residential?)]."""
+    def __init__(self, nodes):
+        super().__init__()
+        self.nodes = nodes
+        self.touches = defaultdict(list)
+
+    def way(self, w):
+        hw = w.tags.get("highway")
+        if hw not in JUNCTION_TYPES or (hw == "service" and w.tags.get("service") == "driveway"):
+            return
+        res = hw in ("residential", "living_street")
+        for n in w.nodes:
+            if n.ref in self.nodes:
+                self.touches[n.ref].append((w.id, res))
+
+
+def count_junctions(path, unposted, residential):
+    """For unposted roads among lots of residential streets (the ones estimate_mph might call town):
+    id -> (residential streets, streets of any kind) meeting it partway along, not at its ends."""
+    inner = {}
+    for wid, (mid, refs) in unposted.items():
+        if streets_near(*mid, residential) >= URBAN_STREETS:
+            inner[wid] = set(refs[1:-1]) - {refs[0], refs[-1]}
+    h = Junctions({n for nodes in inner.values() for n in nodes})
+    h.apply_file(path)
+    out = {}
+    for wid, nodes in inner.items():
+        met = [[r for w, r in h.touches.get(n, ()) if w != wid] for n in nodes]
+        out[wid] = (sum(any(m) for m in met), sum(bool(m) for m in met))
+    return out
 
 
 SEARCH_NEAR = 0.03       # degrees: pieces of the same road this close are one stretch (as in the app)
@@ -810,6 +869,7 @@ def main(args):
     if not paths:
         sys.exit("No .osm.pbf files found in raw/.\n" + __doc__)
     tiles, seen, residential, fuel, places, lanes, lights = defaultdict(list), set(), defaultdict(int), {}, {}, {}, []
+    junctions = {}
     for path in paths:
         print(f"Reading {path} (takes a few minutes)...", flush=True)
         ramps = RampNodes()
@@ -819,13 +879,17 @@ def main(args):
         h.apply_file(path, locations=True, idx="flex_mem")
         h.finish_ramps()
         lanes.update(h.lanes)
+        junctions.update(count_junctions(path, h.unposted, residential))
         print(f"  kept {h.count:,} roads", flush=True)
 
+    guesses = defaultdict(int)
     for rows in tiles.values():
         for row in rows:
             if row[4] is None:
-                row[5] = estimate_mph(row, residential)
+                row[5] = estimate_mph(row, residential, junctions)
+                guesses["town" if row[5] == 30 else "edge of town" if row[0] in junctions else "out of town"] += 1
             del row[-2:]  # midpoint and region
+    print("Guessed limits: " + ", ".join(f"{n:,} {k}" for k, n in sorted(guesses.items())), flush=True)
 
     # Elevation for the curvy roads and sweepers (rows with a curve score or sweep), and the straight back roads, to
     # find the roller coasters. Bare-earth elevation means nothing on a flyover, so not for ramps.

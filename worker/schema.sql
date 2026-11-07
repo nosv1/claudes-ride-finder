@@ -12,3 +12,6 @@ CREATE INDEX IF NOT EXISTS links_user ON links (user_id);
 -- (The live database also has links.name, unused since links were locked: they kept a name before then.)
 -- Daily counts for the limits: k is "<kind>:<who>:<day>".
 CREATE TABLE IF NOT EXISTS counts (k TEXT PRIMARY KEY, n INTEGER NOT NULL, day INTEGER NOT NULL);
+-- Ride mode's natural voice (/speak): each clip made once, kept by voice and text only (shared, not tied to anyone).
+CREATE TABLE IF NOT EXISTS clips (voice TEXT NOT NULL, format TEXT NOT NULL, text TEXT NOT NULL, audio BLOB NOT NULL, made INTEGER NOT NULL,
+  PRIMARY KEY (voice, format, text));

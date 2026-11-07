@@ -105,7 +105,8 @@ test('the Highways road type shows the fast ramps at the Grandview Triangle and 
   await roadType('Highways');
   await page.eval("void RF.mapView.map.jumpTo({ center: [-94.525, 38.93], zoom: 13.5 })");
   await page.waitFor("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).some(f => f.properties.rt >= 0)", 30000);
-  assert.ok(await page.eval("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).every(f => f.properties.rt >= 0)"), 'only ramps drawn');
+  // Only ramps, once the map has redrawn (Blue River Road, a 45 mph sweeper there, is in the frame before).
+  await page.waitFor("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).every(f => f.properties.rt >= 0)", 5000);
   await page.waitFor("/Fast ramps and highways in view/.test(document.getElementById('sheetBody').innerText) && document.querySelector('.road-card')", 10000);
   assert.match(await sheetText(), /Ramp to I 4/);
   // The I-435 bend in Lenexa: the highway itself, both directions, in the highway tiers.
@@ -530,8 +531,10 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   assert.equal(await page.eval("getComputedStyle(document.getElementById('sheet')).display"), 'none', 'the panel steps aside');
   assert.match(await page.eval("document.querySelector('.ride-banner').innerText"), /Finding you/);
   assert.ok(await page.eval("__said.includes('Starting your ride.')"));
-  // In the recorded voice (it plays over music on iPhone), every clip loaded at the start for riding without signal.
-  await page.waitFor("import('./js/voice.js').then(V => V.clipsLoaded() >= 38)", 15000);
+  // In the recorded voice (it plays over music on iPhone), every clip loaded at the start for riding without signal
+  // (each phrase, and the beep for a robotic voice).
+  await page.waitFor(`Promise.all([import('./js/voice.js'), fetch('voice/phrases.json').then(r => r.json())])
+    .then(([V, p]) => V.clipsLoaded() >= Object.keys(p).length + (V.recorded()[0].chime ? 1 : 0))`, 15000);
   // GPS fixes riding along the road, at 50 mph.
   const gps = (k, off = 0) => page.eval(`(() => {
     const g = RF.store.byId.get(${MO150}).geom, i = Math.min(g.length - 2, ${k});

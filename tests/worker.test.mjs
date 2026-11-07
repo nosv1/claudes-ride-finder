@@ -122,3 +122,12 @@ test('deleting the account removes its rides, links, data, key and sessions', as
   const me = (await call('GET', '/me', { token: again })).body;
   assert.deepEqual([me.rides.length, me.links.length, me.data, me.keyId], [0, 0, null, null]);
 });
+
+// Only refusals: a real clip would spend the day's Workers AI allowance (wrangler dev runs it on the real service).
+test('the voice refuses what it can’t say, unknown voices, and other sites, before making anything', async () => {
+  assert.equal((await call('POST', '/speak', { body: { text: 'onto Missouri D.', voice: 'nobody' } })).status, 400);
+  assert.equal((await call('POST', '/speak', { body: { text: '<script>', voice: 'helena' } })).status, 400);
+  assert.equal((await call('POST', '/speak', { body: { text: 'a'.repeat(121), voice: 'helena' } })).status, 400);
+  assert.equal((await call('POST', '/speak', { body: { text: 'onto Missouri D.', voice: 'helena', format: 'ogg' } })).status, 400);
+  assert.equal((await call('POST', '/speak', { body: { text: 'onto Missouri D.', voice: 'helena' }, origin: 'https://evil.example' })).status, 403);
+});

@@ -1,9 +1,15 @@
 // Ride mode's voice. Recorded clips (voice/<id>/<clip>, made by tools/make_voice.py from voice/phrases.json) by default:
 // on iPhone an audio file plays over music in another app, while the phone's own voice stops it for good (found with
-// sound-check.html). The phone's voices can be picked instead: they say road names, but stop the music. The pick and
-// its speed are kept on this device (every phone has its own voices).
+// sound-check.html). The phone's voices can be picked instead, but stop the music. The pick and its speed are kept on
+// this device (every phone has its own voices).
+//
+// The natural recorded voices (Deepgram Aura-2, voices.json "speaker") also say road names: "onto Northeast Strother
+// Road." made by the API's /speak (worker/), fetched when a ride starts while there's signal and played after the
+// turn. Only the name is sent; a name not there yet is just left out.
+import { API_URL } from './config.js';
+
 const KEY = 'rf2-voice-pick';
-export const SAMPLE = { text: 'In half a mile, turn right onto Missouri D.', clips: ['dhalf', 'right'] };
+export const SAMPLE = { text: 'In half a mile, turn right onto Missouri D.', clips: ['dhalf', 'right'], name: 'MO D' };
 export const RATES = [['0.85', 'Slower'], ['1', 'Normal'], ['1.15', 'Faster']];
 export const log = [];  // the words of each thing said (for tests)
 
@@ -49,7 +55,40 @@ const next = () => {
 };
 if (player) player.addEventListener('ended', next);
 
-// Say a phrase { text, clips }: the clips in the picked recorded voice, else the text in the phone's voice.
+// A road's name the way it's said: route numbers spelled out ("MO 150" → "Missouri 150").
+const SAY = [[/^MO\b/, 'Missouri'], [/^KS\b/, 'Kansas'], [/^TX\b/, 'Texas'], [/^US\b/, 'U.S.'], [/^I[- ](?=\d)/, 'Interstate '],
+  [/^FM\b/, 'Farm to Market'], [/^RM\b/, 'Ranch to Market'], [/^CR\b/, 'County Road']];
+export function sayable(name) {
+  let s = String(name).trim();
+  for (const [re, w] of SAY) s = s.replace(re, w);
+  return s.replace(/-/g, ' ');
+}
+const named = new Map();  // "<speaker>|onto <name>." → the clip (blob URL), a fetch in flight, or null (couldn't)
+const nameText = name => `onto ${sayable(name)}.`;
+
+// Fetch the name clips for these roads in the picked voice, if it's one that can say them.
+export function loadNames(names, pick = voicePick()) {
+  const v = !pick.phone && library.find(x => x.id === pick.id);
+  if (!v || !v.speaker) return Promise.resolve();
+  return Promise.all([...new Set(names.filter(Boolean))].map(name => {
+    const text = nameText(name), key = `${v.speaker}|${text}`;
+    if (!/^[\p{L}\p{N} .,'’&!?:;()\/-]{1,120}$/u.test(text)) return null;
+    if (named.has(key)) return named.get(key);
+    const job = fetch(`${API_URL}/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: v.speaker }) })
+      .then(r => (r.ok ? r.blob() : null))
+      .then(b => { const url = b && b.size ? URL.createObjectURL(b) : null; named.set(key, url); return url; })
+      .catch(() => { named.delete(key); return null; });  // no signal: try again next time
+    named.set(key, job);
+    return job;
+  }));
+}
+const nameClip = (v, name) => {
+  const url = v.speaker && name ? named.get(`${v.speaker}|${nameText(name)}`) : null;
+  return typeof url === 'string' ? url : null;
+};
+
+// Say a phrase { text, clips, name? }: the clips in the picked recorded voice (then the road's name, if the voice has
+// it), else the text in the phone's voice.
 export function speak(phrase, pick = voicePick()) {
   if (!phrase) return;
   log.push(phrase.text);
@@ -58,7 +97,10 @@ export function speak(phrase, pick = voicePick()) {
   if (v) {
     if (globalThis.speechSynthesis) speechSynthesis.cancel();
     // A robotic voice (chime) beeps first: a robot calling in, not one trying to sound like a person.
+    const name = nameClip(v, phrase.name);
+    if (!name && phrase.name) loadNames([phrase.name], pick);  // for next time (a heads-up comes before the call)
     queue = [...(v.chime ? [CHIME] : []), ...phrase.clips.map(k => `voice/${v.id}/${k}.${v.ext}`)].map(u => loaded.get(u) || u);
+    if (name) queue.push(name);
     player.playbackRate = +pick.rate || 1;
     return next();
   }

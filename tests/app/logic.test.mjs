@@ -727,6 +727,7 @@ test('the app says the same version as version.json (tools/bump_version.mjs sets
 // ---------- Ride mode (nav.js) and road tags (tags.js) ----------
 import { Track, Guide, rejoinTarget, turnsOf, callout, spoken, shown, turnClips, distanceClip } from '../../js/nav.js';
 import { setTags, setSpeed, speedFixes, tagOf, weightOf, avoidedIds, restoreTags, allTags, thin, tagsForMap } from '../../js/tags.js';
+import { sayable } from '../../js/voice.js';
 
 // An L: ~2.2 km north, then ~2.2 km east, with a stop at the corner (the router ends a leg there and starts the next
 // with "head east", which is really a right turn).
@@ -837,11 +838,15 @@ test('Ride mode: the end of the ride is the end', () => {
 });
 
 test('Ride mode: a heads-up, then the call, each once, in words and in recorded clips', () => {
-  const turn = { type: 10, text: 'Turn right onto MO Y', alert: 'Turn right onto Missouri Y.', pre: 'Turn right onto Missouri Y. Then turn left.' };
+  const turn = { type: 10, names: ['MO Y'], text: 'Turn right onto MO Y', alert: 'Turn right onto Missouri Y.', pre: 'Turn right onto Missouri Y. Then turn left.' };
   assert.equal(callout(turn, 3000, 20), null, 'too far yet');
-  assert.deepEqual(callout(turn, 650, 20), { text: 'In half a mile, turn right onto Missouri Y.', clips: ['dhalf', 'right'] });
+  // name: the road, for a natural voice to say after the clips ("onto Missouri Y.").
+  assert.deepEqual(callout(turn, 650, 20), { text: 'In half a mile, turn right onto Missouri Y.', clips: ['dhalf', 'right'], name: 'MO Y' });
   assert.equal(callout(turn, 600, 20), null);
-  assert.deepEqual(callout(turn, 170, 20), { text: 'Turn right onto Missouri Y. Then turn left.', clips: ['right'] });
+  assert.deepEqual(callout(turn, 170, 20), { text: 'Turn right onto Missouri Y. Then turn left.', clips: ['right'], name: 'MO Y' });
+  assert.equal(callout({ type: 12, names: ['MO Y'], text: 'Make a U-turn' }, 100, 10).name, null, 'no name on a U-turn');
+  assert.deepEqual(['MO 150', 'I-70', 'US 50', 'FM 1431', 'Northeast Strother Road'].map(sayable),
+    ['Missouri 150', 'Interstate 70', 'U.S. 50', 'Farm to Market 1431', 'Northeast Strother Road']);
   assert.equal(callout(turn, 100, 20), null);
   assert.deepEqual(callout({ type: 26, exit: 2, text: 'Enter the roundabout' }, 100, 10).clips, ['roundabout', 'exit2']);
   assert.equal(callout({ type: 4, text: 'You have arrived.' }, 100, 10), null, 'the end of the ride says that');

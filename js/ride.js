@@ -3,12 +3,12 @@
 // skip a part and it picks you up where you're back on it; leave the ride and it routes you back on ahead of you.
 // A web app only runs in front, so the screen is kept awake (phone mounted, on a charger).
 import { NAV } from './config.js';
-import { Guide, callout, shown } from './nav.js';
+import { Guide, callout, shown, turnName } from './nav.js';
 import { bearing, distance, relAngle, miles, fmtDuration } from './geo.js';
 import { turnArrow, turnOnto, turn } from './fly.js';
 import { icon, h, toast } from './ui.js';
 import { TAGS } from './tags.js';
-import { speak, hush, preload } from './voice.js';
+import { speak, hush, preload, loadNames } from './voice.js';
 
 // What Ride mode says besides the turns: the words (for the phone's voice) and the recorded clip.
 const LINES = {
@@ -70,6 +70,7 @@ export class Ride {
     this.keepAwake();
     this.say(line('start'));  // in the tap that opened Ride mode: iPhones only play sound once a tap has let them
     preload();  // every clip, while there's signal
+    loadNames(this.guide.turns.map(turnName));  // and the roads' names, in a voice that says them
     this.watch = navigator.geolocation ? navigator.geolocation.watchPosition(p => this.onFix(p), e => this.gpsError(e),
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }) : null;
     if (this.watch == null) this.gpsError({ code: 2 });

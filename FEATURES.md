@@ -58,7 +58,13 @@ committed as `tiles/`. The app needs no OSM server at runtime.
 **Speed limits**
 - `maxspeed`, falling back to `maxspeed:forward`/`backward`. Bare numbers are read as mph, because that's how US mappers use them.
 - Roads without a limit get an estimate:
-  - **30 mph:** in town, meaning ≥ 40 residential streets in the surrounding 3×3 grid of ~1 km cells.
+  - **30 mph:** in town: ≥ 40 residential streets in the surrounding 3×3 grid of ~1 km cells, **and** streets
+    actually meet the road partway along: ≥ 3 residential streets per km, or ≥ 6 per km of any kind (business
+    entrances count, driveways and tracks don't). Ramps, and roads near a state line counted before the next state's
+    streets, stay 30 on the street count alone.
+  - **45 mph, the edge of town:** among that many streets but few meeting it, like a road skirting subdivisions with a
+    few entrances (or the state default, if lower). Regression cases: NE Strother Rd (way 18511531) and SW Scherer Rd
+    (18515586) by Lee's Summit come out 45; they were 30 and hidden from Best rides at 45+.
   - **45 mph:** `unclassified` (county) roads.
   - **55 mph:** everything else.
   - **Texas** (by state law outside towns): **70 mph** on numbered highways (US, TX, FM/RM, Loop, Spur…),
@@ -612,15 +618,22 @@ colored road), Add a stop here, Street View here.
   same volume; a plain one stopped it; Web Audio made no sound). Every browser on iPhone is Safari underneath.
   - The phrases are in `voice/phrases.json` (distances "In half a mile,", actions "Turn right.", roundabout exits,
     and the other lines); `python tools/make_voice.py` records each voice into `voice/<id>/` (trimmed,
-    turned up to just under full volume, 16 kHz WAV) and lists them in `voice/voices.json`. A heads-up is two clips
-    back to back ("In half a mile," + "Turn right."). Clips can't say road names; the banner shows them.
+    turned up to just under full volume, 16 kHz WAV, 24 kHz for the natural ones) and lists them in
+    `voice/voices.json`. A heads-up is two clips back to back ("In half a mile," + "Turn right.").
+  - **Road names** in a natural voice (`"speaker"` in `voices.json`): a third clip, "onto Missouri 150." (route
+    numbers spelled out), made by the API's `POST /speak` (Workers AI, Deepgram Aura-2, the way claude-spells does
+    it). The ride's names are fetched when it starts (with signal); a detour's on its heads-up. A name that isn't
+    there yet is left out, and the banner shows it. Only the name is sent; the API keeps each clip once by voice and
+    text (shared, not tied to anyone), and makes at most 2,000 new characters a day, inside Workers AI's free
+    allowance (shared with claude-spells), then refuses new ones until tomorrow.
   - All of a voice's clips load into memory when a ride starts (Safari plays audio from the site in parts, which an
     offline cache can't serve), so the calls work without signal. One player for all of them, first played by the
     tap that starts the ride (iPhones only allow sound after a tap).
-  - Voices now: Zira and David (Windows' built-in, robotic), labelled "(robot)". A robotic voice beeps first
-    (`voice/chime.wav`: a high note then a lower one, like an old computer, made by `make_voice.py`), so it comes
-    across as a robot calling in rather than one trying to pass for a person; `"chime": true` in `voices.json`. Natural ones (Kokoro) are set up in `make_voice.py` and
-    wait on installing it (BACKLOG.md).
+  - Voices now: **Helena** (the default) and **Apollo**, natural (Aura-2, recorded with `make_voice.py`'s `aura`
+    engine through `/speak`), then Zira and David (Windows' built-in, robotic), labelled "(robot)". A robotic voice
+    beeps first (`voice/chime.wav`: a high note then a lower one, like an old computer, made by `make_voice.py`), so it
+    comes across as a robot calling in rather than one trying to pass for a person; `"chime": true` in `voices.json`.
+    Kokoro is still set up in `make_voice.py` but not used.
   - On the ride page under Ride it: the recorded voices ("Keep your music playing") and the phone's voices ("say
     road names, stop music on iPhone"), Slower / Normal / Faster, and Test; each change plays a sample. Kept on the
     device (`rf2-voice-pick`). **Sound check** (`sound-check.html`, `sound-check.wav`) stays for checking other phones.

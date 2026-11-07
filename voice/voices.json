@@ -1,5 +1,17 @@
 [
  {
+  "id": "helena",
+  "label": "Helena",
+  "ext": "wav",
+  "speaker": "helena"
+ },
+ {
+  "id": "apollo",
+  "label": "Apollo",
+  "ext": "wav",
+  "speaker": "apollo"
+ },
+ {
   "id": "zira",
   "label": "Zira (robot)",
   "ext": "wav",

@@ -174,6 +174,11 @@ export function turnClips(turn) {
   const a = ACTION[turn.type] || 'continue';
   return a === 'roundabout' && turn.exit >= 1 && turn.exit <= 4 ? [a, `exit${turn.exit}`] : [a];
 }
+// The road a turn goes onto, for the recorded voice to say after the turn ("onto Missouri 150"): none for a U-turn or a
+// ferry.
+export function turnName(turn) {
+  return [12, 13, 28].includes(turn.type) ? null : (turn.names || [])[0] || null;
+}
 export function distanceClip(m) {
   const mi = m / 1609.34;
   return mi < 0.18 ? 'd500ft' : mi < 0.375 ? 'dquarter' : mi < 0.625 ? 'dhalf' : mi < 0.875 ? 'd3quarter' : 'd1';
@@ -189,11 +194,11 @@ export function callout(turn, inM, speed) {
   if (inM <= callM) {
     if (turn.said === 'call') return null;
     turn.said = 'call';
-    return { text: turn.pre || turn.text, clips: turnClips(turn) };
+    return { text: turn.pre || turn.text, clips: turnClips(turn), name: turnName(turn) };
   }
   if (inM <= headsUpM && inM > callM * 1.6 && !turn.said) {
     turn.said = 'heads-up';
-    return { text: `In ${spoken(inM)}, ${lowerFirst((turn.alert || turn.text).replace(/\.$/, ''))}.`, clips: [distanceClip(inM), ...turnClips(turn)] };
+    return { text: `In ${spoken(inM)}, ${lowerFirst((turn.alert || turn.text).replace(/\.$/, ''))}.`, clips: [distanceClip(inM), ...turnClips(turn)], name: turnName(turn) };
   }
   return null;
 }

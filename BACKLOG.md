@@ -37,13 +37,7 @@ Ideas that came up, roughly in order of how much they'd help.
   of riders as they are.
 - **Speed limits next** (Your limit and Edit in OpenStreetMap went in 2026-11-06, for NE Strother Rd, SW Scherer Rd and
   Raytown Rd near Lee's Summit, all missing from Best rides at 45+):
-  - **Better town guess** (do first). `estimate_mph` in `build_tiles.py` calls a road "in town" (30) if ≥ 40
-    residential streets are in the 3×3 ~1 km cells around its midpoint, so roads at the edge of suburbs (Strother
-    18511531, Scherer 18515586, likely more around Blue Springs and Raymore) get 30. Idea: town only if lots of streets
-    nearby **and** residential streets actually meet the road, say ≥ ~3 junctions per km (residential ways sharing a
-    node with it; town grids meet it every block, subdivision edges at a few entrances). Needs `raw/` and a rebuild:
-    print how many roads move from 30 and a few examples; check Strother and Scherer come out 45/55, MO-150 (18518688)
-    stays a 55 mph sweeper, an in-town street stays 30; add a case to `tests/test_build.py`; update FEATURES.md.
+  - (Done 2026-11-06: the better town guess, an edge-of-town 45 when few streets meet a road; FEATURES.md.)
   - **Raytown Rd as a sweeper**: each piece has 300–500 m of sweep (~1.9 km over the whole road) but is under the
     sweeper bar alone. Score sweep across a named stretch, not per piece (`isSweeper` in `js/roads.js`; sum in
     `summarize` or in the build).
@@ -51,21 +45,12 @@ Ideas that came up, roughly in order of how much they'd help.
     given Your limit without switching to All curvy roads.
   - OSM fixes by the rider reach the app after Geofabrik's next daily extract and a rebuild (fresh `.osm.pbf` in
     `raw/`, `python build_tiles.py`, bump, commit `tiles/`). A posted `maxspeed` replaces the guess.
-- **Natural recorded voices**: Ride mode speaks with recorded clips (they play over music on iPhone), recorded for now
-  with Windows' robotic Zira and David. `tools/make_voice.py` is set up for Kokoro (free, open, natural voices: Heart,
-  Michael, Emma), which needs `pip install kokoro-onnx soundfile` and its model files (about 115 MB, in `raw/kokoro/`,
-  not committed); installing it needs the rider's OK. Then `python tools/make_voice.py` records them and they're the
-  default. Road names in the recorded voice would need clips made per ride on a server (Cloudflare Workers AI has
-  text-to-speech; the accounts Worker could do it), fetched when the ride starts.
-  - **Or the claude-spells way** (the rider asked, 2026-11-06; looks like the better route): claude-spells
-    (`c:/Users/chris/claude-spells`, `worker/src/index.js` `/speak`) uses Workers AI's Deepgram Aura-2
-    (`@cf/deepgram/aura-2-en`, mp3 out), keeps each clip in D1 so it's made once, and stops making new ones for the
-    day inside the free allowance (about 3,000 characters a day: 10,000 neurons, 2,727 per 1,000 characters). Its
-    family uses the voice Helena. Here: record the fixed phrases (`voice/phrases.json`) once with Aura-2 into
-    `voice/` like make_voice.py does (no install, nothing running), and add `/speak` to `ride-finder-api` for road
-    names, made when a ride starts and cached by text. Keep it locked: send only the road name, not the ride or
-    account, and cache by name alone so the server can't tie names to a rider. Compare a few Aura-2 voices with
-    Kokoro's Heart/Michael before picking; a natural voice drops the chime (`"chime": false`).
+- **Natural voice: put the road names live** (Helena and Apollo, Aura-2, are recorded and the default since
+  2026-11-06; the app asks for road names already). Needs the accounts Worker deployed with `/speak` (it was blocked
+  as a production deploy, so the rider runs it or OKs it): `cd worker`, then
+  `npx wrangler@4 d1 execute ride-finder --remote --command "CREATE TABLE IF NOT EXISTS clips (voice TEXT NOT NULL, format TEXT NOT NULL, text TEXT NOT NULL, audio BLOB NOT NULL, made INTEGER NOT NULL, PRIMARY KEY (voice, format, text));"`
+  and `npx wrangler@4 deploy`. Until then the names are just left out. More voices: add them to `make_voice.py` and
+  `python tools/make_voice.py <id>` (~730 characters of the day's free allowance each; Thalia was next).
 - **Ride mode next** (Ride mode is in, 2026-11-04): gas callouts ("Casey's in 4 mi, next gas 38 mi"), the ridden track
   saved (for Roads you've ridden), Valhalla avoiding roads tagged Don't ride between stops (`exclude_polygons` or
   `avoid_locations`), and screen-off guidance, which needs a native app (see the Play Store / iPhone entry).

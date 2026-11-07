@@ -206,6 +206,23 @@ class TestSpeedAndSurface(unittest.TestCase):
         self.assertEqual(bt.estimate_mph([0, "unclassified", "", "CR 123", (30.0, -99.5), "texas"], residential), 60)
         self.assertEqual(bt.estimate_mph([0, "tertiary", "", "FM 1431", town, "texas"], residential), 30)
 
+    def test_edge_of_town(self):
+        """Among subdivisions, only roads that streets actually meet often are town. NE Strother Rd (Lee's Summit):
+        2.4 km with 2 residential streets and 4 of any kind meeting it, so the edge of town, 45, not 30."""
+        residential = defaultdict(int)
+        town = (38.97, -94.37)
+        residential[bt.cell_of(*town)] = bt.URBAN_STREETS
+        row = lambda wid, hw, length, region="missouri", ref="": [wid, hw, "", ref, None, None, 2, 0, 0, 0, length, "", town, region]
+        j = {1: (2, 4), 2: (8, 15), 3: (8, 12), 4: (0, 8), 5: (2, 4), 6: (2, 4)}
+        self.assertEqual(bt.estimate_mph(row(1, "tertiary", 2420), residential, j), 45, "Strother")
+        self.assertEqual(bt.estimate_mph(row(2, "secondary", 3520), residential, j), 45, "Scherer: 2.3 and 4.3 per km")
+        self.assertEqual(bt.estimate_mph(row(3, "tertiary", 1000), residential, j), 30, "a street every block")
+        self.assertEqual(bt.estimate_mph(row(4, "unclassified", 830), residential, j), 30, "a mall road: entrances")
+        self.assertEqual(bt.estimate_mph(row(5, "tertiary", 2420, "texas", "FM 1431"), residential, j), 45)
+        self.assertEqual(bt.estimate_mph(row(9, "tertiary_link", 400), residential, j), 30, "not counted: town as before")
+        self.assertEqual(bt.estimate_mph([6, "tertiary", "", "", None, None, 2, 0, 0, 0, 2420, "", (38.0, -92.0), "missouri"],
+                                         residential, j), 55, "out of town: junctions don't matter")
+
 
 class TestFuel(unittest.TestCase):
     def test_octane_status(self):

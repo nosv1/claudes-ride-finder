@@ -4,6 +4,11 @@ an audio file plays over the rider's music, while the phone's voice stops it (fo
 
 Engines:
   windows  this PC's built-in voices (System.Speech, through PowerShell). Robotic, but always there.
+  aura     natural voices from Deepgram Aura-2 on Cloudflare Workers AI, through the accounts Worker's /speak (as
+           claude-spells does it). Run the Worker locally first (it uses the real voice service, inside the free daily
+           allowance: ~730 characters a voice):
+             cd worker && npx wrangler@4 d1 execute ride-finder --local --file schema.sql && npx wrangler@4 dev
+           or set RF_SPEAK to the live API (https://ride-finder-api.nosv1.workers.dev) once it has /speak.
   kokoro   natural voices from Kokoro (kokoro-onnx). Needs `pip install kokoro-onnx soundfile` and the model files
            kokoro-v1.0.int8.onnx and voices-v1.0.bin in raw/kokoro/ (github.com/thewh1teagle/kokoro-onnx releases).
 Each clip is trimmed of silence and turned up to just under full volume, so it carries over music.
@@ -16,17 +21,22 @@ import os
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 import wave
 from array import array
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'voice')
 KOKORO = os.path.join(ROOT, 'raw', 'kokoro')
+SPEAK = os.environ.get('RF_SPEAK', 'http://127.0.0.1:8787').rstrip('/')
 
 # id, the name shown in the app, engine, the engine's name for the voice. The first one available is the default.
 # chime: a beep-boop before each thing it says (voice/chime.wav), so a robotic voice comes across as a robot calling in
 # rather than one trying to pass for a person.
 VOICES = [
+    {'id': 'helena', 'label': 'Helena', 'engine': 'aura', 'voice': 'helena', 'rate': 24000},
+    {'id': 'apollo', 'label': 'Apollo', 'engine': 'aura', 'voice': 'apollo', 'rate': 24000},
     {'id': 'heart', 'label': 'Heart', 'engine': 'kokoro', 'voice': 'af_heart'},
     {'id': 'michael', 'label': 'Michael', 'engine': 'kokoro', 'voice': 'am_michael'},
     {'id': 'emma', 'label': 'Emma (British)', 'engine': 'kokoro', 'voice': 'bf_emma'},
@@ -51,7 +61,17 @@ def windows_ready():
     return sys.platform == 'win32'
 
 
-READY = {'kokoro': kokoro_ready, 'windows': windows_ready}
+def aura_ready():
+    try:
+        urllib.request.urlopen(SPEAK + '/links/nothing', timeout=5)
+    except urllib.error.HTTPError:
+        return True   # it answered (404)
+    except OSError:
+        return False
+    return True
+
+
+READY = {'kokoro': kokoro_ready, 'windows': windows_ready, 'aura': aura_ready}
 
 
 def resample(samples, src, dst):
@@ -70,21 +90,21 @@ def resample(samples, src, dst):
     return out
 
 
-def finish(samples, rate, path):
-    """Trim silence, normalize, write 16-bit mono WAV at RATE."""
-    samples = resample(samples, rate, RATE)
+def finish(samples, rate, path, out_rate=RATE):
+    """Trim silence, normalize, write 16-bit mono WAV at out_rate."""
+    samples = resample(samples, rate, out_rate)
     loud = max((abs(s) for s in samples), default=0) or 1
     cut = QUIET * loud
     first = next((i for i, s in enumerate(samples) if abs(s) > cut), 0)
     last = next((i for i in range(len(samples) - 1, -1, -1) if abs(samples[i]) > cut), len(samples) - 1)
-    pad = int(PAD_S * RATE)
+    pad = int(PAD_S * out_rate)
     clip = samples[max(0, first - pad):min(len(samples), last + pad)]
     k = PEAK * 32767 / loud
     clip = array('h', (max(-32768, min(32767, int(s * k))) for s in clip))
     with wave.open(path, 'wb') as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(RATE)
+        w.setframerate(out_rate)
         w.writeframes(clip.tobytes())
 
 
@@ -125,7 +145,21 @@ def record_kokoro(v, phrases, folder):
         finish(samples, rate, os.path.join(folder, f'{key}.wav'))
 
 
-RECORD = {'windows': record_windows, 'kokoro': record_kokoro}
+def record_aura(v, phrases, folder):
+    for key, text in phrases.items():
+        req = urllib.request.Request(SPEAK + '/speak', method='POST',
+                                     data=json.dumps({'text': text, 'voice': v['voice'], 'format': 'wav'}).encode(),
+                                     headers={'Content-Type': 'application/json', 'Origin': 'http://127.0.0.1'})
+        with urllib.request.urlopen(req, timeout=60) as res:
+            data = res.read()
+        # 16-bit mono PCM after the 'data' chunk header (the streamed WAV's sizes can't be trusted).
+        at = data.index(b'data') + 8
+        pcm = data[at:at + (len(data) - at) // 2 * 2]
+        rate = int.from_bytes(data[24:28], 'little')
+        finish(array('h', pcm), rate, os.path.join(folder, f'{key}.wav'), v['rate'])
+
+
+RECORD = {'windows': record_windows, 'kokoro': record_kokoro, 'aura': record_aura}
 
 
 def make_chime(path):
@@ -163,7 +197,8 @@ def main(ids):
         folder = os.path.join(OUT, v['id'])
         os.makedirs(folder, exist_ok=True)
         RECORD[v['engine']](v, phrases, folder)
-        made = [m for m in made if m['id'] != v['id']] + [{'id': v['id'], 'label': v['label'], 'ext': 'wav', **({'chime': True} if v.get('chime') else {})}]
+        made = [m for m in made if m['id'] != v['id']] + [{'id': v['id'], 'label': v['label'], 'ext': 'wav', **({'chime': True} if v.get('chime') else {}),
+                                                           **({'speaker': v['voice']} if v['engine'] == 'aura' else {})}]
         size = sum(os.path.getsize(os.path.join(folder, f)) for f in os.listdir(folder))
         print(f"{v['id']}: {len(phrases)} clips, {size // 1024} KB")
     make_chime(os.path.join(OUT, 'chime.wav'))

@@ -17,10 +17,16 @@
 //   POST   /links      { id, trip, owner? }            → { id }                anyone; owner (locked) when signed in
 //   GET    /links/:id                                  → { trip }
 //   DELETE /links/:id                                  → {}                    its owner only
+//   POST   /speak      { text, voice, format? }        → audio/mpeg (or wav)   anyone: Ride mode's natural voice
 //
 // A link's id is a hash of the code in the link, which the service never sees (the code also makes the key that
 // unlocks it). Signed-in calls send "Authorization: Bearer <token>"; the database keeps only a hash of the token, and
 // only the Google account's id (no email or name).
+//
+// /speak says a short bit of text (a road's name, or one of Ride mode's fixed phrases for tools/make_voice.py) in a
+// natural voice: Workers AI, Deepgram Aura-2, as claude-spells does it. Each clip is made once and kept, by voice and
+// text alone, so it's shared by everyone and can't be tied to who asked; nothing else about the request is kept. New
+// clips stop for the day at SPEAK_CHARS, inside Workers AI's free daily allowance (which claude-spells shares).
 
 const SITE_ORIGINS = ['https://nosv1.github.io'];
 const LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;  // the tests, and trying the app on the PC
@@ -28,7 +34,11 @@ const LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;  // the tests
 const MAX_TRIP = 16 * 1024, MAX_NAME = 600, MAX_OWNER = 1024, MAX_DATA = 400 * 1024, MAX_RIDES = 300;
 const SESSION_DAYS = 365;
 // Per day: saves per account, new share links per address, sign-ins per address.
-const LIMITS = { save: 1000, link: 200, login: 50 };
+const LIMITS = { save: 1000, link: 200, login: 50, speak: 400 };
+const VOICES = ['helena', 'thalia', 'apollo', 'orion', 'luna', 'asteria', 'athena', 'arcas', 'zeus'];
+const SPEAK_CHARS = 2000;  // a day; Aura-2 is 2,727 neurons per 1,000 characters, of 10,000 free a day per account
+const MAX_SPEAK = 120;
+const SPOKEN = /^[\p{L}\p{N} .,'’&!?:;()\/-]+$/u;
 const DAY = 86400e3;
 
 export default {
@@ -74,6 +84,7 @@ async function route(req, env) {
     return json(row);
   }
   if (what === 'links' && !id && m === 'POST') return makeLink(req, env);
+  if (what === 'speak' && !id && m === 'POST') return speak(req, env);
 
   const user = await signedIn(req, db);
   if (what === 'logout' && m === 'POST') {
@@ -157,6 +168,39 @@ async function makeLink(req, env) {
     .bind(body.id, trip, owner, user ? user.id : null, Date.now()).run();
   if (!r.meta.changes) throw new HttpError(409, 'That link is taken. Try sharing again.');
   return json({ id: body.id });
+}
+
+// ---------- the natural voice ----------
+
+async function speak(req, env) {
+  const db = env.DB, body = await readJson(req);
+  const text = typeof body.text === 'string' ? body.text.replace(/\s+/g, ' ').trim() : '';
+  const format = body.format == null ? 'mp3' : body.format;
+  if (!text || text.length > MAX_SPEAK || !SPOKEN.test(text) || !VOICES.includes(body.voice) || !['mp3', 'wav'].includes(format)) {
+    throw new HttpError(400, 'That can’t be said.');
+  }
+  const audio = data => new Response(data, { headers: {
+    'Content-Type': format === 'wav' ? 'audio/wav' : 'audio/mpeg', 'Cache-Control': 'public, max-age=31536000, immutable' } });
+  const kept = await db.prepare('SELECT audio FROM clips WHERE voice = ? AND format = ? AND text = ?').bind(body.voice, format, text).first();
+  if (kept) return audio(new Uint8Array(kept.audio));
+
+  await limit(db, 'speak', await addressKey(req));
+  const day = Math.floor(Date.now() / DAY);
+  const { n } = await db.prepare('INSERT INTO counts (k, n, day) VALUES (?, ?, ?) ON CONFLICT (k) DO UPDATE SET n = n + excluded.n RETURNING n')
+    .bind(`speak-chars:${day}`, text.length, day).first();
+  if (n > SPEAK_CHARS) throw new HttpError(503, 'The voice is done making new words for today.');
+  let data;
+  try {
+    const out = await env.AI.run('@cf/deepgram/aura-2-en', { text, speaker: body.voice, encoding: format === 'wav' ? 'linear16' : 'mp3',
+      ...(format === 'wav' ? { container: 'wav', sample_rate: 24000 } : {}) });
+    data = new Uint8Array(await new Response(out).arrayBuffer());
+  } catch (e) {
+    console.error('voice service:', e.message);
+  }
+  if (!data || !data.length) throw new HttpError(502, 'The voice service had a problem.');
+  await db.prepare('INSERT OR REPLACE INTO clips (voice, format, text, audio, made) VALUES (?, ?, ?, ?, ?)')
+    .bind(body.voice, format, text, data, Date.now()).run();
+  return audio(data);
 }
 
 // ---------- signing in ----------
