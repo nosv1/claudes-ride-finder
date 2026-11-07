@@ -1,5 +1,11 @@
 [
  {
+  "id": "pandora",
+  "label": "Pandora (British)",
+  "ext": "wav",
+  "speaker": "pandora"
+ },
+ {
   "id": "helena",
   "label": "Helena",
   "ext": "wav",

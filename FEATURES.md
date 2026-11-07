@@ -629,7 +629,7 @@ colored road), Add a stop here, Street View here.
   - All of a voice's clips load into memory when a ride starts (Safari plays audio from the site in parts, which an
     offline cache can't serve), so the calls work without signal. One player for all of them, first played by the
     tap that starts the ride (iPhones only allow sound after a tap).
-  - Voices now: **Helena** (the default) and **Apollo**, natural (Aura-2, recorded with `make_voice.py`'s `aura`
+  - Voices now: **Pandora** (British, the default: the rider asked for a southern English woman), **Helena** and **Apollo**, natural (Aura-2, recorded with `make_voice.py`'s `aura`
     engine through `/speak`), then Zira and David (Windows' built-in, robotic), labelled "(robot)". A robotic voice
     beeps first (`voice/chime.wav`: a high note then a lower one, like an old computer, made by `make_voice.py`), so it
     comes across as a robot calling in rather than one trying to pass for a person; `"chime": true` in `voices.json`.

@@ -21,6 +21,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import wave
@@ -35,6 +36,7 @@ SPEAK = os.environ.get('RF_SPEAK', 'http://127.0.0.1:8787').rstrip('/')
 # chime: a beep-boop before each thing it says (voice/chime.wav), so a robotic voice comes across as a robot calling in
 # rather than one trying to pass for a person.
 VOICES = [
+    {'id': 'pandora', 'label': 'Pandora (British)', 'engine': 'aura', 'voice': 'pandora', 'rate': 24000},
     {'id': 'helena', 'label': 'Helena', 'engine': 'aura', 'voice': 'helena', 'rate': 24000},
     {'id': 'apollo', 'label': 'Apollo', 'engine': 'aura', 'voice': 'apollo', 'rate': 24000},
     {'id': 'heart', 'label': 'Heart', 'engine': 'kokoro', 'voice': 'af_heart'},
@@ -150,8 +152,15 @@ def record_aura(v, phrases, folder):
         req = urllib.request.Request(SPEAK + '/speak', method='POST',
                                      data=json.dumps({'text': text, 'voice': v['voice'], 'format': 'wav'}).encode(),
                                      headers={'Content-Type': 'application/json', 'Origin': 'http://127.0.0.1'})
-        with urllib.request.urlopen(req, timeout=60) as res:
-            data = res.read()
+        for attempt in range(4):  # the voice service has the odd hiccup (502/503): try again shortly
+            try:
+                with urllib.request.urlopen(req, timeout=60) as res:
+                    data = res.read()
+                break
+            except urllib.error.HTTPError as e:
+                if e.code not in (502, 503) or attempt == 3:
+                    raise
+                time.sleep(3 * (attempt + 1))
         # 16-bit mono PCM after the 'data' chunk header (the streamed WAV's sizes can't be trusted).
         at = data.index(b'data') + 8
         pcm = data[at:at + (len(data) - at) // 2 * 2]

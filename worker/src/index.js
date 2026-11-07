@@ -35,7 +35,7 @@ const MAX_TRIP = 16 * 1024, MAX_NAME = 600, MAX_OWNER = 1024, MAX_DATA = 400 * 1
 const SESSION_DAYS = 365;
 // Per day: saves per account, new share links per address, sign-ins per address.
 const LIMITS = { save: 1000, link: 200, login: 50, speak: 400 };
-const VOICES = ['helena', 'thalia', 'apollo', 'orion', 'luna', 'asteria', 'athena', 'arcas', 'zeus'];
+const VOICES = ['pandora', 'draco', 'helena', 'thalia', 'apollo', 'orion', 'luna', 'asteria', 'athena', 'arcas', 'zeus'];
 const SPEAK_CHARS = 2000;  // a day; Aura-2 is 2,727 neurons per 1,000 characters, of 10,000 free a day per account
 const MAX_SPEAK = 120;
 const SPOKEN = /^[\p{L}\p{N} .,'’&!?:;()\/-]+$/u;
