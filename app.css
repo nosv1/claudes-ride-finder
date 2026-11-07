@@ -237,6 +237,10 @@ p .lights:hover, p .lit { color: var(--text); text-decoration: underline; text-u
 .field > label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 .start-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--raise); }
 .start-row.must { padding: 4px 4px 4px 12px; margin-bottom: 6px; }
+.saved-place { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 10px; background: var(--raise); margin: 10px 0; }
+.save-place .start-row { padding: 4px 4px 4px 4px; margin-top: 8px; }
+.save-place .start-row input { flex: 1; min-width: 0; }
+.my-places { margin-top: 6px; flex-wrap: wrap; }
 .own { color: var(--text); }
 .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 6px; }
 .seg button { min-height: 38px; padding: 0 10px; white-space: nowrap; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }

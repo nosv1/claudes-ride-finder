@@ -134,10 +134,6 @@ Ideas that came up, roughly in order of how much they'd help.
   - **No speed or time scores.** Score roads and places, never how fast you got there: leaderboards for
     pace on public roads are how people get hurt (and how the app gets blamed).
 - **Saved rides**: keep rides by name on the device (not just the last one), with the share link.
-- **Saved places** (the rider, 2026-11-06): keep stops like Home and Work by name, and offer them first wherever a
-  start, end or stop is picked (search box, the map's menu, Generate's start), so "loop from home" or "ride home from
-  work the long way" is one tap. Kept with the account and locked like rides (`js/seal.js`): home is the most private
-  thing the app would hold.
 - **Group rides**: a share link with the leave time and meeting spot, so everyone sees the same plan.
 - **Dead-end roads in the generator**: lake roads in the Ozarks often dead-end at the water, so a
   loop rides them out and back. The generator now drops them after routing; marking dead ends in

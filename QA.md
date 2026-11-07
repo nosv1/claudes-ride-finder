@@ -107,6 +107,11 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Speed and speed limit look right; miles left goes down; End needs two taps; the arrival says miles and time.
 - Switch apps and back: it picks up where you are. ✱ How the battery holds up over a 2-hour ride, on a charger.
 
+## Your places
+
+- ✱ Long-press near home → Save this place → Home. Search box: tap it empty, Home is listed; Start on it opens Plan a
+  ride from home. Plan a ride: the Home button under Start. Signed in, it's on the other device too.
+
 ## Your road tags
 
 - A road's page: tap Don't ride, add a note; the road gets red dots on the map and "Don't ride" in the road list.

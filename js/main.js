@@ -4,7 +4,7 @@ import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersect
 import { visible, hillLevel, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong, setMyMph, limitOf } from './roads.js';
 import * as T from './trip.js';
 import * as P from './plan.js';
-import { localResults, photonResults } from './search.js';
+import { localResults, photonResults, normWords } from './search.js';
 import { fetchRoute, routeRefs, routerTrouble } from './routing.js';
 import { profile } from './elevation.js';
 import * as W from './weather.js';
@@ -28,7 +28,7 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 const settings = Object.assign({
   mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, showBlind: true, showFuel: false, rollers: false,
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
-  basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1,
+  basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1, places: [],
 }, load(SETTINGS_KEY));
 // Settings saved before the highway tiers existed list only the ramp tiers: show the new ones too.
 if (!settings.highwayTiers) {
@@ -44,6 +44,7 @@ let info = null;             // what's along the route: { curvy, blind, fuel, pr
 let selected = null;         // { group, piece, at }: the road picked on the map or in a list
 let view = 'home', viewArg = null;
 let place = null;            // the place last picked in search, { label, sub, at }: its pin opens its card
+let naming = false;          // the place card's Save place form is open
 let picking = null;          // 'start' | 'stop' | 'road' while waiting for a map tap
 let dragging = false;        // a stop row is being dragged: hold re-renders until it's dropped
 let showKey = false;         // the map key's explanations are open
@@ -119,6 +120,7 @@ async function start() {
     get: () => ({ settings, tags: allTags() }),
     apply: (data, { merge }) => {
       if (data.settings) {
+        if (merge && myPlaces().length) data.settings.places = mergePlaces(data.settings.places || [], myPlaces());
         Object.assign(settings, data.settings);
         save(SETTINGS_KEY, settings);
         applySettings();
@@ -209,6 +211,36 @@ function setSetting(patch) {
   loadView();
   renderSoon();
 }
+
+// ---------- your places ----------
+
+// Home, Work and the like: kept with the settings, so they follow your account (locked, like everything you save) and
+// come first in search, in Plan a ride's start and end, and in the map's menu.
+const MAX_PLACES = 30, SAME_PLACE_KM = 0.05;
+const myPlaces = () => settings.places || [];
+const placeIcon = name => (/^home$/i.test(name) ? icon.home : icon.pin);
+const savedAt = at => myPlaces().find(p => km(p.at, at) < SAME_PLACE_KM);
+function savePlace(name, at) {
+  name = String(name).trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!name) return toast('Give the place a name first.');
+  const rest = myPlaces().filter(p => p.name.toLowerCase() !== name.toLowerCase() && km(p.at, at) >= SAME_PLACE_KM);
+  naming = false;
+  if (place && km(place.at, at) < SAME_PLACE_KM) place = { ...place, label: name, sub: 'Your place' };
+  setSetting({ places: [...rest, { name, at: [+at[0].toFixed(5), +at[1].toFixed(5)] }].slice(-MAX_PLACES) });
+  if (view === 'place' && place) go('place', place);
+  toast(`Saved as ${name}.`);
+}
+function forgetPlace(p) {
+  const was = myPlaces();
+  setSetting({ places: was.filter(x => x !== p) });
+  toast(`${p.name} removed.`, { label: 'Undo', run: () => setSetting({ places: was }) });
+}
+// Two lists of places as one (signing in on a device that has its own): by name, the account's copy first.
+const mergePlaces = (account, here) => [...account, ...here.filter(p => !account.some(a => a.name.toLowerCase() === p.name.toLowerCase()))].slice(-MAX_PLACES);
+// One-tap buttons for your places (Plan a ride's start and end).
+const placeButtons = use => myPlaces().length
+  ? h('div.btn-row.my-places', {}, myPlaces().map(p => h('button.btn', { onclick: () => use(p) }, iconEl(placeIcon(p.name)), p.name)))
+  : '';
 
 // ---------- trip ----------
 
@@ -901,6 +933,8 @@ function spotMenu(at, pt) {
     { label: 'End a ride here', icon: icon.flag, run: () => { setEndAt(at, 'End'); go('plan'); } },
     g ? { label: `Ride ${g.key} end to end`, icon: icon.route, run: () => addRoad(g) } : null,
     { label: 'Add a stop here', icon: icon.plus, run: () => { T.addPoint(trip, at, 'Stop'); tripChanged(); toast('Stop added. Drag its pin to adjust.'); } },
+    savedAt(at) ? { label: `Your place: ${savedAt(at).name}`, icon: placeIcon(savedAt(at).name), run: () => openPlace(savedAt(at)) }
+      : { label: 'Save this place', icon: icon.home, run: () => { openPlace({ name: '', at }); naming = true; renderSoon(); } },
     { label: 'Street View here', icon: icon.person, run: () => window.open(sv, '_blank', 'noopener') },
     { label: 'Edit OpenStreetMap here', icon: icon.edit, run: () => window.open(osmEditAt(at), '_blank', 'noopener') },
   ].filter(Boolean), { x: pt.x, y: pt.y });
@@ -944,6 +978,7 @@ function stopPicking() {
 function go(v, arg = null) {
   const changed = v !== view;
   if (changed) clearFocus();
+  if (v !== 'place' || arg !== viewArg) naming = false;  // another view, or another place
   view = v;
   viewArg = arg;
   if (v === 'station' || v === 'place') selected = null;
@@ -1439,8 +1474,35 @@ function placeView() {
       h('button.btn', { onclick: () => { setEndAt(p.at, `End: ${p.label}`); go('plan'); } }, iconEl(icon.flag), 'End here'),
       h('a.btn', { href: `${gm}@?api=1&map_action=pano&viewpoint=${lat},${lon}`, target: '_blank', rel: 'noopener' }, iconEl(icon.person), 'Street View'),
       h('a.btn', { href: `${gm}dir/?api=1&destination=${lat},${lon}`, target: '_blank', rel: 'noopener' }, iconEl(icon.go), 'Directions')),
+    savePlaceBox(p),
     h('p.muted.small', {}, 'Start here or End here opens Plan a ride: with an end, it finds fun ways there.'),
   ];
+}
+
+// A saved place, or a spot on the map, opened as a place card.
+function openPlace(p) {
+  place = p.name ? { label: p.name, sub: 'Your place', at: p.at } : { label: 'Spot on the map', sub: `${p.at[0].toFixed(4)}, ${p.at[1].toFixed(4)}`, at: p.at };
+  mapView.setPin(p.at);
+  mapView.flyTo(p.at, Math.max(mapView.zoom(), 13));
+  go('place', place);
+}
+
+// Save place on a place card: Home, Work or a name of your own; or, once saved, its name and Remove.
+function savePlaceBox(p) {
+  const mine = savedAt(p.at);
+  if (mine) {
+    return h('div.saved-place', {}, iconEl(placeIcon(mine.name)), h('span.grow', {}, `Saved as ${mine.name}`),
+      h('button.btn.small', { onclick: () => forgetPlace(mine) }, iconEl(icon.trash), 'Remove'));
+  }
+  if (!naming) return h('button.btn.wide', { onclick: () => { naming = true; renderSoon(); } }, iconEl(icon.home), 'Save place');
+  const taken = new Set(myPlaces().map(x => x.name.toLowerCase()));
+  const other = h('input', { type: 'text', placeholder: 'Or a name, like “Mom’s”', maxlength: 40, 'aria-label': 'Name for this place',
+    onkeydown: e => { if (e.key === 'Enter') savePlace(e.target.value, p.at); } });
+  return h('div.field.save-place', {}, h('label', {}, 'Save as'),
+    h('div.btn-row', {}, ['Home', 'Work'].map(n => h('button.btn', { onclick: () => savePlace(n, p.at) },
+      iconEl(placeIcon(n)), taken.has(n.toLowerCase()) ? `${n} (move here)` : n))),
+    h('div.start-row', {}, other, h('button.btn.primary', { onclick: () => savePlace(other.value, p.at) }, 'Save')),
+    h('p.fineprint', {}, 'Kept with your settings: signed in, on all your devices, locked so only you can read it.'));
 }
 
 function planView() {
@@ -1457,9 +1519,11 @@ function planView() {
         try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'My location'),
       h('button.btn', { onclick: () => startPicking('start') }, iconEl(icon.pin), 'Pick on map')),
+    placeButtons(p => setStartAt(p.at, `Start: ${p.name}`)),
     oneWay ? h('div.field', {}, h('label', {}, 'End'),
       h('div.start-row', {}, iconEl(icon.flag), h('span.grow', {}, place(end))),
-      h('div.btn-row', {}, h('button.btn', { onclick: () => startPicking('end') }, iconEl(icon.pin), 'Pick on map'))) : '',
+      h('div.btn-row', {}, h('button.btn', { onclick: () => startPicking('end') }, iconEl(icon.pin), 'Pick on map')),
+      placeButtons(p => setEndAt(p.at, `End: ${p.name}`))) : '',
     mustInclude(),
     oneWay ? extraTime() : rideTime(),
     h('button.cta', { onclick: generate }, iconEl(icon.route), gen.running ? 'Stop' : oneWay ? 'Find fun ways there' : 'Generate loops'),
@@ -2030,12 +2094,19 @@ function renderChips() {
 const q = $('#q'), results = $('#results');
 let searchSeq = 0, photonTimer = null, shown = [];
 
-function runSearch() {
+function runSearch(focused = document.activeElement === q) {
   const text = q.value.trim(), seq = ++searchSeq;
   clearTimeout(photonTimer);
   $('#qClear').hidden = !text;
-  if (!text) { results.hidden = true; return; }
-  const local = localResults(text, store.search);
+  // Your places match from the first letter ("h" finds Home).
+  const mine = myPlaces().filter(p => normWords(text).every(w => normWords(p.name).some(x => x.startsWith(w))))
+    .map(p => ({ kind: 'mine', label: p.name, sub: 'Your place', at: p.at }));
+  if (!text) {
+    if (mine.length && focused) showResults(mine, false);
+    else results.hidden = true;
+    return;
+  }
+  const local = [...mine, ...localResults(text, store.search)];
   showResults(local, text.length >= 3);
   if (text.length < 3) return;
   photonTimer = setTimeout(async () => {
@@ -2052,7 +2123,7 @@ function showResults(list, waiting) {
   shown = list;
   results.hidden = false;
   results.replaceChildren(...(list.length ? list.map((r, i) => h(`div.result${i === 0 ? '.active' : ''}`, { onclick: () => pickResult(r) },
-    iconEl(r.kind === 'road' ? icon.route : icon.pin),
+    iconEl(r.kind === 'road' ? icon.route : r.kind === 'mine' ? placeIcon(r.label) : icon.pin),
     h('div.grow', {}, h('div', {}, r.label), h('div.muted.small', {}, r.sub)),
     r.at ? h('button.btn.small', { onclick: e => { e.stopPropagation(); closeSearch(); setStartAt(r.at, `Start: ${r.label}`); mapView.flyTo(r.at, 11); go('plan'); } }, 'Start') : ''))
     : [h('div.result.muted', {}, waiting ? 'Searching…' : 'No matches.')]));
@@ -2089,8 +2160,10 @@ async function pickResult(r) {
   select(g, piece, piece.geom[Math.floor(piece.geom.length / 2)]);
 }
 
-q.addEventListener('input', runSearch);
-q.addEventListener('focus', () => { if (q.value.trim()) runSearch(); });
+q.addEventListener('input', () => runSearch());
+q.addEventListener('focus', () => runSearch(true));  // empty, it lists your places
+// ...until you leave the box (after a moment, so tapping one of them still works).
+q.addEventListener('blur', () => setTimeout(() => { if (!q.value.trim() && document.activeElement !== q) results.hidden = true; }, 250));
 q.addEventListener('keydown', e => {
   if (e.key === 'Escape') { q.value = ''; runSearch(); q.blur(); }
   if (e.key === 'Enter' && shown.length) pickResult(shown[0]);

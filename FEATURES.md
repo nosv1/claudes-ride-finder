@@ -294,6 +294,13 @@ colored road), Add a stop here, Street View here.
 - Picking a result drops online results still on their way, so they don't reopen the list (and push the side
   panel down) after the pick.
 - **Keys:** Enter picks the first result, Esc clears.
+- **Your places** (Home, Work, or a name of your own; the rider, 2026-11-06): **Save place** on any place card, or
+  **Save this place** in the map's menu (which then says "Your place: Home" there). Kept in the settings
+  (`settings.places`, at most 30), so they sync with the account, locked like the rest (`js/seal.js`): a home is the
+  most private thing the app holds. They come first in search, from the first letter ("h" finds Home), and the empty
+  box lists them when tapped; Plan a ride has a button for each under Start (and End, one way). A saved place's card
+  says "Saved as Home" with Remove (Undo in the pop-up). Signing in on a device with its own places merges them by
+  name, the account's copy first.
 
 ## 5. Plan and ride
 

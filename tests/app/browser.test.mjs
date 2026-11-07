@@ -631,6 +631,40 @@ test('your speed limit: set on a road’s card, the map follows it, and it links
   await page.eval("RF.go('home')");
 });
 
+test('your places: save a spot as Home from the map menu, find it in search, start a ride from it', async () => {
+  const click = text => page.eval(`[...document.querySelectorAll('button, .menu-item, .result')].find(e => e.offsetParent && e.textContent.trim().startsWith(${JSON.stringify(text)})).click()`);
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.38, 38.91], zoom: 13 })");
+  await page.eval("(() => { const m = RF.mapView.map; m.fire('contextmenu', { lngLat: m.getCenter(), point: m.project(m.getCenter()) }); })()");
+  await click('Save this place');
+  await page.waitFor("/Save as/.test(document.getElementById('sheetBody').innerText)", 5000);
+  await click('Home');
+  await page.waitFor("/Saved as Home/.test(document.getElementById('sheetBody').innerText)", 5000);
+  assert.deepEqual(await page.eval('RF.settings.places.map(p => p.name)'), ['Home']);
+  assert.ok(await page.eval("JSON.parse(localStorage.getItem('rf2-settings')).places.length === 1"), 'kept with the settings (and the account)');
+  // The map menu there now says so.
+  await page.eval("(() => { const m = RF.mapView.map; m.fire('contextmenu', { lngLat: m.getCenter(), point: m.project(m.getCenter()) }); })()");
+  assert.ok(await page.eval("[...document.querySelectorAll('.menu-item')].some(e => /Your place: Home/.test(e.textContent))"));
+  await page.eval("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
+  // Search: the empty box lists it, and "h" finds it first.
+  await page.eval("RF.go('home')");
+  await page.eval("(() => { const q = document.getElementById('q'); q.focus(); q.dispatchEvent(new Event('focus')); })()");
+  await page.waitFor("!document.getElementById('results').hidden && /Home/.test(document.getElementById('results').innerText)", 5000);
+  await page.eval("(() => { const q = document.getElementById('q'); q.value = 'h'; q.dispatchEvent(new Event('input')); })()");
+  assert.match(await page.eval("document.querySelector('#results .result').innerText"), /^Home/);
+  await page.eval("(() => { const q = document.getElementById('q'); q.value = ''; q.dispatchEvent(new Event('input')); q.blur(); })()");
+  // Plan a ride: one tap starts it there.
+  await page.eval("RF.go('plan')");
+  await page.eval("[...document.querySelectorAll('.my-places button')].find(b => /Home/.test(b.textContent)).click()");
+  await page.waitFor("/Home/.test(document.querySelector('.start-row').innerText)", 5000);
+  // Remove (and Undo puts it back).
+  await page.eval("RF.go('home')");
+  await page.eval("(() => { const m = RF.mapView.map; m.fire('contextmenu', { lngLat: m.getCenter(), point: m.project(m.getCenter()) }); })()");
+  await click('Your place: Home');
+  await click('Remove');
+  assert.equal(await page.eval('RF.settings.places.length'), 0);
+  await page.eval("RF.go('home')");
+});
+
 test('pop-ups go away on their own in a few seconds, or at a tap', async () => {
   await page.eval("import('./js/ui.js').then(u => u.toast('Short note'))");
   assert.equal(await page.eval("document.getElementById('toast').hidden"), false);

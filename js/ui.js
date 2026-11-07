@@ -6,6 +6,7 @@ export const icon = {
   search: svg('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),
   x: svg('<path d="M18 6 6 18M6 6l12 12"/>'),
   back: svg('<path d="m15 18-6-6 6-6"/>'),
+  home: svg('<path d="m3 11 9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   locate: svg('<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/>'),
   layers: svg('<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>'),
