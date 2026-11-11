@@ -52,8 +52,28 @@ Ideas that came up, roughly in order of how much they'd help.
   and `npx wrangler@4 deploy`. Until then the names are just left out. More voices: add them to `make_voice.py` and
   `python tools/make_voice.py <id>` (~730 characters of the day's free allowance each; Thalia was next).
 - **Ride mode next** (Ride mode is in, 2026-11-04): gas callouts ("Casey's in 4 mi, next gas 38 mi"), the ridden track
-  saved (for Roads you've ridden), Valhalla avoiding roads tagged Don't ride between stops (`exclude_polygons` or
-  `avoid_locations`), and screen-off guidance, which needs a native app (see the Play Store / iPhone entry).
+  saved (for Roads you've ridden; see Recording rides below), Valhalla avoiding roads tagged Don't ride between stops
+  (`exclude_polygons` or `avoid_locations`), and screen-off guidance, which needs a native app (see the Play Store /
+  iPhone entry).
+- **+15 min on a one-way ride** (asked 2026-11-11; first of these to build): when planning A to B, offer Fastest,
+  +15 min and +30 min, the extra time spent on better roads. The loop generator's ride-time budget, applied to a
+  one-way ride. Groundwork for the offer mid-ride below.
+- **"+15 min, more fun" offered mid-ride** (asked 2026-11-11): in Ride mode, on the way to a destination: "Add 15
+  minutes by taking MO 7?" **Spoken, not a pop-up**: one tap accepts, doing nothing means no (no fiddling while
+  riding). **Worked out when the ride is planned, not live**: each live check is more requests to the public
+  Valhalla server (see Our own router), so the alternatives come with the plan and the offer plays as the rider
+  nears the turn where the fun route splits off. Re-planning from where the rider is, after leaving the route, is
+  the harder version.
+- **Recording rides, safely** (asked 2026-11-11): his first thought was safety. A GPS trail with times shows speed on
+  every stretch, so a spirited ride on a phone, a synced account or a backup is evidence. Proposed: **save which
+  roads were ridden and the date, not the trail**: no points, no times, no speeds. That's all Roads you've ridden
+  needs. On the device by default; syncing opt-in. (It doesn't touch what the phone and carrier keep; the app just
+  shouldn't keep a better record.) Open, his call: roads only enough, or the trail too? A browser stops GPS with the
+  screen off, so until the native app it records only while Ride mode keeps the screen on.
+- **Tags on a spot, not a whole road** (asked 2026-11-11): a bump is a point. A tag pinned where it was dropped (or a
+  short stretch), shown on the map there and called out in Ride mode as it's approached. After the ride: long-press
+  the spot. While riding: one big button, or saying "bump", drops a pin where the rider is, labelled after the ride.
+  Open, his call: button, voice, or after the ride only? Whole-road tags (Don't ride) stay as they are.
 - **Road tags with others**: tags are on the device now. With accounts (below), sync them across your devices, and
   maybe let riders share them ("12 riders say rough") so a bad road warns everyone.
 - **Weather layer: ride or not, at a glance**. Not a weather app: only what decides a ride (wet roads, storms,
