@@ -492,7 +492,9 @@ body.riding .stop-marker { display: none; }
 .ride-name { font-weight: 600; }
 .save-btn { margin: 2px 0 4px; }
 button.link.save-link { margin: 2px 0 4px; color: #74c0fc; }
-.gsi { min-height: 44px; margin: 14px 0; }
+/* Google's button is a light page in a frame: with the page's dark color-scheme the browser paints a white box behind
+   it (around the rounded "Sign in as …" button). Matching its scheme keeps the frame see-through. */
+.gsi { min-height: 44px; margin: 14px 0; color-scheme: light; }
 .error { color: var(--danger); }
 .btn.danger { border-color: var(--danger); color: var(--danger); }
 .voice-row { display: flex; gap: 8px; margin-bottom: 8px; }
