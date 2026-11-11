@@ -421,7 +421,7 @@ test('one way: pick an end, and the planner finds fun ways there that finish at 
   await page.eval("RF.mapView.emit('menu', [38.2431, -93.3819], { x: 700, y: 400 })");
   await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /End a ride here/.test(b.textContent)).click()");
   await sleep(300);
-  assert.match(await sheetText(), /One way[\s\S]*Start[\s\S]*End[\s\S]*Extra time for fun roads[\s\S]*Find fun ways there/);
+  assert.match(await sheetText(), /One way[\s\S]*Start[\s\S]*End[\s\S]*Extra time for fun roads[\s\S]*\+15 min[\s\S]*Find fun ways there/);
   assert.deepEqual(await page.eval('[RF.trip.loop, RF.trip.items[RF.trip.items.length - 1].end, RF.settings.genShape]'), [false, true, 'oneway']);
   if (NETWORK) {
     await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Find fun ways there/.test(b.textContent)).click()");
@@ -430,6 +430,13 @@ test('one way: pick an end, and the planner finds fun ways there that finish at 
     assert.ok(opts.length > 0, await page.eval('RF.gen.status'));
     opts.forEach(o => assert.deepEqual(o, [true, 'End', true]));
     assert.equal(await page.eval('RF.trip.loop'), false, 'the chosen way stays one way');
+    // The fastest way comes last, to compare; each fun way says how much longer it is, near the extra chosen (+1 h).
+    const ways = await page.eval('RF.gen.options.map(o => [o.way, o.vsFastest, o.route.seconds])');
+    assert.equal(ways[ways.length - 1][0], 'fastest');
+    ways.slice(0, -1).forEach(([, vs]) => assert.ok(vs >= 0.5 * 3600 && vs <= 1.6 * 3600, `+${Math.round(vs / 60)} min for +1 h`));
+    assert.match(await sheetText(), /\+\d+ min[\s\S]*Fastest way/);
+    await page.eval("[...document.querySelectorAll('.cards .option')].pop().click()");
+    assert.deepEqual(await page.eval('[RF.trip.loop, RF.trip.items.length]'), [false, 2], 'Fastest: just the start and the end');
   }
   await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => b.textContent === 'Loop').click()");
   assert.equal(await page.eval('RF.settings.genShape'), 'loop');

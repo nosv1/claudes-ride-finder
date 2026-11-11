@@ -626,7 +626,10 @@ async function generateRun(run) {
   gen = { options: [], index: -1, running: true,
     status: required.length ? `Building ${kind} through ${required.map(r => r.label).join(', ')}…` : oneWay ? 'Finding the straight way there…' : 'Loading roads around your start…' };
   renderSoon();
-  // One way: the time is the straight way there plus the extra the rider will spend on fun roads.
+  // One way: the time is the straight way there plus the extra the rider will spend on fun roads, and a
+  // way there has to come in near that extra (+15 min is +8 to +24, not 80–120% of the whole ride).
+  // The straight way is an option too: Fastest, the one the others are measured against.
+  let win = { lo: hours * GEN.under, hi: hours * GEN.overrun }, fastest = null;
   if (oneWay) {
     const direct = await fetchRoute([{ p: s, via: false }, { p: e, via: false }], +trip.pref);
     live();
@@ -634,14 +637,26 @@ async function generateRun(run) {
       gen = { options: [], index: -1, running: false, status: routerTrouble() };
       return renderSoon();
     }
-    hours = direct.seconds / 3600 + settings.genExtra;
+    const d = direct.seconds / 3600, x = settings.genExtra;
+    hours = d + x;
+    win = { lo: Math.max(d + x * GEN.extraUnder, hours * GEN.under), hi: Math.min(d + x * GEN.extraOver, hours * GEN.overrun) };
+    fastest = { route: direct, way: 'fastest', oneWay: true, items: [start, end].map(it => ({ ...it, pts: it.pts.map(p => [...p]) })) };
   }
+  // One way, roads are picked by the rough estimate, which can be off the router's straight way by more than
+  // +15 min, and fun roads route about twice as slow as it guesses: half the extra on top of its own straight way
+  // (never less than the time itself, as it was before +15 min).
+  const planHours = fastest ? Math.max(hours, P.estimate(s, [], e).hours + settings.genExtra * GEN.extraPlan) : hours;
   // Roads within reach: around the start, or one way, in an oval around the start and end.
-  const reach = P.reachKm(hours), c = e ? [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2] : s;
+  const reach = P.reachKm(planHours), c = e ? [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2] : s;
   const dLat = reach / 111, dLon = reach / (111 * Math.cos(c[0] * Math.PI / 180));
   loadTiles([c[0] - dLat, c[1] - dLon, c[0] + dLat, c[1] + dLon]);
   await Promise.all([tilesSettled(), loadSignals()]);  // the lights, to rank loops by stoplights
   live();
+  // The fastest way, rated like the others now that the roads along it are loaded.
+  if (fastest) {
+    const r = rate(fastest.route);
+    Object.assign(fastest, r, { turns: r.turns.length, lights: r.lights.length, lefts: r.lefts.length });
+  }
   // The roads the map shows, by road type: curvy roads, highway sweeps or both (ramps aren't stops, yet).
   // Not the roller coasters: they're shown to be aware of, not to build rides on.
   // Not roads you tagged Don't ride; your other tags rank a road lower (Rough, Gravel, Busy) or higher (Great).
@@ -649,9 +664,9 @@ async function generateRun(run) {
   const worthy = r => !r.roller && !avoid.has(r.id) && visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
   const groups = P.candidateGroups(store.roads, s, reach, worthy, e);
   for (const g of groups) g.score *= weightOf(g.ids);
-  const options = P.buildOptions(groups, s, hours, required, e);
+  const options = P.buildOptions(groups, s, planHours, required, e);
   if (!options.length) {
-    gen = { options: [], index: -1, running: false, status: oneWay ? 'No good roads on the way. Try more extra time, or loosen the filters.'
+    gen = { options: [], index: -1, running: false, status: oneWay ? `No good roads close enough to the way there for ${extraLabel(settings.genExtra)}. Try more extra time, or loosen the filters.`
       : 'No good roads within reach. Try a longer ride, or loosen the filters.' };
     return renderSoon();
   }
@@ -661,7 +676,7 @@ async function generateRun(run) {
   const progress = () => { gen.status = `Routing ${kind}: ${done} of ${options.length} done…`; renderSoon(); };
   const worker = async () => {
     while (next < options.length) {
-      await routeOption(options[next++], start, hours, end, live);
+      await routeOption(options[next++], start, hours, end, live, win);
       live();
       done++;
       progress();
@@ -674,15 +689,21 @@ async function generateRun(run) {
     gen = { options: [], index: -1, running: false, status: routerTrouble() };
     return renderSoon();
   }
-  // Only loops within 80–120% of the chosen time; if none came out that close, the nearest.
+  // Only loops within 80–120% of the chosen time (ways there: near the extra chosen); if none came out that close, the nearest.
   const worth = o => o.route ? o.worth : -1, twice = o => o.route && o.back > GEN.hideBack * o.route.meters;
-  const target = hours * 3600, fits = o => o.route && o.route.seconds >= GEN.under * target && o.route.seconds <= GEN.overrun * target;
+  const target = hours * 3600, fits = o => o.route && o.route.seconds >= win.lo * 3600 && o.route.seconds <= win.hi * 3600;
   let shown = options.filter(fits), status = '';
   if (!shown.length && options.some(o => o.route)) {
     const off = o => Math.abs(Math.log(o.route.seconds / target));
     shown = options.filter(o => o.route).sort((a, b) => off(a) - off(b)).slice(0, 3);
-    status = oneWay ? `Couldn’t fit a way there close to ${fmtDuration(hours * 3600)}, so these are the nearest. Try another extra time or loosen the filters.`
+    status = oneWay ? `Couldn’t fit a way there close to ${extraLabel(settings.genExtra)}, so these are the nearest. Try another extra time or loosen the filters.`
       : `Couldn’t fit a loop close to ${hours === 1.5 ? '1½' : hours} h here, so these are the nearest. Try another time or loosen the filters.`;
+  }
+  // One way: a way there has to be more fun than the fastest one, or the extra time is for nothing.
+  if (fastest) {
+    const better = shown.filter(o => o.route && o.worth > fastest.worth);
+    if (!better.length) status = 'The fastest way is as good as it gets here: no fun roads near enough for that much extra time. Try more extra time, or loosen the filters.';
+    shown = better;
   }
   // The same loop can come out of two directions once fixed: keep one.
   const sigs = new Set(), sig = o => o.items.slice(1).map(it => (it.ids || [it.label]).join(',')).sort().join('|');
@@ -696,7 +717,11 @@ async function generateRun(run) {
   if (!oneWay && !required.length && shown.length && none.length && none.length < 4) {
     status = `${status ? status + ' ' : ''}No loops to the ${none.join(none.length > 2 ? ', ' : ' or ').replace(/, (\w+)$/, ', or $1')}: not enough good roads that way with your filters.`;
   }
-  gen = { options: (shown.length ? shown : options).sort((a, b) => worth(b) - worth(a)), index: -1, running: false, status };
+  // Best first; one way, the fastest way last, to compare with ("+14 min" on each of the others).
+  const list = fastest ? shown : shown.length ? shown : options;
+  list.sort((a, b) => worth(b) - worth(a));
+  if (fastest) list.forEach(o => { o.vsFastest = o.route && o.route.seconds - fastest.route.seconds; });
+  gen = { options: fastest ? [...list, fastest] : list, index: -1, running: false, status };
   if (gen.options[0].route) selectOption(0);
   else renderSoon();
 }
@@ -723,7 +748,7 @@ function rate(r) {
 // one the doubled-back miles are on, like a lake road that dead-ends, or else the one nearest
 // them). The best is kept if the loop ranks higher and stays in 80–120%.
 // One way (with an `end`), the same, riding on to the end instead of home.
-async function routeOption(opt, start, hours, end = null, live = () => {}) {
+async function routeOption(opt, start, hours, end = null, live = () => {}, win = { lo: hours * GEN.under, hi: hours * GEN.overrun }) {
   let items = [start, ...opt.stops];
   const e = end && end.pts[0], finish = list => end ? [...list, end] : list;
   const copy = list => list.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
@@ -741,7 +766,7 @@ async function routeOption(opt, start, hours, end = null, live = () => {}) {
     return genRoutes.get(key);
   };
   let r = await routeOf(items);
-  for (let tries = 0; r && r.seconds < hours * 3600 * GEN.under && tries < 2; tries++) {
+  for (let tries = 0; r && r.seconds < win.lo * 3600 && tries < 2; tries++) {
     const estHours = P.estimate(start.pts[0], items.slice(1), e).hours;
     const more = P.fillLoop(start.pts[0], opt.pool, opt.dir, hours * estHours / (r.seconds / 3600), opt.chosen, opt.maxRoads + 2, e);
     if (more.chosen.length === opt.chosen.length) break;  // nothing more fits this way
@@ -749,7 +774,7 @@ async function routeOption(opt, start, hours, end = null, live = () => {}) {
     items = [start, ...more.stops];
     r = await routeOf(items);
   }
-  for (let tries = 0; r && r.seconds > hours * 3600 * GEN.overrun && tries < 2; tries++) {
+  for (let tries = 0; r && r.seconds > win.hi * 3600 && tries < 2; tries++) {
     const added = items.filter(it => it.gen);
     if (!added.length) break;  // only the rider's own stops left: keep them even if it runs long
     items.splice(items.indexOf(added.reduce((a, b) => b.score < a.score ? b : a)), 1);
@@ -760,7 +785,7 @@ async function routeOption(opt, start, hours, end = null, live = () => {}) {
     const twice = P.retrace(best.route.path), lines = twice.lines, spots = lines.flat(), attempts = [];
     // Another way home: the best road near the stretch ridden twice that fits the time left.
     const estOf = list => P.estimate(start.pts[0], list.slice(1), e).hours;
-    const scale = best.route.seconds / 3600 / estOf(items), room = hours * GEN.overrun - best.route.seconds / 3600;
+    const scale = best.route.seconds / 3600 / estOf(items), room = win.hi - best.route.seconds / 3600;
     for (const g of P.wayHomeRoads(opt.free, items, lines)) {
       const more = withRoad(items, g);
       if ((estOf(more) - estOf(items)) * scale <= room) { attempts.push(more); break; }
@@ -785,7 +810,7 @@ async function routeOption(opt, start, hours, end = null, live = () => {}) {
     for (const list of attempts) {
       const other = rate(await routeOf(list));
       const hrs = other && other.route.seconds / 3600;
-      if (other && other.worth > (better || best).worth && hrs >= hours * GEN.under && hrs <= hours * GEN.overrun) better = { list, worth: other.worth, other };
+      if (other && other.worth > (better || best).worth && hrs >= win.lo && hrs <= win.hi) better = { list, worth: other.worth, other };
     }
     if (!better) break;
     items = better.list;
@@ -794,7 +819,7 @@ async function routeOption(opt, start, hours, end = null, live = () => {}) {
   // From here on a change is kept only if the loop ranks higher, stays in 80–120%, and rides no more twice
   // than it did (or maxBack of it), so a road picked up on the way doesn't undo the work above.
   const keeps = other => { const hrs = other && other.route.seconds / 3600;
-    return other && other.worth > best.worth && hrs >= hours * GEN.under && hrs <= hours * GEN.overrun
+    return other && other.worth > best.worth && hrs >= win.lo && hrs <= win.hi
       && other.back <= Math.max(best.back, GEN.maxBack * other.route.meters); };
   // Turnarounds and left turns at stoplights (up to 2 tries): without the generated road nearest the first
   // of them. Usually a highway sweep: ridden away from home then back the other way, or left off the highway
@@ -1539,9 +1564,11 @@ const rideTime = (label = 'Ride time') => h('div.field', {}, h('label', {}, labe
     { onclick: () => setSetting({ genHours: t }) }, t === 1.5 ? '1½ h' : `${t} h`))));
 
 // One way: how much longer than the straight way there to spend on fun roads.
+const extraLabel = t => t < 1 ? `+${Math.round(t * 60)} min` : t === 1.5 ? '+1½ h' : `+${t} h`;
 const extraTime = () => h('div.field', {}, h('label', {}, 'Extra time for fun roads'),
-  h('div.seg', {}, [0.5, 1, 1.5, 2, 3, 4].map(t => h(`button${settings.genExtra === t ? '.on' : ''}`,
-    { onclick: () => setSetting({ genExtra: t }) }, t === 0.5 ? '+30 min' : t === 1.5 ? '+1½ h' : `+${t} h`))));
+  h('div.seg.extra-time', {}, [0.25, 0.5, 1, 1.5, 2, 3, 4].map(t => h(`button${settings.genExtra === t ? '.on' : ''}`,
+    { onclick: () => setSetting({ genExtra: t }) }, extraLabel(t)))),
+  h('p.muted.small', {}, 'On top of the fastest way there, which is listed too, to compare.'));
 
 // The rider's own stops: every generated loop goes through them.
 const ownStops = () => trip.items.filter((it, i) => !(i === 0 && T.startOf(trip)) && !it.gen && !it.end);
@@ -1558,11 +1585,15 @@ function mustInclude() {
       : h('p.muted.small', {}, 'Nothing yet. To build a ride around a road, tap it on the map and choose “Plan a loop with this road”.'));
 }
 
-// "Northeast", or one way: "North side", "Near the straight way", "Best roads, any side".
+// "Northeast", or one way: "North side", "Near the straight way", "Best roads, any side", "Fastest way".
 function optionName(o) {
+  if (o.way === 'fastest') return 'Fastest way';
   const compass = P.heading(o.dir)[0].toUpperCase() + P.heading(o.dir).slice(1);
   return o.way === 'near' ? 'Near the straight way' : o.way === 'any' ? 'Best roads, any side' : o.way ? `${compass} side` : compass;
 }
+
+// How much longer a way there is than the fastest way: "+14 min", or "same time".
+const vsFastest = s => Math.abs(s) < 90 ? 'same time' : `${s > 0 ? '+' : '−'}${fmtDuration(Math.abs(s))}`;
 
 function optionCard(o, i) {
   if (!o.route) return h('div.card.option.failed', {}, `${optionName(o)}: couldn’t route right now`);
@@ -1573,7 +1604,8 @@ function optionCard(o, i) {
     onmouseleave: () => mapView.setPreview(null),
   },
   h('div.option-head', {}, h('span.num', {}, i + 1), h('b', {}, optionName(o)),
-    h('span.muted.push', {}, fmtDuration(o.route.seconds))),
+    o.vsFastest != null ? h('span.extra', {}, vsFastest(o.vsFastest)) : '',
+    h(`span.muted${o.vsFastest != null ? '' : '.push'}`, {}, fmtDuration(o.route.seconds))),
   h('div.option-stats', {}, `${miles(o.route.meters)} mi · `, h('b', {}, `${miles(o.curvy)} mi curvy`), ` (${pct}%)`,
     o.highway >= 200 ? ` · ${miles(o.highway)} mi highway sweeps` : '',
     o.blind ? h('span.warn', {}, ` · ⚠ ${o.blind}`) : '', o.back >= 400 ? h('span.warn', {}, ` · ↩ ${miles(o.back)} mi twice`) : '',

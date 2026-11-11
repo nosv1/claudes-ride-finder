@@ -529,8 +529,16 @@ colored road), Add a stop here, Street View here.
 **One way** (Plan a ride → One way): from the start to an end, the fun way, instead of a loop.
 - The end is a pinned stop marked `end`, always last (stops added later go before it; share links keep it). Set it
   with Pick on map under End, or right-click / long-press a spot → **End a ride here** (which switches to One way).
-- Instead of a ride time, **extra time for fun roads**: +30 min to +4 h on top of the straight way there, which is
-  routed first (Lee's Summit → Warsaw: 86 mi, 91 min).
+- Instead of a ride time, **extra time for fun roads**: +15 min to +4 h on top of the fastest way there, which is
+  routed first (Lee's Summit → Warsaw: 86 mi, 91 min, 17 mi curvy).
+- A way there must come in at the fastest way plus 50–160% of the extra (+15 min: +8 to +24; never wider than
+  80–120% of the whole ride), and be better than the fastest way by the same ranking as loops, or it's left out.
+- Roads are picked with the rough estimate, which reads the straight way slower than the router does (Warsaw: 110
+  vs 91 min) and fun roads faster: it plans with half the extra on top of its own straight way, never less than the
+  time itself. Lee's Summit → Warsaw: +15 min came out +14 and +17 (21–22 mi curvy), +30 min +31 and +37 (26 mi),
+  +1 h +80 to +85 (34–39 mi). Lee's Summit → Clinton at +15 min has nothing close enough, and says so.
+- **Fastest way** is listed last, to compare, and can be picked like the others (just the start and the end). Each
+  other card says how much longer it is: "+14 min".
 - Candidate roads come from an oval: within 2 × reach of the start and end added up (reach as for a loop of that
   time). They're ordered by how far along the straight line they are, and the last leg goes to the end, not home.
 - Four options, each from its own pool: roads left of the straight line, right of it, within a quarter of its length

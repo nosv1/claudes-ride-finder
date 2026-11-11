@@ -60,6 +60,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - The ways there all finish at the end, not back at the start, and come in near the straight-way time plus the
   extra chosen.
 - Adding a stop to a one-way ride puts it before the end, never after.
+- +15 min finds ways there about 15 min longer than the Fastest way (listed last); each card's "+N min" pill says
+  how much longer, and picking Fastest loads just the start and the end. With nothing close enough it says so.
 - Switching back to Loop generates loops again.
 
 ## Stoplights

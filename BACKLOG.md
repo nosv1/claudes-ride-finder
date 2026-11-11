@@ -55,15 +55,13 @@ Ideas that came up, roughly in order of how much they'd help.
   saved (for Roads you've ridden; see Recording rides below), Valhalla avoiding roads tagged Don't ride between stops
   (`exclude_polygons` or `avoid_locations`), and screen-off guidance, which needs a native app (see the Play Store /
   iPhone entry).
-- **+15 min on a one-way ride** (asked 2026-11-11; first of these to build): when planning A to B, offer Fastest,
-  +15 min and +30 min, the extra time spent on better roads. The loop generator's ride-time budget, applied to a
-  one-way ride. Groundwork for the offer mid-ride below.
 - **"+15 min, more fun" offered mid-ride** (asked 2026-11-11): in Ride mode, on the way to a destination: "Add 15
   minutes by taking MO 7?" **Spoken, not a pop-up**: one tap accepts, doing nothing means no (no fiddling while
   riding). **Worked out when the ride is planned, not live**: each live check is more requests to the public
   Valhalla server (see Our own router), so the alternatives come with the plan and the offer plays as the rider
   nears the turn where the fun route splits off. Re-planning from where the rider is, after leaving the route, is
-  the harder version.
+  the harder version. (+15 min on a one-way ride, with the Fastest way to compare, went in
+  2026-11-11: see FEATURES.md, One way. The mid-ride offer can reuse its time window and Fastest.)
 - **Recording rides, safely** (asked 2026-11-11): his first thought was safety. A GPS trail with times shows speed on
   every stretch, so a spirited ride on a phone, a synced account or a backup is evidence. Proposed: **save which
   roads were ridden and the date, not the trail**: no points, no times, no speeds. That's all Roads you've ridden
