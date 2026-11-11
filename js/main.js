@@ -1025,7 +1025,7 @@ function render() {
   // Typing in the sheet (a ride's name, a tag's note): wait until it's done, or the box would be redrawn under you.
   if (document.activeElement && document.activeElement.matches('#sheetBody input[type=text]')) return;
   const views = { home: homeView, road: roadView, station: stationView, place: placeView, plan: planView, trip: tripView, about: aboutView, account: accountView };
-  $('#sheetBody').replaceChildren(...[(views[view] || homeView)()].flat(Infinity).filter(Boolean));
+  $('#sheetBody').replaceChildren(...[(views[view] || homeView)(), footLinks()].flat(Infinity).filter(Boolean));
 }
 
 const iconEl = (svg, cls = 'i') => h(`span.${cls}`, { html: svg });
@@ -1054,9 +1054,15 @@ function homeView() {
     yourRides(3),
     h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
+  ];
+}
+
+// At the bottom of every page: your account, About, Install and Update, and the version (not the page you're on).
+function footLinks() {
+  return [
     h('div.foot-links', {},
-      h('button.link', { onclick: () => go('account') }, iconEl(icon.person), A.signedIn() ? 'Your rides and account' : 'Sign in to keep rides on every device'),
-      h('button.link', { onclick: () => go('about') }, 'About, credits and riding safe'),
+      view === 'account' ? '' : h('button.link', { onclick: () => go('account') }, iconEl(icon.person), A.signedIn() ? 'Your rides and account' : 'Sign in to keep rides on every device'),
+      view === 'about' ? '' : h('button.link', { onclick: () => go('about') }, 'About, credits and riding safe'),
       canInstall() ? h('button.link', { onclick: install }, iconEl(icon.download), 'Install app') : '',
       updateTo ? h('button.link.update', { onclick: applyUpdate }, `Update to ${updateTo}`) : ''),
     h('p.fineprint.version', {}, `Version ${APP_VERSION}`),
@@ -1108,8 +1114,6 @@ function aboutView() {
       h('p.small', {}, 'No tracking. Without signing in, your rides, tags and settings are saved in this browser only. Some things do get sent out to work: your stops, to the route planner; what you type in search, to the place search; and spots along your ride, to the weather service. Your location is only used when you tap My location, or when you generate a ride without picking a start.'),
       h('p.small', {}, 'If you sign in (optional), your saved rides, road tags and settings are kept in your account on Cloudflare, so they’re the same on every device. They’re locked on your own devices before they’re sent, with a key that stays on them, so nobody else can read them: not other riders, not Cloudflare, not whoever runs Ride Finder. The account keeps your Google account’s id, not your email or name. A short share link is locked the same way, and the key is in the link itself, so only people you give it to can open the ride. If the service doesn’t answer, Share makes a long link with the whole ride in it instead, kept nowhere. You can take a link down, or delete your account and everything in it, from ',
         h('button.link', { onclick: () => go('account') }, 'your account'), '.')),
-    h('p.fineprint', {}, `Version ${APP_VERSION}${updateTo ? ` (${updateTo} is out: ` : ''}`,
-      updateTo ? h('button.link', { onclick: applyUpdate }, 'update') : '', updateTo ? ')' : '', '.'),
     h('p.fineprint', {}, 'Ride Finder is open source: ', link('https://github.com/nosv1/claudes-ride-finder', 'github.com/nosv1/claudes-ride-finder'), '.'),
   ];
 }
@@ -1565,7 +1569,7 @@ const rideTime = (label = 'Ride time') => h('div.field', {}, h('label', {}, labe
 
 // One way: how much longer than the straight way there to spend on fun roads.
 const extraLabel = t => t < 1 ? `+${Math.round(t * 60)} min` : t === 1.5 ? '+1½ h' : `+${t} h`;
-const extraTime = () => h('div.field', {}, h('label', {}, 'Extra time for fun roads'),
+const extraTime = (label = 'Extra time for fun roads') => h('div.field', {}, h('label', {}, label),
   h('div.seg.extra-time', {}, [0.25, 0.5, 1, 1.5, 2, 3, 4].map(t => h(`button${settings.genExtra === t ? '.on' : ''}`,
     { onclick: () => setSetting({ genExtra: t }) }, extraLabel(t)))),
   h('p.muted.small', {}, 'On top of the fastest way there, which is listed too, to compare.'));
@@ -1644,11 +1648,27 @@ function tripView() {
     saveRow(),
     h('div.section', {}, routeSummary()),
     weatherSection(),
-    h('div.section', {},
-      rideTime('Generate a loop'),
-      h('button.btn.primary.wide', { onclick: () => { if (!gen.running) go('plan'); generate(); } },
-        iconEl(icon.route), gen.running ? 'Stop' : ownStops().length ? 'Generate loops through these stops' : 'Generate loops from this start'),
-      h('p.muted.small', {}, `Keeps your own stops and fills the time with the best ${{ all: 'roads nearby, sweeping highways included', back: 'back roads nearby', highway: 'highway sweeps nearby' }[settings.roadType] || 'roads nearby'}. The road type on the map decides which.`)),
+    // A ride with an end gets ways there (extra time on top of the fastest way); otherwise loops.
+    h('div.section', {}, ...(() => {
+      const there = !!T.endOf(trip), shape = there ? 'oneway' : 'loop';
+      const run = () => {
+        if (!gen.running) {
+          if (settings.genShape !== shape) setSetting({ genShape: shape });
+          go('plan');
+        }
+        generate();
+      };
+      const roads = { all: 'roads nearby, sweeping highways included', back: 'back roads nearby', highway: 'highway sweeps nearby' }[settings.roadType] || 'roads nearby';
+      return there ? [
+        extraTime('Find a more fun way there'),
+        h('button.btn.primary.wide', { onclick: run }, iconEl(icon.route), gen.running ? 'Stop' : ownStops().length ? 'Find fun ways there through these stops' : 'Find fun ways there'),
+        h('p.muted.small', {}, `Keeps your own stops and spends the extra time on the best ${roads}. The road type on the map decides which.`),
+      ] : [
+        rideTime('Generate a loop'),
+        h('button.btn.primary.wide', { onclick: run }, iconEl(icon.route), gen.running ? 'Stop' : ownStops().length ? 'Generate loops through these stops' : 'Generate loops from this start'),
+        h('p.muted.small', {}, `Keeps your own stops and fills the time with the best ${roads}. The road type on the map decides which.`),
+      ];
+    })()),
     // A loop rides back to the start after the last stop; one way finishes at the last stop.
     h('div.field', {}, h('label', {}, 'Ride ends'),
       h('div.seg.ride-ends', {}, [[true, 'Back at the start'], [false, 'At the last stop']].map(([loop, l]) =>

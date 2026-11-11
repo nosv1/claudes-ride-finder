@@ -327,6 +327,16 @@ test('the version shows on the home list, and a newer one on the site is offered
   await sleep(500);
   assert.match(await page.eval("document.getElementById('toast').innerText"), /new version[\s\S]*2999\.01\.01\.1[\s\S]*Update/);
   assert.match(await sheetText(), /Update to 2999\.01\.01\.1/, 'and it stays on the home list');
+  // The links at the bottom are on every page, minus the page you're on.
+  for (const [v, not] of [['plan', null], ['account', /Sign in to keep rides|Your rides and account/], ['about', /About, credits/]]) {
+    await page.eval(`RF.go('${v}')`);
+    await sleep(300);
+    const foot = await page.eval("[...document.querySelectorAll('#sheetBody .foot-links')].map(f => f.innerText).join('|') + '|' + document.querySelector('#sheetBody > :last-child').innerText");
+    assert.ok(foot.includes('Update to 2999.01.01.1') && foot.endsWith(`Version ${APP_VERSION}`), `${v}: ${foot}`);
+    if (not) assert.doesNotMatch(foot, not, `${v}: no link to itself`);
+    assert.equal(await page.eval("document.querySelectorAll('#sheetBody .fineprint.version').length"), 1, `${v}: one version line`);
+  }
+  await page.eval("RF.go('home')");
 });
 
 test('the ride summary says what it rides, and hovering or tapping a tag lights up those parts of the route', async () => {
@@ -423,6 +433,13 @@ test('one way: pick an end, and the planner finds fun ways there that finish at 
   await sleep(300);
   assert.match(await sheetText(), /One way[\s\S]*Start[\s\S]*End[\s\S]*Extra time for fun roads[\s\S]*\+15 min[\s\S]*Find fun ways there/);
   assert.deepEqual(await page.eval('[RF.trip.loop, RF.trip.items[RF.trip.items.length - 1].end, RF.settings.genShape]'), [false, true, 'oneway']);
+  // The ride page offers ways there too, not loops, for a ride with an end.
+  await page.eval("RF.go('trip')");
+  await sleep(300);
+  assert.match(await sheetText(), /Find a more fun way there[\s\S]*\+15 min[\s\S]*Find fun ways there/);
+  assert.doesNotMatch(await sheetText(), /Generate loops/);
+  await page.eval("RF.go('plan')");
+  await sleep(300);
   if (NETWORK) {
     await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Find fun ways there/.test(b.textContent)).click()");
     await page.waitFor('!RF.gen.running', 300000);
