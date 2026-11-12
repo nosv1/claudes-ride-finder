@@ -1649,7 +1649,7 @@ function planView() {
 }
 
 const rideTime = (label = 'Ride time') => h('div.field', {}, h('label', {}, label),
-  h('div.seg', {}, [1, 1.5, 2, 3, 4, 5, 6, 8].map(t => h(`button${settings.genHours === t ? '.on' : ''}`,
+  h('div.seg', {}, [1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12].map(t => h(`button${settings.genHours === t ? '.on' : ''}`,
     { onclick: () => setSetting({ genHours: t }) }, t === 1.5 ? '1½ h' : `${t} h`))));
 
 // One way: how much longer than the straight way there to spend on fun roads.
@@ -2129,12 +2129,13 @@ const numBox = (value, set, attrs = {}) => h('input.num', { type: 'text', inputm
   onkeydown: doneOnEnter,
   onchange: e => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v >= 0) set(v); else renderSoon(); } });
 
-// The account page's Your bikes: each one's name, tank and mpg (its range), trip meter, and which is the default.
+// The account page's Your bikes: each one's name, tank and mpg (its range), and which is the default. The trip meter is
+// read off the bike when you're about to ride, so it's typed on the ride's page, not here.
 function bikesSection() {
   const list = bikes(), def = bikeFor(settings, null);
   return h('div.section.bikes', {}, h('h3', {}, iconEl(icon.fuel), 'Your bikes'),
     list.length ? '' : h('p.muted.small', {}, 'Add your bike, and the ride page and Ride mode know how far a tank goes, what’s left in it, and when to get gas.'),
-    list.map(b => h('div.card.bike-card', {},
+    list.map(b => h('div.bike-item', {},
       h('div.bike-row', {},
         h('input.bike-name', { type: 'text', placeholder: 'Its name, like “GSX-R”', value: b.name || '', maxlength: 40, 'aria-label': 'Bike name',
           enterkeyhint: 'done', onkeydown: doneOnEnter,
@@ -2150,20 +2151,17 @@ function bikesSection() {
       h('div.bike-nums', {},
         h('label.inline', {}, 'Tank ', numBox(b.gal, v => setBike(b.id, { gal: v }), { 'aria-label': 'Tank, gallons', placeholder: '4.5' }), ' gal'),
         h('label.inline', {}, 'Gets ', numBox(b.mpg, v => setBike(b.id, { mpg: v }), { 'aria-label': 'Miles per gallon', placeholder: '40' }), ' mpg')),
-      h('p.muted.small', {}, complete(b) ? `About ${rangeOf(b)} mi on a full tank.` : 'Fill in the tank (gallons, from the manual) and the mpg it gets for its range.'),
-      h('div.bike-nums', {},
-        h('label.inline', {}, 'Trip meter ', numBox(Math.round(+b.tankMiles || 0), v => setBike(b.id, { tankMiles: v }), { 'aria-label': 'Miles since filling up' }), ' mi since filling up'),
-        h('button.btn.small', { onclick: () => { setBike(b.id, { tankMiles: 0 }); toast(`${bikeName(b)}: full tank.`); } }, 'Just filled up')),
-      complete(b) ? h('p.muted.small', {}, `≈ ${Math.round(leftIn(b))} mi left in the tank. Ride mode adds the miles you ride on it.`) : '')),
+      h('p.muted.small', {}, complete(b) ? `About ${rangeOf(b)} mi on a full tank.` : 'Fill in the tank (gallons, from the manual) and the mpg it gets for its range.'))),
     h('button.btn', { onclick: () => {
       const b = { id: newBikeId(), name: '', gal: null, mpg: null, tankMiles: 0 };
       setSetting({ bikes: [...list, b], ...(list.length ? {} : { defaultBike: b.id }) });
       setTimeout(() => { const el = [...document.querySelectorAll('.bike-name')].pop(); if (el) el.focus(); }, 50);
     } }, iconEl(icon.plus), list.length ? 'Add another bike' : 'Add your bike'),
-    h('p.fineprint', {}, `Kept with your settings${A.signedIn() ? ', on all your devices' : ''}. A ride uses your default bike; its page can pick another.`));
+    h('p.fineprint', {}, `Kept with your settings${A.signedIn() ? ', on all your devices' : ''}. A ride uses your default bike (its page can pick another), and that's where the trip meter goes, before you set off.`));
 }
 
-// The ride page's bike: which of yours (the default unless picked here), and what's in its tank.
+// The ride page's bike: which of yours (the default unless picked here), its trip meter (typed in sitting on the bike,
+// just before Ride), and what that leaves in the tank.
 function bikeLine() {
   const list = bikes(), b = myBike();
   if (!list.length) {
@@ -2174,11 +2172,12 @@ function bikeLine() {
     list.length > 1 ? h('div.field', {}, h('label', { for: 'bike-pick' }, 'Bike'),
       h('select', { id: 'bike-pick', onchange: e => { trip.bikeId = e.target.value; tripChanged({ reroute: false }); fuelChanged(); } },
         list.map(x => h('option', { value: x.id, selected: x === b }, `${bikeName(x)}${x.id === bikeFor(settings, null).id ? ' (default)' : ''}`)))) : '',
-    h('div.start-row', {},
-      h('span.grow', {}, complete(b) ? `${bikeName(b)}: ≈ ${Math.round(tankLeft())} of ${tankRange()} mi left (${Math.round(tankUsed())} since filling up)`
-        : `${bikeName(b)}: add its tank and mpg`),
-      complete(b) ? h('button.btn.small', { onclick: () => { setBike(b.id, { tankMiles: 0 }); toast('Full tank.'); } }, 'Filled up') : '',
-      h('button.btn.small', { onclick: () => go('account') }, 'Edit')));
+    complete(b) ? h('div.bike-nums.trip-meter', {},
+      h('label.inline', {}, 'Trip meter ', numBox(Math.round(+b.tankMiles || 0), v => setBike(b.id, { tankMiles: v }),
+        { id: 'trip-meter', 'aria-label': 'Trip meter: miles since filling up' }), ' mi'),
+      h('button.btn.small', { onclick: () => { setBike(b.id, { tankMiles: 0 }); toast('Full tank.'); } }, 'Just filled up')) : '',
+    h('p.small.bike-left', {}, complete(b) ? `${bikeName(b)}: ≈ ${Math.round(tankLeft())} of ${tankRange()} mi left in the tank. `
+      : `${bikeName(b)}: add its tank and mpg. `, h('button.link', { onclick: () => go('account') }, 'Edit bike')));
 }
 
 function fuelSection() {

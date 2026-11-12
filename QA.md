@@ -129,8 +129,10 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Long-press the map → Mark a spot here: its page opens; pick Gravel, and a sand-colored dot named Gravel shows there.
   Tap the dot: its page. Remove, then Undo: back.
 - Account page → Your bikes: Add your bike, type name, tank, mpg (Enter closes each box): "About N mi on a full tank";
-  it's Default. Add another, Make default. A ride's Fuel: the default, a Bike picker with both, Filled up and Edit.
-  After a ride, that bike's trip meter has gone up by the miles ridden. A long ride with a
+  it's Default; no trip meter there. Add another, Make default. A ride's Fuel: a Bike picker (default first), the
+  Trip meter box right above Ride it (type it, see "≈ N of M mi left"), Just filled up, Edit bike. After a ride, that
+  bike's trip meter there has gone up by the miles ridden.
+- Plan a ride, Loop: Ride time goes to 10 h and 12 h; a 12 h loop comes back in ~3 min with 10–13 h loops. A long ride with a
   short range: "Get gas at …" turns yellow and is said once before the last station in reach.
 - In Ride mode (phone, outside): Mark spot is one tap, says "Spot marked.", and doesn't cover the warnings. After the
   ride, Your spots opens with it to label. On the next ride past it: the banner, then "Bump ahead." through the headset.

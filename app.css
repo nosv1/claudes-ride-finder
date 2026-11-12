@@ -470,7 +470,10 @@ body.riding .stop-marker { display: none; }
 .ride-tag.wide { width: 100%; margin-bottom: 10px; }
 .ride-trip-row { display: flex; gap: 8px; margin-bottom: 6px; }
 .ride-trip { flex: 1; min-width: 0; font-size: 20px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
-.bike-card { flex-direction: column; align-items: stretch; gap: 6px; cursor: default; }
+.bike-item { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.bike-item:first-of-type { padding-top: 0; }
+.trip-meter { margin: 4px 0; }
+.bike-left { margin: 4px 0 8px; }
 .bike-row { display: flex; align-items: center; gap: 8px; }
 .bike-name { flex: 1; min-width: 0; font-weight: 600; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
 .bike-nums { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }

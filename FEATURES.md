@@ -450,7 +450,8 @@ colored road), Add a stop here, Street View here.
 - While it works, the button says **Stop**. Changing a road filter (mode, road type, mph, hills, Paved, the curve
   classes or ramp tiers in the key) stops it too, saying so: the rides would be on roads the map no longer shows.
 - Each card has the ride's **focus tags** (below). **Ride this loop →** is the blue button under the cards.
-- Ride time 1–8 h. The start is the first stop, or the rider's location.
+- Ride time 1–12 h (10 and 12 added 2026-11-11 for all-day rides: from Lee's Summit, 10 h took ~2 min and 127 router
+  requests, 12 h ~3 min and 154). The start is the first stop, or the rider's location.
 - **Must include:** the rider's own stops (roads, gas stops, pinned points).
   - Every loop goes through them.
   - Loops head their way: straight at them, or swinging 35° or 70° to either side.
@@ -671,10 +672,11 @@ colored road), Add a stop here, Street View here.
   and time.
 - **The tank** (a line in the bar): "⛽ ~95 mi in tank · gas in 4 mi", counted down from what's left at the start in
   the ride's bike. **Your bikes** are typed in on the account page (`bikes.js`; kept in settings): a name, the tank in
-  gallons and the mpg (range = gal × mpg), and each bike's trip meter (miles since filling up, or Just filled up). One
-  is the **Default** (the first added; Make default on another). Fuel on the ride page uses the default, or another
-  picked for that ride (`trip.bikeId`), and shows "GSX-R750: ≈ 87 of 171 mi left (84 since filling up)" with Filled up
-  and Edit; its gas plan plans the first stop from what's in the tank. Ride mode adds the miles ridden to that bike's
+  gallons and the mpg (range = gal × mpg); one is the **Default** (the first added; Make default on another). No box
+  around each. Fuel on the ride page uses the default, or another picked for that ride (`trip.bikeId`), and holds the
+  **trip meter** (the rider's flow: plan the ride, get on the bike, read the trip meter, type it in, go; or Just
+  filled up), then "GSX-R750: ≈ 87 of 171 mi left in the tank. Edit bike"; its gas plan plans the first stop from
+  what's in the tank. The trip meter is kept on the bike (`tankMiles`), not on the account page. Ride mode adds the miles ridden to that bike's
   trip meter (kept every mile and at the end). Tap the line: Filled up, or type the trip meter. The one picked preset
   bike from before (2026.11.11.8–12) became the first, default bike. Only stations on the ride count (90+ only if that's on). When the next one is the last in reach (keeping
   15% in the tank) and the ride's end is further: "Get gas at Casey's in 3 mi: the one after is 62 mi, past your
