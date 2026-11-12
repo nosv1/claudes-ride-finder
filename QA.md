@@ -129,7 +129,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Long-press the map → Mark a spot here: its page opens; pick Gravel, and a sand-colored dot named Gravel shows there.
   Tap the dot: its page. Remove, then Undo: back.
 - Account page → Your bikes: Add your bike, type name, tank, mpg (Enter closes each box): "About N mi on a full tank";
-  it's Default; no trip meter there. Add another, Make default. A ride's Fuel: a Bike picker (default first), the
+  it's Default; no trip meter there. Takes → Premium (91+): a ride's Fuel says "Premium stations only" instead of the
+  90+ box, and its stops are premium ones. Add another, Make default. A ride's Fuel: a Bike picker (default first), the
   Trip meter box right above Ride it (type it, see "≈ N of M mi left"), Just filled up, Edit bike. After a ride, that
   bike's trip meter there has gone up by the miles ridden.
 - Plan a ride, Loop: Ride time goes to 10 h and 12 h; a 12 h loop comes back in ~3 min with 10–13 h loops. A long ride with a

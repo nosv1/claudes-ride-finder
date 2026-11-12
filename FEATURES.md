@@ -672,7 +672,9 @@ colored road), Add a stop here, Street View here.
   and time.
 - **The tank** (a line in the bar): "⛽ ~95 mi in tank · gas in 4 mi", counted down from what's left at the start in
   the ride's bike. **Your bikes** are typed in on the account page (`bikes.js`; kept in settings): a name, the tank in
-  gallons and the mpg (range = gal × mpg); one is the **Default** (the first added; Make default on another). No box
+  gallons, the mpg (range = gal × mpg) and the fuel it **takes** (Regular 87, Midgrade 89, Premium 91+; the station data
+  only knows premium/90+ or not, so Premium means premium stations only: listed or a brand that nearly always has it,
+  in the ride page's gas plan and gaps and in Ride mode's gas hints, with no "90+ only" box to forget); one is the **Default** (the first added; Make default on another). No box
   around each. Fuel on the ride page uses the default, or another picked for that ride (`trip.bikeId`), and holds the
   **trip meter** (the rider's flow: plan the ride, get on the bike, read the trip meter, type it in, go; or Just
   filled up), then "GSX-R750: ≈ 87 of 171 mi left in the tank. Edit bike"; its gas plan plans the first stop from

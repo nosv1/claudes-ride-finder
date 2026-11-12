@@ -1,11 +1,15 @@
 // Your bikes: typed in by you on the account page, kept in settings (so every device has them). Each is
-// { id, name, gal, mpg, tankMiles }: its tank and mpg make its range on a full tank, and tankMiles is how far it's gone
+// { id, name, gal, mpg, fuel, tankMiles }: its tank and mpg make its range on a full tank, fuel is the least it takes
+// ('regular' 87, 'mid' 89, 'premium' 91+), and tankMiles is how far it's gone
 // since filling up (its trip meter), carried from ride to ride. settings.defaultBike is the one a ride uses unless the
 // ride picks another (trip.bikeId).
 
 export const newBikeId = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 export const complete = b => !!b && b.gal > 0 && b.mpg > 0;
 export const rangeOf = b => complete(b) ? Math.round(b.gal * b.mpg) : null;
+// The station data only knows premium (90+) or not, so a bike that takes 91+ counts premium stations only.
+export const FUELS = [['regular', 'Regular (87)'], ['mid', 'Midgrade (89)'], ['premium', 'Premium (91+)']];
+export const needsPremium = b => !!b && b.fuel === 'premium';
 export const leftIn = b => complete(b) ? Math.max(0, rangeOf(b) - Math.max(0, +b.tankMiles || 0)) : null;
 
 // The bike for a ride: the ride's own pick, else your default, else your first.

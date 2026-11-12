@@ -9,7 +9,7 @@ import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
 import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
-import { bikeFor, rangeOf, leftIn, upgradeBikes } from '../../js/bikes.js';
+import { bikeFor, rangeOf, leftIn, upgradeBikes, needsPremium } from '../../js/bikes.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
 import { fetchRoute, routerTrouble } from '../../js/routing.js';
@@ -955,6 +955,8 @@ test('your bikes: range and what’s left, the ride’s bike or your default, an
   assert.equal(bikeFor(settings, { bikeId: 'g' }).name, 'GSX-R', 'the ride’s own pick');
   assert.equal(bikeFor({ bikes: [gsxr] }, {}).name, 'GSX-R', 'no default: the first');
   assert.equal(bikeFor({}, {}), null);
+  assert.deepEqual([needsPremium({ ...gsxr, fuel: 'premium' }), needsPremium({ ...gsxr, fuel: 'mid' }), needsPremium(gsxr), needsPremium(null)],
+    [true, false, false, false], 'only a bike that takes 91+ counts premium stations only');
   const old = upgradeBikes({ bike: { id: 'gsxr750', gal: 4.5, mpg: 38 }, tankMiles: 84, genHours: 3 });
   assert.deepEqual([old.bikes.length, old.bikes[0].name, old.bikes[0].gal, old.bikes[0].mpg, old.bikes[0].tankMiles, old.defaultBike === old.bikes[0].id, 'bike' in old, 'tankMiles' in old, old.genHours],
     [1, 'Suzuki GSX-R750', 4.5, 38, 84, true, false, false, 3]);

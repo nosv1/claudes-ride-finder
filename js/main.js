@@ -11,7 +11,7 @@ import * as W from './weather.js';
 import { Fly } from './fly.js';
 import { Ride } from './ride.js';
 import { phoneVoices, recorded, loadVoices, voicePick, setVoicePick, speak, loadNames, SAMPLE, RATES } from './voice.js';
-import { newBikeId, complete, rangeOf, leftIn, bikeFor, upgradeBikes } from './bikes.js';
+import { newBikeId, complete, rangeOf, leftIn, bikeFor, upgradeBikes, FUELS, needsPremium } from './bikes.js';
 import { TAGS, allTags, tagOf, setTags, setSpeed, speedFixes, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged,
   SPOT_KINDS, spotKind, spots, spotById, addSpot, setSpot, removeSpot, spotsForMap } from './tags.js';
 import * as A from './account.js';
@@ -399,7 +399,7 @@ function refreshInfo(withProfile) {
     return renderSoon();
   }
   loadTiles(boundsOf(route.path));
-  const r = route, fuel = P.planFuel(r.path, store.fuel, tankRange(), trip.need90, tankLeft());
+  const r = route, fuel = P.planFuel(r.path, store.fuel, tankRange(), needPremium(), tankLeft());
   info = {
     ...(withProfile ? {} : { profile: info && info.profile }),
     curvy: P.curvyMetersOn(r.path, store.roads), highway: P.highwayMetersOn(r.path, store.roads),
@@ -1934,7 +1934,7 @@ function startRide() {
     // Gas on the way (90+ only, if that's on), and your range: the bar counts it down and says when to stop.
     // The bike this ride is on: what's in its tank to start, and the miles ridden added to its trip meter as you go.
     gas: { range: tankRange(), used: tankUsed(), onTank: used => { const b = myBike(); if (complete(b)) setBike(b.id, { tankMiles: Math.round(used * 10) / 10 }); },
-      stops: P.planFuel(r.path, store.fuel, tankRange(), trip.need90).ok.map(a => ({ m: a.mile * 1609.34, name: a.item.name, city: a.item.city })) },
+      stops: P.planFuel(r.path, store.fuel, tankRange(), needPremium()).ok.map(a => ({ m: a.mile * 1609.34, name: a.item.name, city: a.item.city })) },
     voice: load(VOICE_KEY) !== false, onVoice: on => save(VOICE_KEY, on),
     // The way back onto the ride: from where you are, the way you're going, onto it going its way. If the router
     // can't match that (it falls back to the plain one, which has no turns to call), without the way at the end.
@@ -2117,6 +2117,8 @@ const tankRange = () => rangeOf(myBike()) || trip.range;
 const tankUsed = () => complete(myBike()) ? Math.max(0, +myBike().tankMiles || 0) : 0;
 const tankLeft = () => Math.max(0, tankRange() - tankUsed());
 const fuelChanged = () => { if (route) refreshInfo(false); renderSoon(); };
+// Premium stations only: the ride's bike takes 91+, or the ride asks for 90+.
+const needPremium = () => needsPremium(myBike()) || !!trip.need90;
 function setBike(id, patch) {
   setSetting({ bikes: bikes().map(b => b.id === id ? { ...b, ...patch } : b) });
   fuelChanged();
@@ -2150,7 +2152,9 @@ function bikesSection() {
         } })),
       h('div.bike-nums', {},
         h('label.inline', {}, 'Tank ', numBox(b.gal, v => setBike(b.id, { gal: v }), { 'aria-label': 'Tank, gallons', placeholder: '4.5' }), ' gal'),
-        h('label.inline', {}, 'Gets ', numBox(b.mpg, v => setBike(b.id, { mpg: v }), { 'aria-label': 'Miles per gallon', placeholder: '40' }), ' mpg')),
+        h('label.inline', {}, 'Gets ', numBox(b.mpg, v => setBike(b.id, { mpg: v }), { 'aria-label': 'Miles per gallon', placeholder: '40' }), ' mpg'),
+        h('label.inline', {}, 'Takes ', h('select.bike-fuel', { 'aria-label': 'Fuel it takes', onchange: e => setBike(b.id, { fuel: e.target.value }) },
+          FUELS.map(([k, l]) => h('option', { value: k, selected: (b.fuel || 'regular') === k }, l))))),
       h('p.muted.small', {}, complete(b) ? `About ${rangeOf(b)} mi on a full tank.` : 'Fill in the tank (gallons, from the manual) and the mpg it gets for its range.'))),
     h('button.btn.wide.add-bike', { onclick: () => {
       const b = { id: newBikeId(), name: '', gal: null, mpg: null, tankMiles: 0 };
@@ -2186,11 +2190,12 @@ function fuelSection() {
     h('h3', {}, iconEl(icon.fuel), 'Fuel'),
     bikeLine(),
     h('div.btn-row', {},
-      h('label.switch', {}, h('input', { type: 'checkbox', checked: trip.need90,
-        onchange: e => { trip.need90 = e.target.checked; fuelChanged(); } }), h('span', {}, '90+ only'))),
+      needsPremium(myBike()) ? h('p.small.premium-only', {}, `Premium stations only: ${bikeName(myBike())} takes 91+.`)
+        : h('label.switch', {}, h('input', { type: 'checkbox', checked: trip.need90,
+          onchange: e => { trip.need90 = e.target.checked; fuelChanged(); } }), h('span', {}, '90+ only'))),
     !f ? h('p.muted.small', {}, 'Gas stops appear once there’s a route.') : h('div', {},
-      h('p.muted.small', {}, `${f.ok.length} ${trip.need90 ? '90+ ' : ''}stations on the route · longest stretch without one: ${Math.round(f.longest)} mi`),
-      f.gaps.map(([a, b]) => h('p.warn.small', {}, `⚠ No ${trip.need90 ? '90+ ' : ''}gas from mile ${Math.round(a)} to ${Math.round(b)}, more than your range.`)),
+      h('p.muted.small', {}, `${f.ok.length} ${needPremium() ? 'premium ' : ''}stations on the route · longest stretch without one: ${Math.round(f.longest)} mi`),
+      f.gaps.map(([a, b]) => h('p.warn.small', {}, `⚠ No ${needPremium() ? 'premium ' : ''}gas from mile ${Math.round(a)} to ${Math.round(b)}, more than ${complete(myBike()) && a < 1 ? 'what’s in the tank' : 'your range'}.`)),
       f.picks.length ? f.picks.map(a => h('div.fuel-stop', {},
         h('span.dot', { style: `background:${FUEL_STATUS[a.item.status].color}` }),
         h('div.grow', { onclick: () => mapView.flyTo([a.item.lat, a.item.lon], 14) },
