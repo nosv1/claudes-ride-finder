@@ -302,6 +302,11 @@ test('fuel plan picks stops within range and flags long gaps', () => {
   assert.ok(plan.gaps.length >= 1, 'the last ~110 mi have no station');
   const only90 = planFuel(path, stations, 80, true);
   assert.ok(!only90.ok.some(a => a.item.status < 1));
+  // Starting with 30 mi in the tank (50 since filling up): the first stop is the one at ~22 mi, not the one at ~65.
+  assert.ok(plan.picks[0].mile > 60, `full tank: ${plan.picks[0].mile}`);
+  const low = planFuel(path, stations, 80, false, 30);
+  assert.ok(low.picks[0].mile < 25, `30 mi left: ${low.picks[0].mile}`);
+  assert.ok(low.gaps.every(([a]) => a >= 0));
 });
 
 test('Google Maps export: a stop just past each turn, no stretch over 25 km without one', () => {

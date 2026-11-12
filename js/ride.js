@@ -32,7 +32,8 @@ export class Ride {
   // null. roadAt(p, heading): the road there ({ ref, name, limit, posted }) or null. crests: [{ mile }] on the ride.
   // tagRoad(k, p, heading): tag the road you're on, returning its name (or null if there's no mapped road there).
   // spots: your spots on the ride ([{ spot, mile }]), called out coming up on them; markSpot(p): mark one where you are.
-  // gas: { range (miles on a tank), stops: [{ m, name, city }] along the ride }: the tank counted down, and when to stop.
+  // gas: { range (miles on a full tank), used (miles since filling up), onTank(used) (to keep it), stops: [{ m, name, city }]
+  // along the ride }: the tank counted down, and when to stop.
   // voice: start with it on; onVoice(on) when it's switched. loop: the ride ends where it started. onClose().
   constructor(mapView, { route, reroute, roadAt, crests, tagRoad, spots, markSpot, gas, voice = true, onVoice = () => {}, loop = false, onClose }) {
     this.mapView = mapView;
@@ -50,7 +51,9 @@ export class Ride {
     this.marked = [];         // spots marked on this ride, to label after it
     this.range = gas ? gas.range : 0;
     this.gas = gas ? gas.stops : [];
-    this.tankAt = 0;          // miles ridden (in metres) when the tank was last full: a full tank at the start
+    this.tankAt = -(gas && gas.used || 0) * 1609.34;   // where the tank was full, in metres ridden (before the start: used)
+    this.onTank = gas && gas.onTank || (() => {});
+    this.tankSaved = gas && gas.used || 0;
     this.gasSaid = new Set(); // warnings said, so each is said once
     this.guide = new Guide(route, { reroute, onDetour: () => { this.say(line('detour')); this.showDetour(); this.update(); } });
     this.fix = null;          // the latest GPS fix
@@ -119,10 +122,13 @@ export class Ride {
     this.recenterBtn = h('button.btn.primary.ride-recenter', { hidden: true, onclick: () => this.follow(true) }, h('span', { html: icon.go }), 'Recenter');
     // The tank: a line in the bar; a tap says how full it is now.
     this.gasEl = h('button.ride-gas', { hidden: !this.range, onclick: () => { this.tankSheet.hidden = !this.tankSheet.hidden; } });
+    this.tripInput = h('input.ride-trip', { type: 'number', inputmode: 'decimal', min: 0, max: 999, placeholder: 'Trip meter, mi' });
     this.tankSheet = h('div.ride-tags', { hidden: true },
-      h('div.ride-tags-title', {}, 'How full is the tank?'),
-      h('div.ride-tag-grid', {}, [[1, 'Full (filled up)'], [0.75, '¾'], [0.5, '½'], [0.25, '¼']].map(([k, l]) =>
-        h('button.ride-tag', { style: '--c:#4dabf7', onclick: () => this.setTank(k) }, l))),
+      h('div.ride-tags-title', {}, 'The tank'),
+      h('button.ride-tag.wide', { style: '--c:#4dabf7', onclick: () => this.setTank(0) }, 'Filled up'),
+      h('div.ride-trip-row', {}, this.tripInput,
+        h('button.btn', { onclick: () => { if (this.tripInput.value !== '') this.setTank(+this.tripInput.value); } }, 'Set')),
+      h('div.muted.small', {}, 'Or the miles on your trip meter since you filled up.'),
       h('button.btn.wide', { onclick: () => { this.tankSheet.hidden = true; } }, 'Cancel'));
     this.tagSheet = h('div.ride-tags', { hidden: true },
       h('div.ride-tags-title', {}, 'Tag the road you’re on'),
@@ -210,19 +216,27 @@ export class Ride {
     if (s && !s.said) { s.said = true; if (s.kind.say) this.say(line(s.kind.say)); }
   }
 
-  // How full the tank is now (1 full, 0.5 half): the count starts again from there.
-  setTank(full) {
+  // Miles since filling up now (0: just filled up): the count goes on from there, and it's kept.
+  setTank(used) {
     this.tankSheet.hidden = true;
-    this.tankAt = this.ridden - (1 - full) * this.range * 1609.34;
+    this.tripInput.value = '';
+    this.tankAt = this.ridden - Math.max(0, used) * 1609.34;
     this.gasSaid.clear();
+    this.saveTank(true);
     this.update();
+  }
+  tankUsed() { return Math.max(0, (this.ridden - this.tankAt) / 1609.34); }
+  // Kept every mile or so (and at the end), so closing the app mid-ride loses little.
+  saveTank(now = false) {
+    const used = this.tankUsed();
+    if (now || Math.abs(used - this.tankSaved) >= 1) { this.tankSaved = used; this.onTank(used); }
   }
 
   // Miles left in the tank, and what to say about gas: { text, warn, say } for the bar. Only the stations on the ride
   // count, ahead of you; it warns when the next one is the last within reach (keeping FUEL.reserve in the tank) and
   // the rest of the ride is further, or when none is in reach.
   gasState(m, onRide) {
-    const left = Math.max(0, this.range - (this.ridden - this.tankAt) / 1609.34), reach = left * FUEL.reserve * 1609.34;
+    const left = Math.max(0, this.range - this.tankUsed()), reach = left * FUEL.reserve * 1609.34;
     const ahead = onRide ? this.gas.filter(s => s.m > m + 50) : [], next = ahead[0], mi = s => miles(s.m - m);
     const base = `⛽ ~${Math.round(left)} mi in tank`;
     // Off the ride, or enough to finish it: just the count (and the next station).
@@ -375,6 +389,7 @@ export class Ride {
       this.gasEl.textContent = gs.text;
       this.gasEl.classList.toggle('warn', !!gs.warn);
       if (gs.say && !this.gasSaid.has(gs.key)) { this.gasSaid.add(gs.key); this.say(line(gs.say)); }
+      this.saveTank();
     }
     // Your spots, from about 1,000 ft out.
     const spot = state === 'on' && this.spots.find(s => s.m - m > -30 && s.m - m < NAV.spotM);
@@ -386,6 +401,7 @@ export class Ride {
   }
 
   close() {
+    if (this.range) this.saveTank(true);
     if (this.watch != null) navigator.geolocation.clearWatch(this.watch);
     cancelAnimationFrame(this.raf);
     clearTimeout(this.ending);

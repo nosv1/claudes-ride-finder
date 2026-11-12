@@ -9,7 +9,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.11.7';
+export const APP_VERSION = '2026.11.11.8';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
@@ -154,6 +154,37 @@ export const GOOGLE = { perPart: 9, parts: 2, pastTurn: 200, minSpacing: 800, ma
 export const DECISION_TURNS = new Set([9, 10, 11, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26]);
 
 export const FUEL = { nearRoute: 1200, reserve: 0.85 };
+
+// Bikes to pick from for the tank: US gallons and a typical mpg (riding hard uses more). From the makers' specs as best
+// known; the rider checks their manual and changes either if it's off. Range = gal × mpg.
+export const BIKES = [
+  { id: 'hd-touring', name: 'Harley-Davidson Touring (Street/Road Glide, Road King), 2014+', gal: 6.0, mpg: 42 },
+  { id: 'hd-softail', name: 'Harley-Davidson Softail (Fat Boy, Low Rider, Heritage), 2018+', gal: 5.0, mpg: 43 },
+  { id: 'hd-sportster-s', name: 'Harley-Davidson Sportster S / Nightster, 2021+', gal: 3.1, mpg: 48 },
+  { id: 'hd-iron883', name: 'Harley-Davidson Sportster Iron 883', gal: 3.3, mpg: 48 },
+  { id: 'goldwing', name: 'Honda Gold Wing, 2018+', gal: 5.5, mpg: 40 },
+  { id: 'rebel500', name: 'Honda Rebel 500', gal: 2.9, mpg: 65 },
+  { id: 'rebel1100', name: 'Honda Rebel 1100', gal: 3.6, mpg: 47 },
+  { id: 'cb500x', name: 'Honda CB500X / NX500', gal: 4.7, mpg: 60 },
+  { id: 'africatwin', name: 'Honda Africa Twin, 2020+', gal: 4.9, mpg: 48 },
+  { id: 'ninja400', name: 'Kawasaki Ninja 400', gal: 3.7, mpg: 55 },
+  { id: 'z900', name: 'Kawasaki Z900', gal: 4.5, mpg: 42 },
+  { id: 'versys650', name: 'Kawasaki Versys 650', gal: 5.5, mpg: 50 },
+  { id: 'vulcans', name: 'Kawasaki Vulcan S', gal: 3.7, mpg: 50 },
+  { id: 'mt07', name: 'Yamaha MT-07', gal: 3.7, mpg: 52 },
+  { id: 'mt09', name: 'Yamaha MT-09, 2021+', gal: 3.7, mpg: 45 },
+  { id: 'tenere700', name: 'Yamaha Ténéré 700', gal: 4.2, mpg: 52 },
+  { id: 'tracer9', name: 'Yamaha Tracer 9 GT', gal: 4.8, mpg: 45 },
+  { id: 'sv650', name: 'Suzuki SV650', gal: 3.8, mpg: 50 },
+  { id: 'vstrom650', name: 'Suzuki V-Strom 650', gal: 5.3, mpg: 50 },
+  { id: 'r1250gs', name: 'BMW R 1250 GS', gal: 5.3, mpg: 45 },
+  { id: 'r1250rt', name: 'BMW R 1250 RT', gal: 6.6, mpg: 45 },
+  { id: 'tiger900', name: 'Triumph Tiger 900', gal: 5.3, mpg: 50 },
+  { id: 't120', name: 'Triumph Bonneville T120', gal: 3.8, mpg: 50 },
+  { id: 'scout', name: 'Indian Scout, 2015–2024', gal: 3.3, mpg: 45 },
+  { id: 'chieftain', name: 'Indian Chieftain / Roadmaster', gal: 5.5, mpg: 38 },
+  { id: 'duke390', name: 'KTM 390 Duke', gal: 3.6, mpg: 60 },
+];
 
 export const PHOTON = 'https://photon.komoot.io/api/';
 export const DEM_URL = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium';

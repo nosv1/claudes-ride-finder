@@ -467,6 +467,12 @@ body.riding .stop-marker { display: none; }
 .ride-gas { display: block; width: 100%; text-align: left; margin-top: 6px; padding: 4px 0 0; border: 0; border-top: 1px solid var(--border);
   background: none; color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ride-gas.warn { color: var(--warn); font-weight: 700; white-space: normal; }
+.ride-tag.wide { width: 100%; margin-bottom: 10px; }
+.ride-trip-row { display: flex; gap: 8px; margin-bottom: 6px; }
+.ride-trip { flex: 1; min-width: 0; font-size: 20px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
+.bike select { max-width: 100%; }
+.bike .field select { width: 100%; }
+#tank-miles { width: 7em; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
 .ride-speed { flex: none; text-align: center; line-height: 1; }
 .ride-speed b { display: block; font-size: 30px; font-weight: 800; }
 .ride-speed small { font-size: 11px; color: var(--muted); }

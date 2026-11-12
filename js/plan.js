@@ -244,16 +244,18 @@ export function stopIndexAt(path, items, m) {
 // ---------- fuel ----------
 
 // Assume a full tank at the start; refuel at the farthest usable station before the reserve.
-export function planFuel(path, stations, rangeMi, need90) {
+// leftMi: what's in the tank at the start (a full tank if left out); the first stop is planned from that.
+export function planFuel(path, stations, rangeMi, need90, leftMi = rangeMi) {
   const { hits: along, totalMiles } = alongRoute(path, stations, FUEL.nearRoute, 300);
   const usable = rangeMi * FUEL.reserve;
   const ok = along.filter(a => !need90 || a.item.status >= 1);
   const picks = [], gaps = [];
-  let pos = 0;
+  // Starting with less than a full tank is starting "behind": the first stop has to come within what's left.
+  let pos = Math.min(0, (Math.max(0, leftMi) - rangeMi) * FUEL.reserve);
   while (totalMiles - pos > usable) {
     const reach = ok.filter(a => a.mile > pos + 2 && a.mile <= pos + usable);
     const next = reach.length ? reach[reach.length - 1] : ok.find(a => a.mile > pos + 2);
-    if (!reach.length) gaps.push([pos, next ? next.mile : totalMiles]);
+    if (!reach.length) gaps.push([Math.max(0, pos), next ? next.mile : totalMiles]);
     if (!next) break;
     picks.push(next);
     pos = next.mile;

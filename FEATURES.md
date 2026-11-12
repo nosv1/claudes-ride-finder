@@ -663,9 +663,12 @@ colored road), Add a stop here, Street View here.
   left and when you'd be back (or there). **Tag road** (big buttons: Rough, Gravel, Don't ride, Great) tags the mile
   or so of the road around you. **End** takes two taps (a bump on the mount doesn't end it). At the end: miles ridden
   and time.
-- **The tank** (a line in the bar): "⛽ ~95 mi in tank · gas in 4 mi", counted down from your range (Fuel on the ride
-  page; kept in settings, so every ride and device has it) from a full tank at the start. Tap it: Full (filled up),
-  ¾, ½, ¼. Only stations on the ride count (90+ only if that's on). When the next one is the last in reach (keeping
+- **The tank** (a line in the bar): "⛽ ~95 mi in tank · gas in 4 mi", counted down from what's left at the start. Fuel
+  on the ride page holds **your bike** (picked from a list of common bikes, `BIKES` in config.js, which fills in the
+  tank and a typical mpg, both changeable; range = gal × mpg) and **miles since you filled up** (your trip meter),
+  both kept in settings. Ride mode adds the miles ridden to that (kept every mile and at the end), so it stays right
+  from ride to ride until you fill up. Tap the line: Filled up, or type the trip meter. The ride page's gas plan
+  plans the first stop from what's in the tank now. Only stations on the ride count (90+ only if that's on). When the next one is the last in reach (keeping
   15% in the tank) and the ride's end is further: "Get gas at Casey's in 3 mi: the one after is 62 mi, past your
   range", in yellow, and said "Get gas at the next station."; none in reach: "Low: …" and "Fuel's getting low." Each
   said once.

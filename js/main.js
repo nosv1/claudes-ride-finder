@@ -1,5 +1,5 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor, APP_VERSION } from './config.js';
+import { BIKES, CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor, APP_VERSION } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
 import { visible, hillLevel, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong, setMyMph, limitOf } from './roads.js';
 import * as T from './trip.js';
@@ -397,7 +397,7 @@ function refreshInfo(withProfile) {
     return renderSoon();
   }
   loadTiles(boundsOf(route.path));
-  const r = route, fuel = P.planFuel(r.path, store.fuel, tankRange(), trip.need90);
+  const r = route, fuel = P.planFuel(r.path, store.fuel, tankRange(), trip.need90, tankLeft());
   info = {
     ...(withProfile ? {} : { profile: info && info.profile }),
     curvy: P.curvyMetersOn(r.path, store.roads), highway: P.highwayMetersOn(r.path, store.roads),
@@ -1927,7 +1927,8 @@ function startRide() {
     route: r, loop: trip.loop, roadAt, tagRoad: tagHere, crests: P.blindCrestsOn(r.path, store.roads),
     spots: P.spotsOn(r.path, spots()), markSpot: p => addSpot(p),
     // Gas on the way (90+ only, if that's on), and your range: the bar counts it down and says when to stop.
-    gas: { range: tankRange(), stops: P.planFuel(r.path, store.fuel, tankRange(), trip.need90).ok.map(a => ({ m: a.mile * 1609.34, name: a.item.name, city: a.item.city })) },
+    gas: { range: tankRange(), used: tankUsed(), onTank: used => setSetting({ tankMiles: Math.round(used * 10) / 10 }),
+      stops: P.planFuel(r.path, store.fuel, tankRange(), trip.need90).ok.map(a => ({ m: a.mile * 1609.34, name: a.item.name, city: a.item.city })) },
     voice: load(VOICE_KEY) !== false, onVoice: on => save(VOICE_KEY, on),
     // The way back onto the ride: from where you are, the way you're going, onto it going its way. If the router
     // can't match that (it falls back to the plain one, which has no turns to call), without the way at the end.
@@ -2103,20 +2104,56 @@ function sortable(list, onMove) {
   });
 }
 
-// Your bike's range on a tank: yours (kept in settings, so every ride and device has it), or the ride's own.
-const tankRange = () => settings.tankRange || trip.range;
-const RANGES = [60, 80, 100, 120, 150, 180, 200, 250];
+// Your bike (kept in settings, so every ride and device has it): its tank and mpg make the range on a full tank, and
+// tankMiles is how far you've gone since filling up (your trip meter), carried from ride to ride. With no bike set,
+// the range picked before (or the ride's own).
+const myBike = () => settings.bike || null;
+const tankRange = () => myBike() ? Math.round(myBike().gal * myBike().mpg) : settings.tankRange || trip.range;
+const tankUsed = () => Math.max(0, +settings.tankMiles || 0);
+const tankLeft = () => Math.max(0, tankRange() - tankUsed());
+const GALLONS = Array.from({ length: 56 }, (_, i) => +(2.5 + i / 10).toFixed(1));   // 2.5 to 8.0
+const MPGS = [30, 35, 38, 40, 42, 45, 48, 50, 52, 55, 60, 65, 70];
+const fuelChanged = () => { tripChanged({ reroute: false }); refreshInfo(false); };
+
+function bikeFields() {
+  const b = myBike(), pick = b ? b.id : '';
+  const set = patch => { setSetting({ bike: { id: 'other', gal: 4, mpg: 45, ...b, ...patch } }); fuelChanged(); };
+  return h('div.bike', {},
+    h('div.field', {}, h('label', { for: 'bike-pick' }, 'Your bike'),
+      h('select', { id: 'bike-pick', onchange: e => {
+        const x = BIKES.find(k => k.id === e.target.value);
+        if (x) set({ id: x.id, gal: x.gal, mpg: x.mpg });
+        else if (e.target.value === 'other') set({ id: 'other' });
+      } },
+        h('option', { value: '', selected: !pick, disabled: true }, 'Pick your bike…'),
+        BIKES.map(x => h('option', { value: x.id, selected: pick === x.id }, `${x.name} (${x.gal} gal)`)),
+        h('option', { value: 'other', selected: pick === 'other' }, 'Not listed: set the tank and mpg below'))),
+    b ? h('div.btn-row', {},
+      h('label.inline', {}, 'Tank ', h('select', { onchange: e => set({ gal: +e.target.value }) },
+        GALLONS.map(v => h('option', { value: v, selected: Math.abs(b.gal - v) < 0.05 }, `${v.toFixed(1)} gal`)))),
+      h('label.inline', {}, 'at ', h('select', { onchange: e => set({ mpg: +e.target.value }) },
+        MPGS.map(v => h('option', { value: v, selected: b.mpg === v }, `${v} mpg`))))) : '',
+    b ? h('p.muted.small', {}, `About ${tankRange()} mi on a full tank. Check the tank size in your manual; mpg drops riding hard.`) : '',
+    h('div.field', {}, h('label', { for: 'tank-miles' }, 'Miles since you filled up (your trip meter)'),
+      h('div.start-row', {},
+        h('input', { id: 'tank-miles', type: 'number', inputmode: 'decimal', min: 0, max: 999, step: 1, value: tankUsed() ? Math.round(tankUsed()) : 0,
+          onchange: e => { setSetting({ tankMiles: Math.max(0, +e.target.value || 0) }); fuelChanged(); } }),
+        h('button.btn', { onclick: () => { setSetting({ tankMiles: 0 }); fuelChanged(); toast('Full tank.'); } }, 'Just filled up'))),
+    h('p.muted.small', {}, `≈ ${Math.round(tankLeft())} mi left in the tank. Ride mode adds the miles you ride, so this keeps itself up to date until you fill up.`));
+}
 
 function fuelSection() {
   const f = info && info.fuel;
   return h('div.section', {},
     h('h3', {}, iconEl(icon.fuel), 'Fuel'),
+    bikeFields(),
+    myBike() ? '' : h('div.btn-row', {},
+      h('label.inline', {}, 'Or just a range ',
+        h('select', { onchange: e => { trip.range = +e.target.value; setSetting({ tankRange: trip.range }); fuelChanged(); } },
+          [60, 80, 100, 120, 150, 180, 200, 250].map(v => h('option', { value: v, selected: tankRange() === v }, `${v} mi`))))),
     h('div.btn-row', {},
-      h('label.inline', {}, 'Tank range ',
-        h('select', { onchange: e => { trip.range = +e.target.value; setSetting({ tankRange: trip.range }); tripChanged({ reroute: false }); refreshInfo(false); } },
-          RANGES.map(v => h('option', { value: v, selected: tankRange() === v }, `${v} mi`)))),
       h('label.switch', {}, h('input', { type: 'checkbox', checked: trip.need90,
-        onchange: e => { trip.need90 = e.target.checked; tripChanged({ reroute: false }); refreshInfo(false); } }), h('span', {}, '90+ only'))),
+        onchange: e => { trip.need90 = e.target.checked; fuelChanged(); } }), h('span', {}, '90+ only'))),
     !f ? h('p.muted.small', {}, 'Gas stops appear once there’s a route.') : h('div', {},
       h('p.muted.small', {}, `${f.ok.length} ${trip.need90 ? '90+ ' : ''}stations on the route · longest stretch without one: ${Math.round(f.longest)} mi`),
       f.gaps.map(([a, b]) => h('p.warn.small', {}, `⚠ No ${trip.need90 ? '90+ ' : ''}gas from mile ${Math.round(a)} to ${Math.round(b)}, more than your range.`)),
@@ -2127,7 +2164,7 @@ function fuelSection() {
           h('div.muted.small', {}, [a.item.city, FUEL_STATUS[a.item.status].label].filter(Boolean).join(' · '))),
         h('button.icon-btn', { title: 'Add as a stop', html: icon.plus, onclick: () => addStation(a.item) })))
         : h('p.muted.small', {}, `No fuel stop needed with a ${tankRange()} mi range.`)),
-    h('p.fineprint', {}, 'Your range is kept for every ride. In Ride mode the bar counts it down from a full tank (tap it after filling up) and says when to get gas.'));
+    h('p.fineprint', {}, 'Your bike and tank are kept for every ride. In Ride mode the bar counts down what’s left (tap it when you fill up) and says when to get gas; the first stop above is planned from what’s in the tank now.'));
 }
 
 function exportSection() {
