@@ -236,6 +236,10 @@ class TestFuel(unittest.TestCase):
         self.assertEqual(bt.octane_status({"fuel:octane_98": "no", "brand": "BP"}), bt.FUEL_LIKELY,
                          "European grades marked 'no' don't mean no premium")
         self.assertEqual(bt.octane_status({"name": "Joe's Gas"}), bt.FUEL_UNKNOWN)
+        # The highest octane mapped as sold, for a bike that takes a given number.
+        self.assertEqual(bt.top_octane({"fuel:octane_87": "yes", "fuel:octane_93": "yes", "fuel:octane_91": "no"}), 93)
+        self.assertEqual(bt.top_octane({"fuel:octane_91": "no"}), None)
+        self.assertEqual(bt.top_octane({"brand": "Casey's"}), None)
 
     def test_diesel_islands_are_not_gas_stations(self):
         self.assertTrue(bt.is_gas_station({"amenity": "fuel", "name": "Casey's"}))

@@ -372,7 +372,13 @@ def fuel_row(tags, lat, lon):
     if brand and name and brand.lower() not in name.lower():
         label = f"{name} ({brand})"
     return [round(lat, 5), round(lon, 5), label, tags.get("addr:city", ""),
-            octane_status(tags), tags.get("opening_hours", "")]
+            octane_status(tags), tags.get("opening_hours", ""), top_octane(tags)]
+
+
+def top_octane(tags):
+    """The highest octane the station is mapped as selling (fuel:octane_91=yes...), or None when none are mapped."""
+    grades = [int(m.group(1)) for k, v in tags.items() if v == "yes" and (m := re.fullmatch(r"fuel:octane_(\d+)", k))]
+    return max(grades) if grades else None
 
 
 # Roads with no posted limit: rural state routes get Missouri/Kansas's 55 mph default,
