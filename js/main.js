@@ -397,7 +397,7 @@ function refreshInfo(withProfile) {
     return renderSoon();
   }
   loadTiles(boundsOf(route.path));
-  const r = route, fuel = P.planFuel(r.path, store.fuel, trip.range, trip.need90);
+  const r = route, fuel = P.planFuel(r.path, store.fuel, tankRange(), trip.need90);
   info = {
     ...(withProfile ? {} : { profile: info && info.profile }),
     curvy: P.curvyMetersOn(r.path, store.roads), highway: P.highwayMetersOn(r.path, store.roads),
@@ -1926,6 +1926,8 @@ function startRide() {
   ride = new Ride(mapView, {
     route: r, loop: trip.loop, roadAt, tagRoad: tagHere, crests: P.blindCrestsOn(r.path, store.roads),
     spots: P.spotsOn(r.path, spots()), markSpot: p => addSpot(p),
+    // Gas on the way (90+ only, if that's on), and your range: the bar counts it down and says when to stop.
+    gas: { range: tankRange(), stops: P.planFuel(r.path, store.fuel, tankRange(), trip.need90).ok.map(a => ({ m: a.mile * 1609.34, name: a.item.name, city: a.item.city })) },
     voice: load(VOICE_KEY) !== false, onVoice: on => save(VOICE_KEY, on),
     // The way back onto the ride: from where you are, the way you're going, onto it going its way. If the router
     // can't match that (it falls back to the plain one, which has no turns to call), without the way at the end.
@@ -2101,14 +2103,18 @@ function sortable(list, onMove) {
   });
 }
 
+// Your bike's range on a tank: yours (kept in settings, so every ride and device has it), or the ride's own.
+const tankRange = () => settings.tankRange || trip.range;
+const RANGES = [60, 80, 100, 120, 150, 180, 200, 250];
+
 function fuelSection() {
   const f = info && info.fuel;
   return h('div.section', {},
     h('h3', {}, iconEl(icon.fuel), 'Fuel'),
     h('div.btn-row', {},
       h('label.inline', {}, 'Tank range ',
-        h('select', { onchange: e => { trip.range = +e.target.value; tripChanged({ reroute: false }); refreshInfo(false); } },
-          [80, 100, 120, 150, 200, 250].map(v => h('option', { value: v, selected: trip.range === v }, `${v} mi`)))),
+        h('select', { onchange: e => { trip.range = +e.target.value; setSetting({ tankRange: trip.range }); tripChanged({ reroute: false }); refreshInfo(false); } },
+          RANGES.map(v => h('option', { value: v, selected: tankRange() === v }, `${v} mi`)))),
       h('label.switch', {}, h('input', { type: 'checkbox', checked: trip.need90,
         onchange: e => { trip.need90 = e.target.checked; tripChanged({ reroute: false }); refreshInfo(false); } }), h('span', {}, '90+ only'))),
     !f ? h('p.muted.small', {}, 'Gas stops appear once there’s a route.') : h('div', {},
@@ -2120,7 +2126,8 @@ function fuelSection() {
           h('div', {}, `Mile ${Math.round(a.mile)} · ${a.item.name}`),
           h('div.muted.small', {}, [a.item.city, FUEL_STATUS[a.item.status].label].filter(Boolean).join(' · '))),
         h('button.icon-btn', { title: 'Add as a stop', html: icon.plus, onclick: () => addStation(a.item) })))
-        : h('p.muted.small', {}, `No fuel stop needed with a ${trip.range} mi range.`)));
+        : h('p.muted.small', {}, `No fuel stop needed with a ${tankRange()} mi range.`)),
+    h('p.fineprint', {}, 'Your range is kept for every ride. In Ride mode the bar counts it down from a full tank (tap it after filling up) and says when to get gas.'));
 }
 
 function exportSection() {

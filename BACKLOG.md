@@ -53,7 +53,8 @@ Ideas that came up, roughly in order of how much they'd help.
   `npx wrangler@4 d1 execute ride-finder --remote --command "CREATE TABLE IF NOT EXISTS clips (voice TEXT NOT NULL, format TEXT NOT NULL, text TEXT NOT NULL, audio BLOB NOT NULL, made INTEGER NOT NULL, PRIMARY KEY (voice, format, text));"`
   and `npx wrangler@4 deploy`. Until then the names are just left out. More voices: add them to `make_voice.py` and
   `python tools/make_voice.py <id>` (~730 characters of the day's free allowance each; Thalia was next).
-- **Ride mode next** (Ride mode is in, 2026-11-04): gas callouts ("Casey's in 4 mi, next gas 38 mi"), the ridden track
+- **Ride mode next** (Ride mode is in, 2026-11-04; gas in the bar and "get gas at the next station" went in 2026-11-11,
+  with the mini-map and spots): maybe noticing a stop at a station and asking "Filled up?", the ridden track
   saved (for Roads you've ridden; see Recording rides below), Valhalla avoiding roads tagged Don't ride between stops
   (`exclude_polygons` or `avoid_locations`), and screen-off guidance, which needs a native app (see the Play Store /
   iPhone entry).

@@ -663,6 +663,12 @@ colored road), Add a stop here, Street View here.
   left and when you'd be back (or there). **Tag road** (big buttons: Rough, Gravel, Don't ride, Great) tags the mile
   or so of the road around you. **End** takes two taps (a bump on the mount doesn't end it). At the end: miles ridden
   and time.
+- **The tank** (a line in the bar): "⛽ ~95 mi in tank · gas in 4 mi", counted down from your range (Fuel on the ride
+  page; kept in settings, so every ride and device has it) from a full tank at the start. Tap it: Full (filled up),
+  ¾, ½, ¼. Only stations on the ride count (90+ only if that's on). When the next one is the last in reach (keeping
+  15% in the tank) and the ride's end is further: "Get gas at Casey's in 3 mi: the one after is 62 mi, past your
+  range", in yellow, and said "Get gas at the next station."; none in reach: "Low: …" and "Fuel's getting low." Each
+  said once.
 - **Mini-map** under the banner at the right (96 px on a phone, 130 on a bigger screen): the whole ride north up,
   ridden part grey, your spots, you as a yellow dot; a tap is Overview. Miles left are bold in the bar.
 - **Mark spot** (big and round, right above the bar): one tap pins where you are and says "Spot marked.", no menus.

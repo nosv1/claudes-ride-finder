@@ -41,5 +41,7 @@
   "spotbump": "Bump ahead.",
   "spotpothole": "Pothole ahead.",
   "spotgravel": "Gravel ahead.",
-  "spothazard": "Watch out ahead."
+  "spothazard": "Watch out ahead.",
+  "gasnext": "Get gas at the next station.",
+  "gaslow": "Fuel's getting low."
 }

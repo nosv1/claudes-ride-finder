@@ -2,7 +2,7 @@
 // turn and a voice says it. It follows the ride's line, not its stops (nav.js), so there's nothing to remove as you go:
 // skip a part and it picks you up where you're back on it; leave the ride and it routes you back on ahead of you.
 // A web app only runs in front, so the screen is kept awake (phone mounted, on a charger).
-import { NAV } from './config.js';
+import { NAV, FUEL } from './config.js';
 import { Guide, callout, shown, turnName } from './nav.js';
 import { bearing, distance, relAngle, miles, fmtDuration } from './geo.js';
 import { turnArrow, turnOnto, turn, miniMap } from './fly.js';
@@ -16,6 +16,7 @@ const LINES = {
   voiceon: 'Voice on.', off: 'You’re off the ride. Finding a way back.', back: 'Back on your ride.',
   skipped: 'Picking up your ride from here.', crest: 'Blind crest ahead.',
   arrive: 'You’ve arrived. Nice ride.', arriveloop: 'You’re back where you started. Nice ride.',
+  gasnext: 'Get gas at the next station.', gaslow: 'Fuel’s getting low.',
   marked: 'Spot marked.', spotmarked: 'Marked spot ahead.', spotbump: 'Bump ahead.', spotpothole: 'Pothole ahead.',
   spotgravel: 'Gravel ahead.', spothazard: 'Watch out ahead.',
 };
@@ -31,8 +32,9 @@ export class Ride {
   // null. roadAt(p, heading): the road there ({ ref, name, limit, posted }) or null. crests: [{ mile }] on the ride.
   // tagRoad(k, p, heading): tag the road you're on, returning its name (or null if there's no mapped road there).
   // spots: your spots on the ride ([{ spot, mile }]), called out coming up on them; markSpot(p): mark one where you are.
+  // gas: { range (miles on a tank), stops: [{ m, name, city }] along the ride }: the tank counted down, and when to stop.
   // voice: start with it on; onVoice(on) when it's switched. loop: the ride ends where it started. onClose().
-  constructor(mapView, { route, reroute, roadAt, crests, tagRoad, spots, markSpot, voice = true, onVoice = () => {}, loop = false, onClose }) {
+  constructor(mapView, { route, reroute, roadAt, crests, tagRoad, spots, markSpot, gas, voice = true, onVoice = () => {}, loop = false, onClose }) {
     this.mapView = mapView;
     this.map = mapView.map;
     this.route = route;
@@ -46,6 +48,10 @@ export class Ride {
     this.spots = (spots || []).map(x => ({ m: x.mile * 1609.34, kind: spotKind(x.spot), p: x.spot.spot }));
     this.markSpot = markSpot;
     this.marked = [];         // spots marked on this ride, to label after it
+    this.range = gas ? gas.range : 0;
+    this.gas = gas ? gas.stops : [];
+    this.tankAt = 0;          // miles ridden (in metres) when the tank was last full: a full tank at the start
+    this.gasSaid = new Set(); // warnings said, so each is said once
     this.guide = new Guide(route, { reroute, onDetour: () => { this.say(line('detour')); this.showDetour(); this.update(); } });
     this.fix = null;          // the latest GPS fix
     this.shownAt = null;      // where the arrow is drawn, gliding from fix to fix
@@ -111,6 +117,13 @@ export class Ride {
     this.voiceBtn = h('button.btn.ride-btn', { onclick: () => this.setVoice(!this.voice) });
     this.endBtn = h('button.btn.ride-btn.end', { onclick: () => this.end() }, h('span', { html: icon.x }), 'End');
     this.recenterBtn = h('button.btn.primary.ride-recenter', { hidden: true, onclick: () => this.follow(true) }, h('span', { html: icon.go }), 'Recenter');
+    // The tank: a line in the bar; a tap says how full it is now.
+    this.gasEl = h('button.ride-gas', { hidden: !this.range, onclick: () => { this.tankSheet.hidden = !this.tankSheet.hidden; } });
+    this.tankSheet = h('div.ride-tags', { hidden: true },
+      h('div.ride-tags-title', {}, 'How full is the tank?'),
+      h('div.ride-tag-grid', {}, [[1, 'Full (filled up)'], [0.75, '¾'], [0.5, '½'], [0.25, '¼']].map(([k, l]) =>
+        h('button.ride-tag', { style: '--c:#4dabf7', onclick: () => this.setTank(k) }, l))),
+      h('button.btn.wide', { onclick: () => { this.tankSheet.hidden = true; } }, 'Cancel'));
     this.tagSheet = h('div.ride-tags', { hidden: true },
       h('div.ride-tags-title', {}, 'Tag the road you’re on'),
       h('div.ride-tag-grid', {}, ['rough', 'gravel', 'avoid', 'great'].map(k => {
@@ -122,13 +135,14 @@ export class Ride {
       h('div.ride-above', {}, this.crestEl, this.spotEl, this.recenterBtn),
       this.markBtn,
       h('div.ride-status', {}, h('div.ride-here', {}, this.roadEl, this.leftEl), this.speedEl, this.limitEl),
+      this.gasEl,
       h('div.ride-btns', {},
         this.voiceBtn,
         h('button.btn.ride-btn', { onclick: () => { this.tagSheet.hidden = !this.tagSheet.hidden; } }, h('span', { html: icon.flag }), 'Tag road'),
         h('button.btn.ride-btn', { onclick: () => this.overview() }, h('span', { html: icon.route }), 'Overview'),
         this.endBtn));
     this.doneEl = h('div.ride-done', { hidden: true });
-    document.body.append(this.banner, this.panel, this.tagSheet, this.doneEl);
+    document.body.append(this.banner, this.panel, this.tagSheet, this.tankSheet, this.doneEl);
     this.setVoice(this.voice, true);
   }
 
@@ -194,6 +208,36 @@ export class Ride {
     if (c && !c.said) { c.said = true; return this.say(line('crest')); }
     const s = this.spots.find(x => x.m - m > 0 && x.m - m < Math.max(150, v * 12));
     if (s && !s.said) { s.said = true; if (s.kind.say) this.say(line(s.kind.say)); }
+  }
+
+  // How full the tank is now (1 full, 0.5 half): the count starts again from there.
+  setTank(full) {
+    this.tankSheet.hidden = true;
+    this.tankAt = this.ridden - (1 - full) * this.range * 1609.34;
+    this.gasSaid.clear();
+    this.update();
+  }
+
+  // Miles left in the tank, and what to say about gas: { text, warn, say } for the bar. Only the stations on the ride
+  // count, ahead of you; it warns when the next one is the last within reach (keeping FUEL.reserve in the tank) and
+  // the rest of the ride is further, or when none is in reach.
+  gasState(m, onRide) {
+    const left = Math.max(0, this.range - (this.ridden - this.tankAt) / 1609.34), reach = left * FUEL.reserve * 1609.34;
+    const ahead = onRide ? this.gas.filter(s => s.m > m + 50) : [], next = ahead[0], mi = s => miles(s.m - m);
+    const base = `⛽ ~${Math.round(left)} mi in tank`;
+    // Off the ride, or enough to finish it: just the count (and the next station).
+    if (!onRide || this.guide.main.total - m <= reach) {
+      return { text: next ? `${base} · gas in ${mi(next)} mi` : base };
+    }
+    const inReach = ahead.filter(s => s.m - m <= reach);
+    if (!inReach.length) {
+      return { warn: true, say: 'gaslow', key: 'low', text: next ? `⛽ Low: ~${Math.round(left)} mi in tank, next gas ${mi(next)} mi` : `⛽ Low: ~${Math.round(left)} mi in tank, no gas on the rest of the ride` };
+    }
+    if (inReach.length === 1) {
+      const after = ahead[1];
+      return { warn: true, say: 'gasnext', key: `next:${next.m}`, text: `⛽ Get gas at ${next.name || 'the next station'} in ${mi(next)} mi${after ? `: the one after is ${mi(after)} mi, past your range` : ': the last on the ride'}` };
+    }
+    return { text: `${base} · gas in ${mi(next)} mi` };
   }
 
   // Mark spot: a pin where you are, labelled after the ride.
@@ -325,6 +369,13 @@ export class Ride {
     const ft = d => `${Math.round(d * 3.281 / 10) * 10} ft`;
     this.crestEl.hidden = !crest;
     if (crest) this.crestEl.textContent = crest.m - m > 30 ? `⚠ Blind crest ahead · ${ft(crest.m - m)}` : '⚠ Blind crest';
+    // The tank.
+    if (this.range) {
+      const gs = this.gasState(m, state === 'on');
+      this.gasEl.textContent = gs.text;
+      this.gasEl.classList.toggle('warn', !!gs.warn);
+      if (gs.say && !this.gasSaid.has(gs.key)) { this.gasSaid.add(gs.key); this.say(line(gs.say)); }
+    }
     // Your spots, from about 1,000 ft out.
     const spot = state === 'on' && this.spots.find(s => s.m - m > -30 && s.m - m < NAV.spotM);
     this.spotEl.hidden = !spot;
@@ -346,7 +397,7 @@ export class Ride {
     this.map.getCanvasContainer().removeEventListener('pointerdown', this.press);
     for (const type of ['pointerup', 'pointercancel', 'touchend']) removeEventListener(type, this.release);
     this.map.off('zoomend', this.zoomed);
-    for (const el of [this.banner, this.panel, this.tagSheet, this.doneEl]) el.remove();
+    for (const el of [this.banner, this.panel, this.tagSheet, this.tankSheet, this.doneEl]) el.remove();
     document.body.classList.remove('riding');
     this.mapView.setNavArrow(null);
     this.mapView.setDetour(null);

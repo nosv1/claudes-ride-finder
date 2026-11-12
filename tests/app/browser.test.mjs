@@ -614,6 +614,19 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   await gps(mid + 4);
   assert.equal(await page.eval('RF.ride.guide.state'), 'on');
   assert.ok(await page.eval("__said.some(t => /Back on your ride|Picking up your ride/.test(t))"));
+  // The tank: counted down from your range; with a station just ahead the last one in reach, it says to stop there.
+  assert.match(await page.eval("document.querySelector('.ride-gas').innerText"), /⛽ ~\d+ mi in tank/);
+  await page.eval(`(() => { const r = RF.ride, m = r.guide.main.m; r.range = 0.5; r.tankAt = r.ridden; r.gas = [{ m: m + 500, name: 'Casey’s' }, { m: m + 30000, name: 'Far' }]; r.update(); })()`);
+  assert.match(await page.eval("document.querySelector('.ride-gas').innerText"), /Get gas at Casey’s in 0\.3\d mi: the one after is 18\.\d mi, past your range/);
+  assert.ok(await page.eval("document.querySelector('.ride-gas').classList.contains('warn') && __said.includes('Get gas at the next station.')"));
+  await page.eval("RF.ride.range = 0.2; RF.ride.tankAt = RF.ride.ridden; RF.ride.update()");
+  assert.match(await page.eval("document.querySelector('.ride-gas').innerText"), /Low: ~0 mi in tank, next gas 0\.3\d mi/);
+  assert.ok(await page.eval("__said.includes('Fuel’s getting low.')"));
+  // Filled up: tap the line, Full.
+  await page.eval("document.querySelector('.ride-gas').click()");
+  await page.eval("[...document.querySelectorAll('.ride-tag')].find(b => /Full/.test(b.textContent)).click()");
+  await page.eval("RF.ride.range = 120; RF.ride.gas = []; RF.ride.update()");
+  assert.match(await page.eval("document.querySelector('.ride-gas').innerText"), /^⛽ ~120 mi in tank$/);
   // Coming up on the bump: on screen, and said.
   assert.ok(await page.eval("__said.includes('Bump ahead.')"), await page.eval('JSON.stringify(__said)'));
   assert.match(await page.eval("document.querySelector('.ride-spot').hidden ? '' : document.querySelector('.ride-spot').innerText"), /Bump( ahead · \d+ ft)?/);
