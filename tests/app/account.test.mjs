@@ -155,6 +155,28 @@ test('Share makes a short link that opens the ride without signing in, and shows
   await phone.waitFor("document.getElementById('sheetBody').innerText.includes('Rides you’ve shared')");
 });
 
+test('planning never changes a saved ride: it makes a new one; a ride is selected only from your rides', async () => {
+  const id = await pc.eval('RF.account.rideId()'), key = await pc.eval('RF.account.account.key');
+  const before = (await api(pc, `/rides/${id}`)).trip, labels = await pc.eval('RF.trip.items.map(i => i.label)');
+  // Selected: the home bar names it (the bar shows once there's a route; the router isn't asked in these tests).
+  await pc.eval("RF.setRoute({ path: [[38.9, -94.3], [38.95, -94.35]], meters: 8000, seconds: 600, maneuvers: [] }); RF.go('home')");
+  await pc.waitFor("document.querySelector('.ride-bar') && /Ozark coffee run · from your rides/.test(document.querySelector('.ride-bar').innerText)", 15000);
+  // Start a ride here (from the map): a new ride, and the saved one stays as it was.
+  await pc.eval("RF.mapView.emit('menu', [38.95, -94.4], { x: 700, y: 400 })");
+  await pc.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Start a ride here/.test(b.textContent)).click()");
+  assert.equal(await pc.eval('RF.account.rideId()'), null, 'no ride selected');
+  assert.match(await pc.eval("document.getElementById('toast').innerText"), /New ride\. Ozark coffee run stays in your rides as it was\./);
+  await sleep(2500);  // longer than a save takes
+  assert.equal((await api(pc, `/rides/${id}`)).trip, before, 'the saved ride wasn’t touched');
+  assert.equal(await pc.eval("RF.account.account.rides.length"), 1, 'and nothing else was saved');
+  // Picking it from your rides selects it again, as it was.
+  await pc.eval("RF.go('account')");
+  await pc.waitFor("[...document.querySelectorAll('#sheetBody .card')].some(e => e.textContent.includes('Ozark coffee run'))");
+  await pc.eval("[...document.querySelectorAll('#sheetBody .card')].find(e => e.textContent.includes('Ozark coffee run')).click()");
+  await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)}`);
+  assert.deepEqual(await pc.eval('RF.trip.items.map(i => i.label)'), labels);
+});
+
 test('a ride deleted on the PC leaves the phone’s list when the phone comes back to the app', async () => {
   const id = await pc.eval('RF.account.rideId()');
   assert.equal(await phone.eval('RF.account.rideId()'), id, 'the phone has it open');

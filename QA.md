@@ -77,7 +77,7 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 
 ## The ride
 
-- Stops can be dragged into a new order (mouse and touch), removed, and Clear all can be undone.
+- Stops can be dragged into a new order (mouse and touch), removed, and New ride can be undone.
 - On a phone: hold a stop pin until it lifts, drag it, let go; it moves and the ride reroutes. While held it sits
   just above the thumb (no jump), the map doesn't pan and the start/end/stop menu doesn't open. A road stop's pin dropped on another colored road swaps to that road (Undo in the toast).
 - Under the stats: focus tags, the color bar, and the roads that fit your filters. Change a filter chip and the
@@ -172,7 +172,10 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   on the phone after reopening.
 - Share a ride: the link is short (`…#s=` and 16 characters) and opens the ride in a private window, signed out.
   It's listed under Rides you’ve shared; Take down makes it stop opening.
-- Clear all: the saved ride stays as it was in Your rides; Undo brings it back on screen.
+- New ride: the saved ride stays as it was in Your rides; Undo brings it back on screen.
+- With a saved ride selected (home bar names it): Plan a ride → Generate → pick a loop, or Start a ride here from the
+  map: "New ride. X stays in your rides as it was.", the bar says "Your ride · not saved", and X in Your rides is
+  unchanged when opened again. 90+ only on a saved ride is still ticked after opening it again.
 - Delete a ride on the PC, then switch to the app on the phone (after 30 s or so): it's gone from Your rides there.
 - Sign out, then sign in again: everything's still there. Delete account (tap twice): you're signed out and the
   rides are gone from the other device too after it reopens.

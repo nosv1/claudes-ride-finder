@@ -331,7 +331,7 @@ colored road), Add a stop here, Street View here.
     the road, in the same place in the ride, entered from the end that adds the least riding.
 - **Your ride** lists the stops first, right under the title, so nothing above them changes height while the
   route is worked out again: after removing one, the next ✕ is under the same finger. The ride's name stays on one
-  line for the same reason. **Clear all** sits by the "Stops (n)" heading, with Undo in the toast instead of a
+  line for the same reason. **New ride** sits by the "Stops (n)" heading, with Undo in the toast instead of a
   confirm. Then Add road / Add stop / Start from me, then the route summary, **Generate a loop** (ride time + a button
   that opens Plan a ride and generates through these stops right away), options, fuel and export.
 - Rows can be reordered by dragging their grip (touch too), flipped (⇄) and removed (✕).
@@ -594,8 +594,14 @@ colored road), Add a stop here, Street View here.
     tags likewise.
 - **Your rides:** **Save to your rides** on the ride page saves it under its name; from then on the ride on screen
   *is* that saved ride: changes save 1.5 s after they settle ("Saving…", then "In your rides. Changes save as you
-  go."), and its name is editable there. **Clear all** starts a new ride (Undo puts it back, saved ride and all);
-  opening a shared link does too. The home list shows the latest 3 (and the empty ride page 5) under **Your rides**;
+  go."), and its name is editable there. A saved ride is **selected** only by picking it from Your rides (or saving
+  it); the home bar then names it ("Ozark coffee run · from your rides", with **New** and Ride). **Planning never
+  changes it** (2026-11-11, the rider was overwriting saved rides): Plan a ride's start/end/Generate/picking a loop,
+  Start here / End here (map menu, place card, search), and Plan a loop with this road first step off it
+  (`newRideFromSaved`): the ride on screen carries on as a new, unsaved ride, the toast says "New ride. X stays in
+  your rides as it was.", and Plan a ride says so up front. Edits on the ride's own page (stops, Start from me,
+  options, 90+ only) and the map's Add to ride / Add a stop still go into it. **New ride** (was Clear all) starts an
+  empty ride (Undo puts it back, saved ride and all); opening a shared link does too. The home list shows the latest 3 (and the empty ride page 5) under **Your rides**;
   the account page lists them all, each with delete (with Undo). Opening one replaces the ride on screen (Undo).
 - **Other devices' changes** show when the app opens and each time you come back to it (switching to it, unlocking
   the phone; at most every 30 s). A ride deleted elsewhere drops out of the list, and if it's the one on screen,

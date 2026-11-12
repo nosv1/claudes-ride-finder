@@ -486,6 +486,7 @@ function flipRoad(it) {
 
 // Make this road a must-include and open the planner.
 function planAround(g) {
+  newRideFromSaved();
   const inTrip = trip.items.some(it => it.ids && it.ids.some(id => g.ids.includes(id)) && !it.gen);
   if (!inTrip) {
     T.addRoad(trip, g);
@@ -506,13 +507,26 @@ function addPlace(p, label, name = label) {
 
 const addStation = s => addPlace([s.lat, s.lon], `Gas: ${s.name}`, s.name);
 
-function setStartAt(p, label) {
+// A saved ride is selected only by picking it from your rides (or saving it); planning never changes it. Anything that
+// plans (Plan a ride, Start here / End here, Plan a loop with this road, Generate) first steps off the selected ride:
+// what's on screen carries on as a new, unsaved ride, and the saved one stays in your rides as it was.
+function newRideFromSaved() {
+  if (!A.rideId()) return;
+  const name = A.rideName() || 'Your saved ride';
+  A.setRideId(null);
+  toast(`New ride. ${name} stays in your rides as it was.`);
+}
+
+// keep: an edit made on the ride's own page (Start from me), which does go into the selected ride.
+function setStartAt(p, label, { keep = false } = {}) {
+  if (!keep) newRideFromSaved();
   T.setStart(trip, p, label);
   tripChanged();
 }
 
 // Where a one-way ride finishes; the planner switches to one way.
 function setEndAt(p, label) {
+  newRideFromSaved();
   T.setEnd(trip, p, label);
   if (settings.genShape !== 'oneway') setSetting({ genShape: 'oneway' });
   tripChanged();
@@ -622,6 +636,7 @@ const nextExtra = () => EXTRAS.find(t => t > settings.genExtra) || null;
 
 async function generateRun(run) {
   const live = () => { if (run !== genRun) throw STOPPED; };
+  newRideFromSaved();  // the loops it finds are a new ride, never the saved one
   const oneWay = settings.genShape === 'oneway';
   let hours = settings.genHours;
   genRoutes = new Map();
@@ -1421,11 +1436,13 @@ function tagHere(k, p, heading) {
 }
 
 function rideBar() {
+  const saved = A.rideId() && A.rideName();
   return h('div.ride-bar', {},
     h('div', { onclick: () => go('trip'), style: 'cursor:pointer;flex:1' },
-      h('div.muted', {}, 'Your ride'),
+      h('div.muted', {}, saved ? h('b.ride-bar-name', {}, saved) : 'Your ride', saved ? ' · from your rides' : ' · not saved'),
       h('div.ride-stats', {}, `${miles(route.meters)} mi · ${fmtDuration(route.seconds)}`,
         info && info.curvy != null ? ` · ${miles(info.curvy)} curvy` : '', info && info.blind ? ` · ⚠ ${info.blind}` : '')),
+    h('button.btn', { onclick: clearRide, title: 'Start a new, empty ride' }, iconEl(icon.plus), 'New'),
     h('button.btn.primary', { onclick: startRide }, iconEl(icon.go), 'Ride'));
 }
 
@@ -1623,6 +1640,7 @@ function planView() {
   const place = it => it ? it.label.replace(/^(Start|End):?\s*/, '') || 'Pinned on the map' : 'Not set yet';
   return [
     backBar('Plan a ride', oneWay ? 'From your start to where you’re headed, the fun way' : 'A loop from your start through the best roads'),
+    A.rideId() && A.rideName() ? h('p.small.plan-new', {}, 'Planning here makes a new ride. ', h('b', {}, A.rideName()), ' stays in your rides as it is.') : '',
     h('div.seg.shape', {}, [['loop', 'Loop'], ['oneway', 'One way']].map(([v, l]) =>
       h(`button${settings.genShape === v ? '.on' : ''}`, { onclick: () => setSetting({ genShape: v }) }, l))),
     h('div.field', {}, h('label', {}, 'Start'),
@@ -1722,13 +1740,13 @@ function tripView() {
     // Share at the top: the ride page has grown, and it's what you do once a ride looks right.
     backBar('Your ride', P.tripName(trip).replace(/^Ride: /, ''), h('button.btn.head-btn', { onclick: shareTrip }, iconEl(icon.share), 'Share')),
     h('div.section-head', {}, h('h3', {}, `Stops (${trip.items.length})`),
-      h('button.btn.small', { onclick: clearRide }, iconEl(icon.trash), 'Clear all')),
+      h('button.btn.small', { onclick: clearRide }, iconEl(icon.plus), 'New ride')),
     stopList(),
     h('div.btn-row', {},
       h('button.btn', { onclick: () => startPicking('road') }, iconEl(icon.route), 'Add road'),
       h('button.btn', { onclick: () => startPicking('stop') }, iconEl(icon.plus), 'Add stop'),
       h('button.btn', { onclick: async () => {
-        try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
+        try { setStartAt(await locate(), 'Start: my location', { keep: true }); } catch (e) { locationError(e); }
       } }, iconEl(icon.locate), 'Start from me')),
     saveRow(),
     h('div.section', {}, routeSummary()),
@@ -1769,12 +1787,12 @@ function tripView() {
 // No "are you sure": an Undo in the toast instead.
 // A saved ride stays as it was in your rides: clearing starts a new one.
 function clearRide() {
-  const was = trip.items, wasId = A.rideId();
+  const was = trip.items, wasId = A.rideId(), name = wasId && A.rideName();
   trip.items = [];
   gen.index = -1;
   A.setRideId(null);
   tripChanged();
-  toast('Ride cleared', { label: 'Undo', run: () => { trip.items = was; A.setRideId(wasId); tripChanged(); } });
+  toast(name ? `New ride. ${name} stays in your rides.` : 'New ride', { label: 'Undo', run: () => { trip.items = was; A.setRideId(wasId); tripChanged(); } });
 }
 
 // What a ride is made of, kept per route and filters (filters can change after routing, and render runs often).
@@ -2193,7 +2211,7 @@ function fuelSection() {
     h('div.btn-row', {},
       myBike() ? (minOctane() > 87 ? h('p.small.premium-only', {}, `Stations with ${minOctane()}+ only: ${bikeName(myBike())} takes ${minOctane()}.`) : '')
         : h('label.switch', {}, h('input', { type: 'checkbox', checked: trip.need90,
-          onchange: e => { trip.need90 = e.target.checked; fuelChanged(); } }), h('span', {}, '90+ only'))),
+          onchange: e => { trip.need90 = e.target.checked; tripChanged({ reroute: false }); fuelChanged(); } }), h('span', {}, '90+ only'))),
     !f ? h('p.muted.small', {}, 'Gas stops appear once there’s a route.') : h('div', {},
       h('p.muted.small', {}, `${f.ok.length} ${octWords(minOctane())}stations on the route · longest stretch without one: ${Math.round(f.longest)} mi`),
       f.gaps.map(([a, b]) => h('p.warn.small', {}, `⚠ No ${octWords(minOctane())}gas from mile ${Math.round(a)} to ${Math.round(b)}, more than ${complete(myBike()) && a < 1 ? 'what’s in the tank' : 'your range'}.`)),
