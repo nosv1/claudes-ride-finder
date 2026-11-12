@@ -9,7 +9,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.11.8';
+export const APP_VERSION = '2026.11.11.9';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
@@ -175,6 +175,7 @@ export const BIKES = [
   { id: 'mt09', name: 'Yamaha MT-09, 2021+', gal: 3.7, mpg: 45 },
   { id: 'tenere700', name: 'Yamaha Ténéré 700', gal: 4.2, mpg: 52 },
   { id: 'tracer9', name: 'Yamaha Tracer 9 GT', gal: 4.8, mpg: 45 },
+  { id: 'gsxr750', name: 'Suzuki GSX-R750, 2006+', gal: 4.5, mpg: 38 },
   { id: 'sv650', name: 'Suzuki SV650', gal: 3.8, mpg: 50 },
   { id: 'vstrom650', name: 'Suzuki V-Strom 650', gal: 5.3, mpg: 50 },
   { id: 'r1250gs', name: 'BMW R 1250 GS', gal: 5.3, mpg: 45 },

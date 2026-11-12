@@ -69,7 +69,9 @@ Ideas that came up, roughly in order of how much they'd help.
   every stretch, so a spirited ride on a phone, a synced account or a backup is evidence. Proposed: **save which
   roads were ridden and the date, not the trail**: no points, no times, no speeds. That's all Roads you've ridden
   needs. On the device by default; syncing opt-in. (It doesn't touch what the phone and carrier keep; the app just
-  shouldn't keep a better record.) Open, his call: roads only enough, or the trail too? A browser stops GPS with the
+  shouldn't keep a better record.) **Decided 2026-11-11: never record speeds** (nor anything they can be worked out
+  from: no times per point). Still open, the rider's call: kept only in this browser (leaning that way, "shallow
+  storage") or in the account too. A browser stops GPS with the
   screen off, so until the native app it records only while Ride mode keeps the screen on. (Which it does: the
   screen stayed on for a whole ride on 2026-11-11, Low Power Mode too, so recording in Ride mode works in the browser.)
 - (Done 2026-11-11: spots, a tag on one point; Mark spot in Ride mode, one tap, labelled after the ride; see FEATURES.md.

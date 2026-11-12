@@ -1,7 +1,7 @@
 # Ride Finder: features and requirements
 
 Ride Finder helps a motorcyclist find and plan rides on curvy, fast, hilly roads, starting
-with Missouri, Kansas and Texas. This document is the spec for what the app does today. It
+with Missouri, Kansas, Oklahoma and Texas. This document is the spec for what the app does today. It
 lists what each feature must do, the numbers it relies on, and the lessons that shaped it,
 so a rewrite can keep the behavior without rediscovering them.
 
@@ -70,6 +70,10 @@ committed as `tiles/`. The app needs no OSM server at runtime.
   - **Texas** (by state law outside towns): **70 mph** on numbered highways (US, TX, FM/RM, Loop, Spur…),
     **60 mph** on everything else, county roads (`CR`) included. The region comes from the `.pbf` file name.
   - Regression case: the Twisted Sisters (RM 335/336/337 by Leakey) top Best roads in the Hill Country.
+  - **Oklahoma** (added 2026-11-11): **65 mph** on numbered highways (US, OK), **55 mph** on everything else,
+    county roads included (55 unless the county posts lower; from secondary sources, the statute text wasn't
+    reachable). Route numbers are said "Oklahoma 1" / "State Highway 10". Regression case: OK 1 (Talimena Scenic
+    Drive) tops Best roads around Talihina.
 
 **Hills and blind crests** (curvy roads, sweepers and straight back roads)
 - **Hill:** total climbing plus descending in m per km, using a 2 m hysteresis.

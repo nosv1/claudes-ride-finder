@@ -1376,6 +1376,7 @@ function tagSection(g) {
 // Why the map guessed the limit it did, for a road with none posted (build_tiles.py's estimate_mph).
 function guessWhy(r) {
   if (r.estMph === 30) return 'lots of side streets nearby, so it’s taken to be in town';
+  if (r.estMph === 65) return 'the Oklahoma default for numbered highways outside town';
   if (r.estMph >= 60) return 'the Texas default outside town';
   if (r.estMph === 45 && r.hw !== 'unclassified') return 'lots of side streets nearby, but few meet it, so it’s taken to be the edge of town';
   return r.hw === 'unclassified' ? 'the default for county roads' : 'the default for main roads outside town';

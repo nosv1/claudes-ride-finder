@@ -561,6 +561,9 @@ def estimate_mph(row, residential, junctions=None):
         # Texas law outside towns: 70 on numbered highways (US, TX, FM/RM, Loop...), 60 on other
         # roads, county roads (CR) included.
         default = 70 if ref and not ref.startswith("CR") else 60
+    elif region == "oklahoma":
+        # Oklahoma: county roads 55 unless the county posts otherwise; rural numbered highways (US, SH) 65.
+        default = 65 if ref and not ref.startswith("CR") else 55
     else:
         default = 45 if hw == "unclassified" else 55
     if streets_near(lat, lon, residential) >= URBAN_STREETS:

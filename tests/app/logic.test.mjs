@@ -850,8 +850,8 @@ test('Ride mode: a heads-up, then the call, each once, in words and in recorded 
   assert.equal(callout(turn, 600, 20), null);
   assert.deepEqual(callout(turn, 170, 20), { text: 'Turn right onto Missouri Y. Then turn left.', clips: ['right'], name: 'MO Y' });
   assert.equal(callout({ type: 12, names: ['MO Y'], text: 'Make a U-turn' }, 100, 10).name, null, 'no name on a U-turn');
-  assert.deepEqual(['MO 150', 'I-70', 'US 50', 'FM 1431', 'Northeast Strother Road'].map(sayable),
-    ['Missouri 150', 'Interstate 70', 'U.S. 50', 'Farm to Market 1431', 'Northeast Strother Road']);
+  assert.deepEqual(['MO 150', 'I-70', 'US 50', 'FM 1431', 'SH 10', 'Northeast Strother Road'].map(sayable),
+    ['Missouri 150', 'Interstate 70', 'U.S. 50', 'Farm to Market 1431', 'State Highway 10', 'Northeast Strother Road']);
   assert.equal(callout(turn, 100, 20), null);
   assert.deepEqual(callout({ type: 26, exit: 2, text: 'Enter the roundabout' }, 100, 10).clips, ['roundabout', 'exit2']);
   assert.equal(callout({ type: 4, text: 'You have arrived.' }, 100, 10), null, 'the end of the ride says that');

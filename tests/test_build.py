@@ -205,6 +205,9 @@ class TestSpeedAndSurface(unittest.TestCase):
         self.assertEqual(bt.estimate_mph([0, "unclassified", "", "", (30.0, -99.5), "texas"], residential), 60)
         self.assertEqual(bt.estimate_mph([0, "unclassified", "", "CR 123", (30.0, -99.5), "texas"], residential), 60)
         self.assertEqual(bt.estimate_mph([0, "tertiary", "", "FM 1431", town, "texas"], residential), 30)
+        # Oklahoma: numbered highways 65, county roads 55.
+        self.assertEqual(bt.estimate_mph([0, "secondary", "", "SH 10", (36.0, -95.0), "oklahoma"], residential), 65)
+        self.assertEqual(bt.estimate_mph([0, "unclassified", "", "", (36.0, -95.0), "oklahoma"], residential), 55)
 
     def test_edge_of_town(self):
         """Among subdivisions, only roads that streets actually meet often are town. NE Strother Rd (Lee's Summit):
