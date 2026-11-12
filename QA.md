@@ -63,6 +63,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - +15 min finds ways there about 15 min longer than the Fastest way (listed last); each card's "+N min" pill says
   how much longer, and picking Fastest loads just the start and the end. With nothing close enough it says so.
 - The ride page of a ride with an end offers "Find a more fun way there" (+15 min and up), not Generate a loop.
+- After Generate / Find fun ways there, the sheet scrolls to what it found or said (on a phone too); with nothing
+  worth it, a "Try +30 min" button (the next extra time) runs again.
 - Every page ends with the same links (account, About, Install, Update) and the version, minus the page you're on.
 - Switching back to Loop generates loops again.
 

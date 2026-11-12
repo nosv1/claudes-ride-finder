@@ -589,12 +589,30 @@ function stopGenerating(status = 'Stopped.') {
 async function generate() {
   if (gen.running) return stopGenerating();
   const run = ++genRun;
+  revealGen();
   try {
     await generateRun(run);
   } catch (e) {
     if (e !== STOPPED) throw e;
   }
+  if (run === genRun) revealGen();
 }
+
+// Plan a ride opens at the top, and what Generate says (or finds) is at the bottom: scroll to it, so a
+// quick "nothing close enough" isn't missed.
+function revealGen() {
+  setTimeout(() => {
+    if (view !== 'plan') return;
+    // The message (and Try +30 min) mid-sheet; ways found, from the first one down.
+    const msg = document.querySelector('#sheetBody .gen-status'), cards = document.querySelector('#sheetBody .cards');
+    if (msg) msg.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    else if (cards) cards.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, 80);
+}
+
+// One way, nothing worth it in that extra time: the next longer choice, to try in one tap.
+const EXTRAS = [0.25, 0.5, 1, 1.5, 2, 3, 4];
+const nextExtra = () => EXTRAS.find(t => t > settings.genExtra) || null;
 
 async function generateRun(run) {
   const live = () => { if (run !== genRun) throw STOPPED; };
@@ -666,7 +684,7 @@ async function generateRun(run) {
   for (const g of groups) g.score *= weightOf(g.ids);
   const options = P.buildOptions(groups, s, planHours, required, e);
   if (!options.length) {
-    gen = { options: [], index: -1, running: false, status: oneWay ? `No good roads close enough to the way there for ${extraLabel(settings.genExtra)}. Try more extra time, or loosen the filters.`
+    gen = { options: [], index: -1, running: false, next: oneWay ? nextExtra() : null, status: oneWay ? `No good roads close enough to the way there for ${extraLabel(settings.genExtra)}. Try more extra time, or loosen the filters.`
       : 'No good roads within reach. Try a longer ride, or loosen the filters.' };
     return renderSoon();
   }
@@ -721,7 +739,7 @@ async function generateRun(run) {
   const list = fastest ? shown : shown.length ? shown : options;
   list.sort((a, b) => worth(b) - worth(a));
   if (fastest) list.forEach(o => { o.vsFastest = o.route && o.route.seconds - fastest.route.seconds; });
-  gen = { options: fastest ? [...list, fastest] : list, index: -1, running: false, status };
+  gen = { options: fastest ? [...list, fastest] : list, index: -1, running: false, status, next: fastest && !list.length ? nextExtra() : null };
   if (gen.options[0].route) selectOption(0);
   else renderSoon();
 }
@@ -1556,7 +1574,8 @@ function planView() {
     mustInclude(),
     oneWay ? extraTime() : rideTime(),
     h('button.cta', { onclick: generate }, iconEl(icon.route), gen.running ? 'Stop' : oneWay ? 'Find fun ways there' : 'Generate loops'),
-    gen.status ? h('p.muted', {}, gen.status) : '',
+    gen.status ? h('p.muted.gen-status', {}, gen.status,
+      !gen.running && gen.next ? h('button.btn.small.try-next', { onclick: () => { setSetting({ genExtra: gen.next }); generate(); } }, `Try ${extraLabel(gen.next)}`) : '') : '',
     gen.options.length ? h('div.cards', {}, gen.options.map(optionCard)) : '',
     gen.index >= 0 ? h('button.btn.primary.wide.sticky', { onclick: () => go('trip') }, gen.options[gen.index] && gen.options[gen.index].oneWay ? 'Ride this way →' : 'Ride this loop →') : '',
     h('p.fineprint', {}, 'Uses the filters at the top (speed, hills, paved). Riding time doesn’t include stops. Or build your own: tap roads on the map and Add to ride.'),
@@ -1570,7 +1589,7 @@ const rideTime = (label = 'Ride time') => h('div.field', {}, h('label', {}, labe
 // One way: how much longer than the straight way there to spend on fun roads.
 const extraLabel = t => t < 1 ? `+${Math.round(t * 60)} min` : t === 1.5 ? '+1½ h' : `+${t} h`;
 const extraTime = (label = 'Extra time for fun roads') => h('div.field', {}, h('label', {}, label),
-  h('div.seg.extra-time', {}, [0.25, 0.5, 1, 1.5, 2, 3, 4].map(t => h(`button${settings.genExtra === t ? '.on' : ''}`,
+  h('div.seg.extra-time', {}, EXTRAS.map(t => h(`button${settings.genExtra === t ? '.on' : ''}`,
     { onclick: () => setSetting({ genExtra: t }) }, extraLabel(t)))),
   h('p.muted.small', {}, 'On top of the fastest way there, which is listed too, to compare.'));
 
