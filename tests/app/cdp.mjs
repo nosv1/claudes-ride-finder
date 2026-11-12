@@ -1,6 +1,6 @@
 // Drive headless Edge/Chrome over the DevTools protocol with real waiting (headless
 // --virtual-time-budget races ahead of MapLibre's background workers). Used by the v2 browser
-// tests and handy for screenshots:
+// tests and handy for screenshots. Muted: Ride mode's voice would otherwise play out of the PC's speakers.
 //
 //   node tests/app/cdp.mjs http://127.0.0.1:8765/ shot.png [--mobile] [--wait "<js expr>"]
 import { spawn } from 'node:child_process';
@@ -23,7 +23,7 @@ export async function launch({ mobile = false, width = 1400, height = 900 } = {}
   const exe = CANDIDATES.find(p => existsSync(p));
   if (!exe) throw new Error('No Edge/Chrome found; set BROWSER.');
   const port = 9300 + Math.floor(Math.random() * 600), dir = mkdtempSync(join(tmpdir(), 'rf-cdp-'));
-  const proc = spawn(exe, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${dir}`,
+  const proc = spawn(exe, ['--headless=new', '--mute-audio', `--remote-debugging-port=${port}`, `--user-data-dir=${dir}`,
     '--disable-extensions', '--no-first-run', `--window-size=${width},${height}`, 'about:blank'], { stdio: 'ignore' });
 
   let target;
