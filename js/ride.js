@@ -7,7 +7,7 @@ import { Guide, callout, shown, turnName } from './nav.js';
 import { bearing, distance, relAngle, miles, fmtDuration } from './geo.js';
 import { turnArrow, turnOnto, turn } from './fly.js';
 import { icon, h, toast } from './ui.js';
-import { TAGS } from './tags.js';
+import { TAGS, spotKind } from './tags.js';
 import { speak, hush, preload, loadNames } from './voice.js';
 
 // What Ride mode says besides the turns: the words (for the phone's voice) and the recorded clip.
@@ -16,6 +16,8 @@ const LINES = {
   voiceon: 'Voice on.', off: 'You’re off the ride. Finding a way back.', back: 'Back on your ride.',
   skipped: 'Picking up your ride from here.', crest: 'Blind crest ahead.',
   arrive: 'You’ve arrived. Nice ride.', arriveloop: 'You’re back where you started. Nice ride.',
+  marked: 'Spot marked.', spotmarked: 'Marked spot ahead.', spotbump: 'Bump ahead.', spotpothole: 'Pothole ahead.',
+  spotgravel: 'Gravel ahead.', spothazard: 'Watch out ahead.',
 };
 const line = k => ({ text: LINES[k], clips: [k] });
 
@@ -28,8 +30,9 @@ export class Ride {
   // route: the planned ride. reroute(p, heading, target): a route from p onto the ride at target ({ p, heading }), or
   // null. roadAt(p, heading): the road there ({ ref, name, limit, posted }) or null. crests: [{ mile }] on the ride.
   // tagRoad(k, p, heading): tag the road you're on, returning its name (or null if there's no mapped road there).
+  // spots: your spots on the ride ([{ spot, mile }]), called out coming up on them; markSpot(p): mark one where you are.
   // voice: start with it on; onVoice(on) when it's switched. loop: the ride ends where it started. onClose().
-  constructor(mapView, { route, reroute, roadAt, crests, tagRoad, voice = true, onVoice = () => {}, loop = false, onClose }) {
+  constructor(mapView, { route, reroute, roadAt, crests, tagRoad, spots, markSpot, voice = true, onVoice = () => {}, loop = false, onClose }) {
     this.mapView = mapView;
     this.map = mapView.map;
     this.route = route;
@@ -40,6 +43,9 @@ export class Ride {
     this.loop = loop;
     this.onClose = onClose;
     this.crests = (crests || []).map(c => ({ m: c.mile * 1609.34 }));
+    this.spots = (spots || []).map(x => ({ m: x.mile * 1609.34, kind: spotKind(x.spot) }));
+    this.markSpot = markSpot;
+    this.marked = [];         // spots marked on this ride, to label after it
     this.guide = new Guide(route, { reroute, onDetour: () => { this.say(line('detour')); this.showDetour(); this.update(); } });
     this.fix = null;          // the latest GPS fix
     this.shownAt = null;      // where the arrow is drawn, gliding from fix to fix
@@ -90,6 +96,9 @@ export class Ride {
     this.banner = h('div.ride-banner', {}, h('div.ride-next', {}, this.arrowEl, h('div.ride-words', {}, this.distEl, this.ontoEl)),
       this.thenEl, this.skipBtn);
     this.crestEl = h('div.fly-crest.ride-crest', { hidden: true });
+    this.spotEl = h('div.fly-crest.ride-crest.ride-spot', { hidden: true });
+    // One tap, no menus: a bump just happened. It's labelled after the ride.
+    this.markBtn = h('button.btn.ride-mark', { onclick: () => this.mark() }, h('span', { html: icon.pin }), 'Mark spot');
     this.roadEl = h('div.ride-road');
     this.speedEl = h('div.ride-speed');
     this.limitEl = h('div.fly-limit.ride-limit', { hidden: true });
@@ -105,7 +114,8 @@ export class Ride {
       })),
       h('button.btn.wide', { onclick: () => { this.tagSheet.hidden = true; } }, 'Cancel'));
     this.panel = h('div.ride-panel', {},
-      h('div.ride-above', {}, this.crestEl, this.recenterBtn),
+      h('div.ride-above', {}, this.crestEl, this.spotEl, this.recenterBtn),
+      this.markBtn,
       h('div.ride-status', {}, h('div.ride-here', {}, this.roadEl, this.leftEl), this.speedEl, this.limitEl),
       h('div.ride-btns', {},
         this.voiceBtn,
@@ -176,7 +186,18 @@ export class Ride {
     if (call) return this.say(call);
     if (this.guide.state !== 'on') return;
     const m = this.guide.main.m, c = this.crests.find(x => x.m - m > 0 && x.m - m < Math.max(150, v * 12));
-    if (c && !c.said) { c.said = true; this.say(line('crest')); }
+    if (c && !c.said) { c.said = true; return this.say(line('crest')); }
+    const s = this.spots.find(x => x.m - m > 0 && x.m - m < Math.max(150, v * 12));
+    if (s && !s.said) { s.said = true; if (s.kind.say) this.say(line(s.kind.say)); }
+  }
+
+  // Mark spot: a pin where you are, labelled after the ride.
+  mark() {
+    const f = this.fix;
+    if (!f) return toast('Waiting for GPS to know where you are.');
+    this.marked.push(this.markSpot(f.p));
+    this.say(line('marked'));
+    toast(`Spot marked${this.marked.length > 1 ? ` (${this.marked.length} this ride)` : ''}. Label it after the ride.`);
   }
 
   frame(now) {
@@ -291,8 +312,16 @@ export class Ride {
     const leftS = this.route.seconds * g.leftM / Math.max(1, g.main.total);
     this.leftEl.textContent = state === 'done' ? `${miles(this.ridden)} mi ridden` : `${miles(g.leftM)} mi left · ${this.loop ? 'back' : 'there'} about ${clock(Date.now() + leftS * 1000)}`;
     const m = g.main.m, crest = state === 'on' && this.crests.find(c => c.m - m > -30 && c.m - m < NAV.crestM);
+    const ft = d => `${Math.round(d * 3.281 / 10) * 10} ft`;
     this.crestEl.hidden = !crest;
-    if (crest) this.crestEl.textContent = crest.m - m > 30 ? `⚠ Blind crest ahead · ${Math.round((crest.m - m) * 3.281 / 10) * 10} ft` : '⚠ Blind crest';
+    if (crest) this.crestEl.textContent = crest.m - m > 30 ? `⚠ Blind crest ahead · ${ft(crest.m - m)}` : '⚠ Blind crest';
+    // Your spots, from about 1,000 ft out.
+    const spot = state === 'on' && this.spots.find(s => s.m - m > -30 && s.m - m < NAV.spotM);
+    this.spotEl.hidden = !spot;
+    if (spot) {
+      this.spotEl.style.setProperty('--c', spot.kind.color);
+      this.spotEl.textContent = spot.m - m > 30 ? `⚠ ${spot.kind.label} ahead · ${ft(spot.m - m)}` : `⚠ ${spot.kind.label}`;
+    }
   }
 
   close() {

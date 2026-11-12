@@ -71,10 +71,8 @@ Ideas that came up, roughly in order of how much they'd help.
   shouldn't keep a better record.) Open, his call: roads only enough, or the trail too? A browser stops GPS with the
   screen off, so until the native app it records only while Ride mode keeps the screen on. (Which it does: the
   screen stayed on for a whole ride on 2026-11-11, Low Power Mode too, so recording in Ride mode works in the browser.)
-- **Tags on a spot, not a whole road** (asked 2026-11-11): a bump is a point. A tag pinned where it was dropped (or a
-  short stretch), shown on the map there and called out in Ride mode as it's approached. After the ride: long-press
-  the spot. While riding: one big button, or saying "bump", drops a pin where the rider is, labelled after the ride.
-  Open, his call: button, voice, or after the ride only? Whole-road tags (Don't ride) stay as they are.
+- (Done 2026-11-11: spots, a tag on one point; Mark spot in Ride mode, one tap, labelled after the ride; see FEATURES.md.
+  The rider's Cardo mic isn't good enough for voice commands, so no "say bump".)
 - **Road tags with others**: tags are on the device now. With accounts (below), sync them across your devices, and
   maybe let riders share them ("12 riders say rough") so a bad road warns everyone.
 - **Weather layer: ride or not, at a glance**. Not a weather app: only what decides a ride (wet roads, storms,

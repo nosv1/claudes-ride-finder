@@ -7,7 +7,7 @@ import { boundsOf, distance, decodePolyline, spotOnLine, headingOnPath, alongRou
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, rollersInView, hillLevel, roadNear, roadAlong, setMyMph, limitOf } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn } from '../../js/plan.js';
+import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
@@ -924,3 +924,11 @@ test('your speed limit on a road: Best rides’ speed chip and the Speed limits 
   assert.equal(visible(posted, FILTERS), false);
 });
 
+
+test('your spots on a ride: the ones it passes within 30 m, in the order it passes them', () => {
+  const path = [[38.9, -94.4], [38.9, -94.39], [38.9, -94.38]];   // about 1.7 km east
+  const spot = (lat, lon, id) => ({ id, spot: [lat, lon] });
+  const hits = spotsOn(path, [spot(38.9001, -94.382, 'late'), spot(38.9, -94.395, 'early'), spot(38.91, -94.39, 'off')]);
+  assert.deepEqual(hits.map(x => x.spot.id), ['early', 'late'], 'the one 1 km off the road isn’t on it');
+  assert.ok(hits[0].mile > 0.2 && hits[0].mile < 0.3 && hits[1].mile > 0.9 && hits[1].mile < 1.1, JSON.stringify(hits.map(x => x.mile)));
+});

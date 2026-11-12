@@ -11,7 +11,8 @@ import * as W from './weather.js';
 import { Fly } from './fly.js';
 import { Ride } from './ride.js';
 import { phoneVoices, recorded, loadVoices, voicePick, setVoicePick, speak, loadNames, SAMPLE, RATES } from './voice.js';
-import { TAGS, allTags, tagOf, setTags, setSpeed, speedFixes, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged } from './tags.js';
+import { TAGS, allTags, tagOf, setTags, setSpeed, speedFixes, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged,
+  SPOT_KINDS, spotKind, spots, spotById, addSpot, setSpot, removeSpot, spotsForMap } from './tags.js';
 import * as A from './account.js';
 import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox, loadSignals } from './store.js';
 import { MapView } from './mapview.js';
@@ -76,7 +77,7 @@ const mapView = new MapView('map', {
     return { top: Sheet.wide() ? 0 : $('#topbar').getBoundingClientRect().bottom, right: 0, bottom: c.bottom, left: c.left };
   },
 });
-window.RF = { store, mapView, go: (v, arg) => go(v, arg), get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, get fly() { return fly; }, get ride() { return ride; }, setRoute: r => { routeSeq++; clearTimeout(routeTimer); setRoute(r); }, settings, account: A };
+window.RF = { store, mapView, go: (v, arg) => go(v, arg), get view() { return view; }, get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, get fly() { return fly; }, get ride() { return ride; }, setRoute: r => { routeSeq++; clearTimeout(routeTimer); setRoute(r); }, settings, account: A };
 
 async function start() {
   // The side panel starts below the top bar, whose height depends on how the chips wrap.
@@ -103,8 +104,10 @@ async function start() {
   addEventListener('resize', () => mapView.updateInsets());
   mapView.setStations(store.fuel);
   mapView.setTags(tagsForMap());
+  mapView.setSpots(spotsForMap());
   onTagsChanged(() => {
     mapView.setTags(tagsForMap());
+    mapView.setSpots(spotsForMap());
     if (applySpeedFixes()) mapView.setRoads(store.roads);
     A.dataChanged();
     renderSoon();
@@ -140,6 +143,7 @@ async function start() {
   });
   mapView.on('road', onRoadTap);
   mapView.on('station', k => { if (!usePick(null)) go('station', store.fuel[k]); });
+  mapView.on('spot', (id, at) => { if (!usePick(at)) go('spot', id); });
   mapView.on('pin', () => { if (place && !usePick(place.at)) go('place', place); });
   mapView.on('stop', () => { if (!picking) go('trip'); });
   mapView.on('empty', at => { if (!usePick(at)) { clearSelection(); speedAt(at); } });
@@ -958,7 +962,7 @@ function selectGroup(g) {
 function clearSelection() {
   selected = null;
   mapView.highlight(null);
-  if (view === 'road' || view === 'station' || view === 'place') go('home');
+  if (view === 'road' || view === 'station' || view === 'place' || view === 'spot') go('home');
 }
 
 function onHover(id) {
@@ -976,6 +980,7 @@ function spotMenu(at, pt) {
     { label: 'End a ride here', icon: icon.flag, run: () => { setEndAt(at, 'End'); go('plan'); } },
     g ? { label: `Ride ${g.key} end to end`, icon: icon.route, run: () => addRoad(g) } : null,
     { label: 'Add a stop here', icon: icon.plus, run: () => { T.addPoint(trip, at, 'Stop'); tripChanged(); toast('Stop added. Drag its pin to adjust.'); } },
+    { label: 'Mark a spot here (a bump, a pothole)', icon: icon.warn, run: () => go('spot', addSpot(at).id) },
     savedAt(at) ? { label: `Your place: ${savedAt(at).name}`, icon: placeIcon(savedAt(at).name), run: () => openPlace(savedAt(at)) }
       : { label: 'Save this place', icon: icon.home, run: () => { openPlace({ name: '', at }); naming = true; renderSoon(); } },
     { label: 'Street View here', icon: icon.person, run: () => window.open(sv, '_blank', 'noopener') },
@@ -1024,7 +1029,7 @@ function go(v, arg = null) {
   if (v !== 'place' || arg !== viewArg) naming = false;  // another view, or another place
   view = v;
   viewArg = arg;
-  if (v === 'station' || v === 'place') selected = null;
+  if (v === 'station' || v === 'place' || v === 'spot') selected = null;
   if (v === 'home' || v === 'station' || v === 'place') mapView.highlight(selected && v === 'home' ? selected.group.ids : null);
   render();
   if (changed) $('#sheetBody').scrollTop = 0;
@@ -1042,7 +1047,8 @@ function render() {
   if (dragging) return;
   // Typing in the sheet (a ride's name, a tag's note): wait until it's done, or the box would be redrawn under you.
   if (document.activeElement && document.activeElement.matches('#sheetBody input[type=text]')) return;
-  const views = { home: homeView, road: roadView, station: stationView, place: placeView, plan: planView, trip: tripView, about: aboutView, account: accountView };
+  const views = { home: homeView, road: roadView, station: stationView, place: placeView, plan: planView, trip: tripView, about: aboutView, account: accountView,
+    spot: spotView, spots: spotsView };
   $('#sheetBody').replaceChildren(...[(views[view] || homeView)(), footLinks()].flat(Infinity).filter(Boolean));
 }
 
@@ -1070,6 +1076,7 @@ function homeView() {
           : highwaysOnly() ? 'No fast ramps or highway sweeps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
     rollerList(),
     yourRides(3),
+    spotsLink(),
     h('button.cta.sticky', { onclick: () => go('plan') }, iconEl(icon.route), 'Plan a ride'),
     h('p.fineprint', {}, 'Road data © OpenStreetMap contributors. Many rural speed limits are estimated. Always check conditions before you ride.'),
   ];
@@ -1508,6 +1515,60 @@ function stationView() {
   ];
 }
 
+// ---------- your spots ----------
+// A bump or a pothole: one point, not a road. Marked in Ride mode with one tap (labelled after the ride), or from the
+// map's long-press menu. Ride mode shows the ones on a ride coming up and says "Bump ahead".
+
+const spotWhen = s => new Date(s.made || s.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const openSpot = s => { mapView.flyTo(s.spot, Math.max(mapView.zoom(), 15)); go('spot', s.id); };
+const spotPicks = (s, keep) => h('div.tag-picks', {}, SPOT_KINDS.map(x => h(`button.tag-pick${s.kind === x.k ? '.on' : ''}`,
+  { style: `--c:${x.color}`, onclick: () => setSpot(s.id, { kind: keep && s.kind === x.k ? null : x.k }) }, x.label)));
+
+function spotsLink() {
+  const all = spots(), todo = all.filter(s => !s.kind).length;
+  return all.length ? h('button.link.spots-link', { onclick: () => go('spots') }, iconEl(icon.warn),
+    `Your spots (${all.length}${todo ? `, ${todo} to label` : ''})`) : '';
+}
+
+function spotView() {
+  const s = spotById(viewArg);
+  if (!s) return homeView();
+  const k = spotKind(s), [lat, lon] = s.spot;
+  return [
+    backBar(k.label, `Marked ${spotWhen(s)}`),
+    h('div.section.tags-section', {},
+      h('h3', {}, iconEl(icon.tag), 'What’s here'),
+      spotPicks(s, true),
+      h('input.tag-note', { type: 'text', placeholder: 'A note, like “dip at the bridge, stay left”', value: s.note || '', maxlength: 200,
+        onchange: e => setSpot(s.id, { note: e.target.value.trim() }) })),
+    h('div.actions', {},
+      h('a.btn', { href: `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`, target: '_blank', rel: 'noopener' }, iconEl(icon.person), 'Street View'),
+      h('button.btn', { onclick: () => {
+        const was = removeSpot(s.id);
+        go(spots().length ? 'spots' : 'home');
+        toast('Spot removed.', { label: 'Undo', run: () => restoreTags(was) });
+      } }, iconEl(icon.trash), 'Remove'),
+      h('button.btn', { onclick: () => go('spots') }, iconEl(icon.warn), 'All your spots')),
+    h('p.fineprint', {}, 'Kept with your road tags (in your account if you’re signed in). On a ride that passes it, Ride mode shows it coming up and says “Bump ahead” (not for Nice view). In Ride mode, Mark spot drops one where you are.'),
+  ];
+}
+
+// Newest first: after a ride, the ones just marked are on top, each with its labels to tap.
+function spotsView() {
+  const list = spots().slice().sort((a, b) => (b.made || b.at) - (a.made || a.at)), todo = list.filter(s => !s.kind).length;
+  return [
+    backBar('Your spots', list.length ? (todo ? `${todo} to label: tap what each one was` : `${list.length} marked`) : null),
+    list.length ? h('div.cards', {}, list.map(s => {
+      const k = spotKind(s);
+      return h('div.card.spot-card', {},
+        h('div.spot-head', { onclick: () => openSpot(s), title: 'Show it on the map' },
+          h('span.spot-dot', { style: `--c:${k.color}` }), h('b', {}, k.label), h('span.muted.small.push', {}, spotWhen(s))),
+        s.note ? h('div.muted.small', {}, s.note) : '',
+        s.kind ? '' : spotPicks(s, false));
+    })) : h('p.muted', {}, 'None yet. In Ride mode, tap Mark spot where there’s a bump or a pothole, or long-press a spot on the map and choose Mark a spot here.'),
+  ];
+}
+
 // A place found in search: ride to it, from it, or through it.
 function placeView() {
   const p = viewArg;
@@ -1864,6 +1925,7 @@ function startRide() {
   loadTilesAlong(r.path, { speed: true });  // speed limits for every road on it, and roads to tag
   ride = new Ride(mapView, {
     route: r, loop: trip.loop, roadAt, tagRoad: tagHere, crests: P.blindCrestsOn(r.path, store.roads),
+    spots: P.spotsOn(r.path, spots()), markSpot: p => addSpot(p),
     voice: load(VOICE_KEY) !== false, onVoice: on => save(VOICE_KEY, on),
     // The way back onto the ride: from where you are, the way you're going, onto it going its way. If the router
     // can't match that (it falls back to the plain one, which has no turns to call), without the way at the end.
@@ -1871,7 +1933,15 @@ function startRide() {
       const r = await fetchRoute([{ p, via: false, heading }, { p: to.p, via: false, heading: to.heading }], +trip.pref);
       return r && r.fallback ? (await fetchRoute([{ p, via: false, heading }, { p: to.p, via: false }], +trip.pref)) || r : r;
     },
-    onClose: () => { ride = null; mapView.updateInsets(); mapView.fit(boundsOf(r.path)); renderSoon(); },
+    // Spots marked on the way: the list, to label them.
+    onClose: () => {
+      const marked = ride.marked.length;
+      ride = null;
+      mapView.updateInsets();
+      mapView.fit(boundsOf(r.path));
+      if (marked) go('spots');
+      else renderSoon();
+    },
   });
 }
 

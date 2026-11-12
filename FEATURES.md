@@ -663,6 +663,11 @@ colored road), Add a stop here, Street View here.
   left and when you'd be back (or there). **Tag road** (big buttons: Rough, Gravel, Don't ride, Great) tags the mile
   or so of the road around you. **End** takes two taps (a bump on the mount doesn't end it). At the end: miles ridden
   and time.
+- **Mark spot** (big and round, right above the bar): one tap pins where you are and says "Spot marked.", no menus.
+  After the ride, Your spots opens with the ones just marked, each with its labels to tap.
+- **Your spots on the ride** (within 30 m of it): a banner in the spot's color from about 1,000 ft out ("⚠ Bump ahead ·
+  300 ft") and, at the same lead as blind crests, "Bump ahead." / "Pothole ahead." / "Gravel ahead." / "Watch out
+  ahead." / "Marked spot ahead." (Nice view is shown, not said). Warnings sit at the left, clear of Mark spot.
 - The screen is kept awake (Wake Lock, again on coming back). A web app only runs in front: screen on, phone mounted
   and charging. No background or screen-off guidance (that needs a native app: BACKLOG.md).
 
@@ -714,6 +719,14 @@ colored road), Add a stop here, Street View here.
   it's loaded. Update reloads (rides and settings are saved). **Before pushing a change to what the site serves,
   run `node tools/bump_version.mjs`**, which sets both; a test checks they agree.
 - Map imagery, terrain and fonts are cached as you browse (cache-first), up to ~4,000 tiles.
+
+**Your spots** (a bump, a pothole: one point, not a road)
+- Kinds: Bump, Pothole, Gravel, Watch out, Nice view; unlabelled ones are "Marked spot". Each is a dot in its color
+  on the map, named from zoom 12; tapping it opens its page (the kind, a note, Street View, Remove with Undo).
+- Made with Mark spot in Ride mode, or the map's long-press menu → Mark a spot here. Home lists "Your spots (3, 1 to
+  label)" when there are any.
+- Kept in the road-tags list (`rf2-tags`, `tags.js`) as `{ id, spot, kind, note, made, at, tags: [], pieces: [] }`, so
+  they follow the account with the tags and an older copy of the app passes them on; `mergeTags` keeps one of each id.
 
 ## 6. Constraints and lessons (don't relearn these)
 

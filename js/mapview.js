@@ -112,6 +112,7 @@ export class MapView {
           ridden: { type: 'geojson', data: EMPTY },
           detour: { type: 'geojson', data: EMPTY },
           tags: { type: 'geojson', data: EMPTY },
+          spots: { type: 'geojson', data: EMPTY },
         },
         // Only seen when tilted: a hazy horizon instead of black.
         sky: { 'sky-color': '#3d5a80', 'horizon-color': '#9db4c8', 'fog-color': '#6f8296',
@@ -174,6 +175,13 @@ export class MapView {
             'symbol-placement': 'line', 'symbol-spacing': 400, 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'],
             'text-size': 11, 'text-offset': [0, -1.1] }, paint: {
             'text-color': ['match', ['get', 'k'], ...TAGS.flatMap(t => [t.k, t.color]), '#fff'], 'text-halo-color': '#111', 'text-halo-width': 1.6 } },
+          // Your spots (a bump, a pothole): a dot in the kind's color, named when zoomed in.
+          { id: 'spots', type: 'circle', source: 'spots', minzoom: 8, paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 4, 14, 8], 'circle-color': ['get', 'color'],
+            'circle-stroke-color': '#111', 'circle-stroke-width': 2, 'circle-pitch-alignment': 'viewport' } },
+          { id: 'spots-label', type: 'symbol', source: 'spots', minzoom: 12, layout: {
+            'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-offset': [0, -1.3],
+            'text-allow-overlap': false }, paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#111', 'text-halo-width': 1.6 } },
           { id: 'blind', type: 'symbol', source: 'blind', minzoom: 11, layout: {
             'icon-image': 'blind', 'icon-size': 0.85, 'icon-allow-overlap': true, 'icon-pitch-alignment': 'viewport' } },
           { id: 'fuel', type: 'circle', source: 'fuel', minzoom: 9, layout: { visibility: 'none' }, paint: {
@@ -396,6 +404,11 @@ export class MapView {
     if (!src) return;
     src.setData(fc(list.flatMap(t => t.geoms.map(g => line(g, { k: t.main, label: t.label })))));
   }
+  // Your spots: [{ id, p, color, label }].
+  setSpots(list) {
+    const src = this.map.getSource('spots');
+    if (src) src.setData(fc(list.map(s => point(s.p, { id: s.id, color: s.color, label: s.label }))));
+  }
   // Route numbers and arrows along the road crowd a low 3D view (a fly-through names the road itself).
   showRoadMarks(on) {
     for (const id of ['shields', 'route-shields', 'route-arrows']) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
@@ -481,6 +494,8 @@ export class MapView {
 
     map.on('click', e => {
       if (this.suppressClick) { this.suppressClick = false; return; }
+      const spot = map.queryRenderedFeatures(box(e.point, 10), { layers: ['spots'] });
+      if (spot.length) return this.emit('spot', spot[0].properties.id, [e.lngLat.lat, e.lngLat.lng]);
       const fuel = map.queryRenderedFeatures(box(e.point, 8), { layers: ['route-fuel', 'fuel'] });
       if (fuel.length) return this.emit('station', fuel[0].properties.k);
       const id = roadAt(e.point, 10);
@@ -492,7 +507,7 @@ export class MapView {
       let last = null;
       map.on('mousemove', e => {
         const id = roadAt(e.point, 5);
-        map.getCanvas().style.cursor = id != null || map.queryRenderedFeatures(box(e.point, 6), { layers: ['fuel', 'route-fuel'] }).length ? 'pointer' : '';
+        map.getCanvas().style.cursor = id != null || map.queryRenderedFeatures(box(e.point, 6), { layers: ['fuel', 'route-fuel', 'spots'] }).length ? 'pointer' : '';
         if (id !== last) { last = id; this.emit('hover', id); }
       });
     }

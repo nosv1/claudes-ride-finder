@@ -9,7 +9,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.11.4';
+export const APP_VERSION = '2026.11.11.5';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
@@ -147,7 +147,7 @@ export const NAV = {
   onM: 35, slackM: 30, offFixes: 3, backM: 60, aheadM: 2000, stoppedAheadM: 200, movingMps: 3,
   rejoinM: 30, rejoinAngle: 50, finishM: 2000, arriveM: 60,
   rerouteS: 15, rerouteMovedM: 150, stepM: 100, skipM: 300, sooner: 0.2, behindM: 1500, skipAheadM: 3000,
-  headsUpS: 35, headsUpM: 700, callS: 9, callM: 120, crestM: 400,
+  headsUpS: 35, headsUpM: 700, callS: 9, callM: 120, crestM: 400, spotM: 300,
 };
 
 export const GOOGLE = { perPart: 9, parts: 2, pastTurn: 200, minSpacing: 800, maxGap: 25000 };

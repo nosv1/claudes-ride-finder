@@ -214,10 +214,14 @@ async function pushData() {
   } catch (e) { /* sent again on the next change or start */ }
 }
 
-// Two lists of road tags as one: where both tag the same road, the newer tag wins.
+// Two lists of road tags as one: where both tag the same road, the newer tag wins (spots: the same spot, by its id).
 export function mergeTags(a, b) {
-  const out = [], seen = new Set();
+  const out = [], seen = new Set(), spotIds = new Set();
   for (const t of [...a, ...b].sort((x, y) => y.at - x.at)) {
+    if (t.spot) {
+      if (!spotIds.has(t.id)) { spotIds.add(t.id); out.push(t); }
+      continue;
+    }
     if (t.pieces.some(p => seen.has(p.id))) continue;
     t.pieces.forEach(p => seen.add(p.id));
     out.push(t);

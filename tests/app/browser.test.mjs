@@ -550,6 +550,8 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   assert.ok(await page.eval("__said.includes('In half a mile, turn right onto Missouri D.')"));
   assert.ok(await page.eval("!!document.querySelector('.voice-field select option')"), 'a list of voices (the phone’s default at least)');
   await page.eval("localStorage.removeItem('rf2-voice-pick')");
+  // A bump you marked before, on the ride a little past where it picks you up again below.
+  await page.eval(`import('./js/tags.js').then(T => { const g = RF.store.byId.get(${MO150}).geom; T.addSpot(g[Math.floor(g.length / 2) + 5], 'bump'); })`);
   await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Ride it here/.test(b.textContent)).click()");
   assert.ok(await page.eval("RF.ride && document.body.classList.contains('riding')"));
   assert.equal(await page.eval("getComputedStyle(document.getElementById('sheet')).display"), 'none', 'the panel steps aside');
@@ -605,6 +607,14 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   await gps(mid + 4);
   assert.equal(await page.eval('RF.ride.guide.state'), 'on');
   assert.ok(await page.eval("__said.some(t => /Back on your ride|Picking up your ride/.test(t))"));
+  // Coming up on the bump: on screen, and said.
+  assert.ok(await page.eval("__said.includes('Bump ahead.')"), await page.eval('JSON.stringify(__said)'));
+  assert.match(await page.eval("document.querySelector('.ride-spot').hidden ? '' : document.querySelector('.ride-spot').innerText"), /Bump( ahead · \d+ ft)?/);
+  // Mark spot: one tap, where you are, labelled after the ride.
+  await page.eval("document.querySelector('.ride-mark').click()");
+  assert.match(await page.eval("document.getElementById('toast').innerText"), /Spot marked\. Label it after the ride/);
+  assert.ok(await page.eval("__said.includes('Spot marked.')"));
+  assert.equal(await page.eval("import('./js/tags.js').then(T => T.spots().filter(s => !s.kind).length)"), 1);
   // Tag road: Rough, on the road you're on.
   await page.eval("[...document.querySelectorAll('.ride-btn')].find(b => /Tag road/.test(b.textContent)).click()");
   await page.eval("[...document.querySelectorAll('.ride-tag')].find(b => b.textContent === 'Rough').click()");
@@ -615,6 +625,11 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   assert.ok(await page.eval('!!RF.ride'), 'one tap doesn’t end it');
   await page.eval("document.querySelector('.ride-btn.end').click()");
   assert.ok(await page.eval("!RF.ride && !document.body.classList.contains('riding') && !document.querySelector('.ride-banner') && window.__cleared === 7"));
+  // The spot marked on the way: the list opens, to say what it was.
+  await page.waitFor("RF.view === 'spots'", 5000);
+  assert.match(await sheetText(), /Your spots[\s\S]*1 to label[\s\S]*Marked spot[\s\S]*Bump/);
+  await page.eval("[...document.querySelector('.spot-card').querySelectorAll('.tag-pick')].find(b => b.textContent === 'Pothole').click()");
+  assert.deepEqual(await page.eval("import('./js/tags.js').then(T => T.spots().map(s => s.kind).sort())"), ['bump', 'pothole']);
   await page.eval("import('./js/tags.js').then(T => T.restoreTags([]))");
 });
 
@@ -634,6 +649,35 @@ test('road tags: tag a road on its card, see it on the map and in the list, and 
   // The generator's roads: MO-150 isn't one of them now.
   assert.equal(await page.eval(`import('./js/tags.js').then(T => T.avoidedIds().has(${MO150}))`), true);
   await page.eval("import('./js/tags.js').then(T => T.restoreTags([]))");
+});
+
+test('your spots: mark one from the map’s menu, say what it is, see it on the map, follow the account, and remove it', async () => {
+  await showMo150();
+  const at = await page.eval(`JSON.stringify(RF.store.byId.get(${MO150}).geom[4])`);
+  await page.eval(`RF.mapView.emit('menu', ${at}, { x: 700, y: 400 })`);
+  await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Mark a spot here/.test(b.textContent)).click()");
+  await page.waitFor("RF.view === 'spot'", 5000);
+  assert.match(await sheetText(), /Marked spot[\s\S]*What’s here[\s\S]*Bump[\s\S]*Pothole[\s\S]*Remove/);
+  await page.eval("[...document.querySelectorAll('.tag-pick')].find(b => b.textContent === 'Gravel').click()");
+  await page.waitFor("[...document.querySelectorAll('.tag-pick.on')].map(b => b.textContent).join() === 'Gravel'", 5000);
+  assert.match(await sheetText(), /^\s*Gravel/);
+  await page.waitFor("RF.mapView.map.getSource('spots').serialize().data.features.some(f => f.properties.label === 'Gravel')", 5000);
+  // Tapping it on the map opens it.
+  await page.eval("RF.go('home')");
+  assert.match(await sheetText(), /Your spots \(1\)/);
+  await page.eval("RF.mapView.emit('spot', JSON.parse(localStorage.getItem('rf2-tags'))[0].id)");
+  assert.equal(await page.eval("RF.view"), 'spot');
+  // Kept with the road tags (so it follows the account); merging two copies keeps one of it.
+  const kept = JSON.parse(await page.eval("localStorage.getItem('rf2-tags')"));
+  assert.ok(kept.length === 1 && kept[0].kind === 'gravel' && kept[0].tags.length === 0 && kept[0].pieces.length === 0);
+  assert.equal(await page.eval(`import('./js/account.js').then(A => A.mergeTags(${JSON.stringify(kept)}, ${JSON.stringify(kept)}).length)`), 1);
+  // Remove, and Undo puts it back.
+  await page.eval("[...document.querySelectorAll('#sheetBody .btn')].find(b => /Remove/.test(b.textContent)).click()");
+  assert.equal(await page.eval("import('./js/tags.js').then(T => T.spots().length)"), 0);
+  await page.eval("[...document.querySelectorAll('#toast button')].find(b => /Undo/.test(b.textContent)).click()");
+  assert.equal(await page.eval("import('./js/tags.js').then(T => T.spots().length)"), 1);
+  await page.eval("import('./js/tags.js').then(T => T.restoreTags([]))");
+  await page.eval("RF.go('home')");
 });
 
 test('your speed limit: set on a road’s card, the map follows it, and it links to OpenStreetMap to fix it there', async () => {

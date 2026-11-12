@@ -170,6 +170,11 @@ export function blindCrestsOn(path, roads) {
   return alongRoute(path, crests, 40, 25).hits;
 }
 
+// Your spots (a bump, a pothole) the route passes within 30 m of, in order: [{ spot, mile }].
+export function spotsOn(path, spots) {
+  return alongRoute(path, spots.map(s => ({ lat: s.spot[0], lon: s.spot[1], s })), 30, 10).hits.map(x => ({ spot: x.item.s, mile: x.mile }));
+}
+
 // Metres of a route ridden a second time, back down the same road or along it again (crossing
 // an earlier pass doesn't count), those stretches as lines for the map, and where along the route
 // each second pass starts and ends (metres, in `spans`). The first and last

@@ -15,6 +15,8 @@ Each clip is trimmed of silence and turned up to just under full volume, so it c
 
 Usage (from the repo root):  python tools/make_voice.py            every voice whose engine is available
                              python tools/make_voice.py zira       just these
+                             python tools/make_voice.py --only spotbump,marked    just these phrases (new ones), in
+                                                                    every voice; the other clips are left as they are
 """
 import json
 import os
@@ -151,7 +153,8 @@ def record_aura(v, phrases, folder):
     for key, text in phrases.items():
         req = urllib.request.Request(SPEAK + '/speak', method='POST',
                                      data=json.dumps({'text': text, 'voice': v['voice'], 'format': 'wav'}).encode(),
-                                     headers={'Content-Type': 'application/json', 'Origin': 'http://127.0.0.1'})
+                                     headers={'Content-Type': 'application/json', 'Origin': 'http://127.0.0.1',
+                                              'User-Agent': 'ride-finder-make-voice'})  # Cloudflare turns away Python's own
         for attempt in range(4):  # the voice service has the odd hiccup (502/503): try again shortly
             try:
                 with urllib.request.urlopen(req, timeout=60) as res:
@@ -192,9 +195,11 @@ def make_chime(path):
         w.writeframes(out.tobytes())
 
 
-def main(ids):
+def main(ids, only=None):
     with open(os.path.join(OUT, 'phrases.json'), encoding='utf-8') as f:
         phrases = json.load(f)
+    if only:
+        phrases = {k: v for k, v in phrases.items() if k in only}
     listing = os.path.join(OUT, 'voices.json')
     made = json.load(open(listing, encoding='utf-8')) if os.path.exists(listing) else []
     for v in VOICES:
@@ -205,6 +210,9 @@ def main(ids):
             continue
         folder = os.path.join(OUT, v['id'])
         os.makedirs(folder, exist_ok=True)
+        if only and v['id'] not in [m['id'] for m in made]:
+            print(f"skip {v['id']}: not recorded yet, so it needs every phrase (run without --only)")
+            continue
         RECORD[v['engine']](v, phrases, folder)
         made = [m for m in made if m['id'] != v['id']] + [{'id': v['id'], 'label': v['label'], 'ext': 'wav', **({'chime': True} if v.get('chime') else {}),
                                                            **({'speaker': v['voice']} if v['engine'] == 'aura' else {})}]
@@ -219,4 +227,9 @@ def main(ids):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    args = sys.argv[1:]
+    only = next((a.split('=', 1)[1].split(',') for a in args if a.startswith('--only=')), None)
+    if '--only' in args:
+        only = args[args.index('--only') + 1].split(',')
+        args = [a for i, a in enumerate(args) if a != '--only' and (i == 0 or args[i - 1] != '--only')]
+    main([a for a in args if not a.startswith('--only=')], only)

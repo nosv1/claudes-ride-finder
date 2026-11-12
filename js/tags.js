@@ -76,5 +76,43 @@ export function weightOf(ids) {
 }
 export const tagWords = t => t.tags.map(k => TAG[k].label).join(' · ');
 
+// ---------- spots ----------
+// A tag on one spot (a bump, a pothole), not a stretch of road. Kept in the same list as road tags, so they follow the
+// account and an older copy of the app passes them on untouched: { id, spot: [lat, lon], kind, note, at, key: 'Spot',
+// tags: [], pieces: [] } (no tags or pieces, so nothing above counts them). kind null: marked in Ride mode with one
+// tap, to label after the ride. say: what Ride mode says coming up on one (a clip in voice/phrases.json).
+export const SPOT_KINDS = [
+  { k: 'bump', label: 'Bump', color: '#ffa94d', say: 'spotbump' },
+  { k: 'pothole', label: 'Pothole', color: '#ff6b6b', say: 'spotpothole' },
+  { k: 'gravel', label: 'Gravel', color: '#d8b48a', say: 'spotgravel' },
+  { k: 'hazard', label: 'Watch out', color: '#ffd43b', say: 'spothazard' },
+  { k: 'view', label: 'Nice view', color: '#69db7c', say: null },
+];
+const UNLABELLED = { k: null, label: 'Marked spot', color: '#e9ecef', say: 'spotmarked' };
+export const spotKind = s => SPOT_KINDS.find(x => x.k === s.kind) || UNLABELLED;
+export const spots = () => list.filter(t => t.spot);
+export const spotById = id => list.find(t => t.spot && t.id === id) || null;
+
+export function addSpot(p, kind = null) {
+  const s = { id: `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, key: 'Spot',
+    spot: [+p[0].toFixed(5), +p[1].toFixed(5)], kind, note: '', at: Date.now(), made: Date.now(), tags: [], pieces: [] };
+  list = [...list, s];
+  saved();
+  return s;
+}
+// Change a spot's kind or note ({ kind } or { note }).
+export function setSpot(id, patch) {
+  list = list.map(t => t.spot && t.id === id ? { ...t, ...patch, at: Date.now() } : t);
+  saved();
+}
+// Returns the list as it was, for undo.
+export function removeSpot(id) {
+  const was = list;
+  list = list.filter(t => !(t.spot && t.id === id));
+  saved();
+  return was;
+}
+export const spotsForMap = () => spots().map(s => ({ id: s.id, p: s.spot, color: spotKind(s).color, label: spotKind(s).label }));
+
 // For the map: each record's lines, its main tag and its label.
 export const tagsForMap = () => list.filter(t => t.tags.length).map(t => ({ geoms: t.pieces.map(x => x.g), main: t.tags[0], label: tagWords(t) }));

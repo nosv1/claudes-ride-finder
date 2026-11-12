@@ -124,6 +124,13 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   Reload: still there. Generate near it: no loop uses it. Untag: the dots go.
 - A ride over a tagged road says so under the ride summary.
 
+## Your spots
+
+- Long-press the map → Mark a spot here: its page opens; pick Gravel, and a sand-colored dot named Gravel shows there.
+  Tap the dot: its page. Remove, then Undo: back.
+- In Ride mode (phone, outside): Mark spot is one tap, says "Spot marked.", and doesn't cover the warnings. After the
+  ride, Your spots opens with it to label. On the next ride past it: the banner, then "Bump ahead." through the headset.
+
 ## Roller coasters
 
 - Off by default: no tan roads until the Roller coasters chip in the key is on.

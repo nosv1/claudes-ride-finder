@@ -35,5 +35,11 @@
   "skipped": "Picking up your ride from here.",
   "skipahead": "Finding a way back, further on.",
   "crest": "Blind crest ahead.",
-  "voiceon": "Voice on."
+  "voiceon": "Voice on.",
+  "marked": "Spot marked.",
+  "spotmarked": "Marked spot ahead.",
+  "spotbump": "Bump ahead.",
+  "spotpothole": "Pothole ahead.",
+  "spotgravel": "Gravel ahead.",
+  "spothazard": "Watch out ahead."
 }
