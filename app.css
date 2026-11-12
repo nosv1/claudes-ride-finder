@@ -472,6 +472,7 @@ body.riding .stop-marker { display: none; }
 .ride-trip { flex: 1; min-width: 0; font-size: 20px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
 .bike-item { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .bike-item:first-of-type { padding-top: 0; }
+.add-bike { margin: 12px 0 8px; }
 .trip-meter { margin: 4px 0; }
 .bike-left { margin: 4px 0 8px; }
 .bike-row { display: flex; align-items: center; gap: 8px; }

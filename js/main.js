@@ -2152,7 +2152,7 @@ function bikesSection() {
         h('label.inline', {}, 'Tank ', numBox(b.gal, v => setBike(b.id, { gal: v }), { 'aria-label': 'Tank, gallons', placeholder: '4.5' }), ' gal'),
         h('label.inline', {}, 'Gets ', numBox(b.mpg, v => setBike(b.id, { mpg: v }), { 'aria-label': 'Miles per gallon', placeholder: '40' }), ' mpg')),
       h('p.muted.small', {}, complete(b) ? `About ${rangeOf(b)} mi on a full tank.` : 'Fill in the tank (gallons, from the manual) and the mpg it gets for its range.'))),
-    h('button.btn', { onclick: () => {
+    h('button.btn.wide.add-bike', { onclick: () => {
       const b = { id: newBikeId(), name: '', gal: null, mpg: null, tankMiles: 0 };
       setSetting({ bikes: [...list, b], ...(list.length ? {} : { defaultBike: b.id }) });
       setTimeout(() => { const el = [...document.querySelectorAll('.bike-name')].pop(); if (el) el.focus(); }, 50);
