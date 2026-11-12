@@ -670,7 +670,8 @@ colored road), Add a stop here, Street View here.
 - **The tank** (a line in the bar): "⛽ ~95 mi in tank · gas in 4 mi", counted down from what's left at the start. Fuel
   on the ride page holds **your bike** (picked from a list of common bikes, `BIKES` in config.js, which fills in the
   tank and a typical mpg, both changeable; range = gal × mpg) and **miles since you filled up** (your trip meter),
-  both kept in settings. Ride mode adds the miles ridden to that (kept every mile and at the end), so it stays right
+  both kept in settings, and also on the account page (Your bike; the bottom link reads "Your bike, and signing in" or
+  "Your rides, bike and account"). Ride mode adds the miles ridden to that (kept every mile and at the end), so it stays right
   from ride to ride until you fill up. Tap the line: Filled up, or type the trip meter. The ride page's gas plan
   plans the first stop from what's in the tank now. Only stations on the ride count (90+ only if that's on). When the next one is the last in reach (keeping
   15% in the tank) and the ride's end is further: "Get gas at Casey's in 3 mi: the one after is 62 mi, past your

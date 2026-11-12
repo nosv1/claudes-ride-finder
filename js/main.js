@@ -1086,7 +1086,7 @@ function homeView() {
 function footLinks() {
   return [
     h('div.foot-links', {},
-      view === 'account' ? '' : h('button.link', { onclick: () => go('account') }, iconEl(icon.person), A.signedIn() ? 'Your rides and account' : 'Sign in to keep rides on every device'),
+      view === 'account' ? '' : h('button.link', { onclick: () => go('account') }, iconEl(icon.person), A.signedIn() ? 'Your rides, bike and account' : 'Your bike, and signing in'),
       view === 'about' ? '' : h('button.link', { onclick: () => go('about') }, 'About, credits and riding safe'),
       canInstall() ? h('button.link', { onclick: install }, iconEl(icon.download), 'Install app') : '',
       updateTo ? h('button.link.update', { onclick: applyUpdate }, `Update to ${updateTo}`) : ''),
@@ -1245,6 +1245,7 @@ function accountView() {
       acct.signingIn ? h('p.muted', {}, 'Signing in…') : box,
       acct.error ? h('p.error', {}, acct.error) : '',
       h('p.muted.small', {}, 'Optional. Without it everything works as it does now, kept on this device. Everything in your account is locked on your own devices before it’s sent, so nobody else can read it, not even whoever runs Ride Finder. You can delete it all from here any time.'),
+      bikeSection(),
     ];
   }
   const u = A.user(), base = location.href.split('#')[0];
@@ -1252,7 +1253,7 @@ function accountView() {
     return [
       backBar('Unlock your rides', u.email || u.name),
       h('p', {}, 'Your rides, tags and settings are locked so only your own devices can read them, and this one doesn’t have the key yet.'),
-      h('p', {}, 'On a phone or PC where Ride Finder already shows your rides, open ', h('b', {}, 'Your rides and account'), ' and tap ',
+      h('p', {}, 'On a phone or PC where Ride Finder already shows your rides, open ', h('b', {}, 'Your rides, bike and account'), ' and tap ',
         h('b', {}, 'Send the link to another device'), '. Open that link here, and this device can read them too.'),
       h('div.section', {}, h('h3', {}, iconEl(icon.warn), 'Lost the link and your other devices?'),
         h('p.small.muted', {}, 'Then nobody can unlock what’s in the account, us included. You can start over: that deletes everything in it, and the next sign-in starts a new, empty account.'),
@@ -1266,6 +1267,7 @@ function accountView() {
     acct.rides == null ? h('p.muted', {}, acct.error || 'Loading your rides…')
       : acct.rides.length ? h('div.cards', {}, acct.rides.map(r => rideCard(r, { remove: true })))
         : h('p.muted', {}, 'No saved rides yet. Plan one, then tap Save to your rides on its page.'),
+    bikeSection(),
     acct.links.length ? h('div.section', {}, h('h3', {}, iconEl(icon.share), 'Rides you’ve shared'),
       h('p.muted.small', {}, 'Anyone with one of these links can open the ride. Take one down and it stops working.'),
       h('div.cards', {}, acct.links.map(l => h('div.card.link-card', {},
@@ -2114,13 +2116,16 @@ const tankUsed = () => Math.max(0, +settings.tankMiles || 0);
 const tankLeft = () => Math.max(0, tankRange() - tankUsed());
 const GALLONS = Array.from({ length: 56 }, (_, i) => +(2.5 + i / 10).toFixed(1));   // 2.5 to 8.0
 const MPGS = [30, 35, 38, 40, 42, 45, 48, 50, 52, 55, 60, 65, 70];
-const fuelChanged = () => { tripChanged({ reroute: false }); refreshInfo(false); };
+const fuelChanged = () => { if (route) refreshInfo(false); renderSoon(); };
+
+// Your bike on the account page: the same as Fuel on a ride's page, without needing a ride.
+const bikeSection = () => h('div.section', {}, h('h3', {}, iconEl(icon.fuel), 'Your bike'), bikeFields());
 
 function bikeFields() {
   const b = myBike(), pick = b ? b.id : '';
   const set = patch => { setSetting({ bike: { id: 'other', gal: 4, mpg: 45, ...b, ...patch } }); fuelChanged(); };
   return h('div.bike', {},
-    h('div.field', {}, h('label', { for: 'bike-pick' }, 'Your bike'),
+    h('div.field', {}, h('label', { for: 'bike-pick' }, 'Your bike’s model'),
       h('select', { id: 'bike-pick', onchange: e => {
         const x = BIKES.find(k => k.id === e.target.value);
         if (x) set({ id: x.id, gal: x.gal, mpg: x.mpg });
@@ -2140,7 +2145,7 @@ function bikeFields() {
         h('input', { id: 'tank-miles', type: 'number', inputmode: 'decimal', min: 0, max: 999, step: 1, value: tankUsed() ? Math.round(tankUsed()) : 0,
           onchange: e => { setSetting({ tankMiles: Math.max(0, +e.target.value || 0) }); fuelChanged(); } }),
         h('button.btn', { onclick: () => { setSetting({ tankMiles: 0 }); fuelChanged(); toast('Full tank.'); } }, 'Just filled up'))),
-    h('p.muted.small', {}, `≈ ${Math.round(tankLeft())} mi left in the tank. Ride mode adds the miles you ride, so this keeps itself up to date until you fill up.`));
+    h('p.muted.small', {}, `≈ ${Math.round(tankLeft())} mi left in the tank. Ride mode adds the miles you ride, so this keeps itself up to date until you fill up. Kept with your settings${A.signedIn() ? ', on all your devices' : ''}; also under Fuel on a ride’s page.`));
 }
 
 function fuelSection() {
@@ -2150,7 +2155,7 @@ function fuelSection() {
     bikeFields(),
     myBike() ? '' : h('div.btn-row', {},
       h('label.inline', {}, 'Or just a range ',
-        h('select', { onchange: e => { trip.range = +e.target.value; setSetting({ tankRange: trip.range }); fuelChanged(); } },
+        h('select', { onchange: e => { trip.range = +e.target.value; setSetting({ tankRange: trip.range }); tripChanged({ reroute: false }); fuelChanged(); } },
           [60, 80, 100, 120, 150, 180, 200, 250].map(v => h('option', { value: v, selected: tankRange() === v }, `${v} mi`))))),
     h('div.btn-row', {},
       h('label.switch', {}, h('input', { type: 'checkbox', checked: trip.need90,

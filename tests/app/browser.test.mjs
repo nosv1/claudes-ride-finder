@@ -328,7 +328,7 @@ test('the version shows on the home list, and a newer one on the site is offered
   assert.match(await page.eval("document.getElementById('toast').innerText"), /new version[\s\S]*2999\.01\.01\.1[\s\S]*Update/);
   assert.match(await sheetText(), /Update to 2999\.01\.01\.1/, 'and it stays on the home list');
   // The links at the bottom are on every page, minus the page you're on.
-  for (const [v, not] of [['plan', null], ['account', /Sign in to keep rides|Your rides and account/], ['about', /About, credits/]]) {
+  for (const [v, not] of [['plan', null], ['account', /Your bike, and signing in|Your rides, bike and account/], ['about', /About, credits/]]) {
     await page.eval(`RF.go('${v}')`);
     await sleep(300);
     const foot = await page.eval("[...document.querySelectorAll('#sheetBody .foot-links')].map(f => f.innerText).join('|') + '|' + document.querySelector('#sheetBody > :last-child').innerText");
@@ -677,6 +677,16 @@ test('road tags: tag a road on its card, see it on the map and in the list, and 
   // The generator's roads: MO-150 isn't one of them now.
   assert.equal(await page.eval(`import('./js/tags.js').then(T => T.avoidedIds().has(${MO150}))`), true);
   await page.eval("import('./js/tags.js').then(T => T.restoreTags([]))");
+});
+
+test('your bike is on the account page too, signed out, and the bottom link says so', async () => {
+  await page.eval("RF.go('home')");
+  await page.eval("[...document.querySelectorAll('#sheetBody .foot-links button')].find(b => /Your bike/.test(b.textContent)).click()");
+  assert.match(await sheetText(), /Your bike[\s\S]*Pick your bike[\s\S]*Miles since you filled up/);
+  await page.eval("(() => { const s = document.getElementById('bike-pick'); s.value = 'gsxr750'; s.dispatchEvent(new Event('change')); })()");
+  await page.waitFor("/About 171 mi on a full tank/.test(document.getElementById('sheetBody').innerText)", 5000);
+  assert.equal(await page.eval('RF.settings.bike.id'), 'gsxr750');
+  await page.eval("Object.assign(RF.settings, { bike: null, tankMiles: 0 }); RF.go('home')");
 });
 
 test('your spots: mark one from the map’s menu, say what it is, see it on the map, follow the account, and remove it', async () => {
