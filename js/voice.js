@@ -58,7 +58,7 @@ if (player) player.addEventListener('ended', next);
 // A road's name the way it's said: route numbers spelled out ("MO 150" → "Missouri 150").
 const SAY = [[/^MO\b/, 'Missouri'], [/^KS\b/, 'Kansas'], [/^TX\b/, 'Texas'], [/^US\b/, 'U.S.'], [/^I[- ](?=\d)/, 'Interstate '],
   [/^FM\b/, 'Farm to Market'], [/^RM\b/, 'Ranch to Market'], [/^CR\b/, 'County Road'],
-  [/^SH\b/, 'State Highway'], [/^OK\b/, 'Oklahoma']];
+  [/^SH\b/, 'State Highway'], [/^OK\b/, 'Oklahoma'], [/^AR\b/, 'Arkansas']];
 export function sayable(name) {
   let s = String(name).trim();
   for (const [re, w] of SAY) s = s.replace(re, w);

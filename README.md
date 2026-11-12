@@ -1,6 +1,6 @@
 # Ride Finder
 
-A map for finding and planning motorcycle rides on curvy, fast, hilly roads, starting with Missouri, Kansas, Oklahoma and Texas.
+A map for finding and planning motorcycle rides on curvy, fast, hilly roads, starting with Arkansas, Kansas, Missouri, Oklahoma and Texas.
 Live at <https://nosv1.github.io/claudes-ride-finder/>. It works on phones and computers; install it (Add to Home
 Screen on a phone, the install button in the address bar in Chrome or Edge) to use it like an app.
 

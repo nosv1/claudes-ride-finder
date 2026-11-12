@@ -1,7 +1,7 @@
 # Ride Finder: features and requirements
 
 Ride Finder helps a motorcyclist find and plan rides on curvy, fast, hilly roads, starting
-with Missouri, Kansas, Oklahoma and Texas. This document is the spec for what the app does today. It
+with Arkansas, Kansas, Missouri, Oklahoma and Texas. This document is the spec for what the app does today. It
 lists what each feature must do, the numbers it relies on, and the lessons that shaped it,
 so a rewrite can keep the behavior without rediscovering them.
 
@@ -74,6 +74,8 @@ committed as `tiles/`. The app needs no OSM server at runtime.
     county roads included (55 unless the county posts lower; from secondary sources, the statute text wasn't
     reachable). Route numbers are said "Oklahoma 1" / "State Highway 10". Regression case: OK 1 (Talimena Scenic
     Drive) tops Best roads around Talihina.
+  - **Arkansas** (added 2026-11-11): the same as Missouri and Kansas (55 on main roads, 45 on county roads); said
+    "Arkansas 7". Regression case: around Jasper, AR 7, AR 16, AR 21, AR 23 (Pig Trail), AR 74 and AR 123 lead Best roads.
 
 **Hills and blind crests** (curvy roads, sweepers and straight back roads)
 - **Hill:** total climbing plus descending in m per km, using a 2 m hysteresis.
