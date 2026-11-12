@@ -21,7 +21,9 @@ Ideas that came up, roughly in order of how much they'd help.
 - **A proper app, still on PC**: one codebase for all three. Android: wrap the web app for the Play Store
   (Trusted Web Activity via Bubblewrap; $25 once). iPhone: Capacitor wrapper ($99/yr developer account,
   built on a Mac or a cloud build). PC keeps using the website or the installed web app. Worth it mainly for
-  Ride mode: a native app can keep GPS and voice going with the screen off, which a browser can't.
+  Ride mode: a native app can keep GPS and voice going with the screen off, which a browser can't. Less pressing
+  since 2026-11-11: on a real ride the rider's iPhone kept the screen on the whole way (even in Low Power Mode) with
+  little battery used, so screen-on Ride mode is fine for now.
 - **Bottlenecks to fix before going national** (measured 2026-11-01): the site's map files are 68 MB for
   3 states (about 70% is the speed-limit layer), so the whole US would be near GitHub Pages' 1 GB limit,
   and every rebuild adds to git history. Slim the speed-limit layer, then move tiles off git (e.g.
@@ -67,7 +69,8 @@ Ideas that came up, roughly in order of how much they'd help.
   roads were ridden and the date, not the trail**: no points, no times, no speeds. That's all Roads you've ridden
   needs. On the device by default; syncing opt-in. (It doesn't touch what the phone and carrier keep; the app just
   shouldn't keep a better record.) Open, his call: roads only enough, or the trail too? A browser stops GPS with the
-  screen off, so until the native app it records only while Ride mode keeps the screen on.
+  screen off, so until the native app it records only while Ride mode keeps the screen on. (Which it does: the
+  screen stayed on for a whole ride on 2026-11-11, Low Power Mode too, so recording in Ride mode works in the browser.)
 - **Tags on a spot, not a whole road** (asked 2026-11-11): a bump is a point. A tag pinned where it was dropped (or a
   short stretch), shown on the map there and called out in Ride mode as it's approached. After the ride: long-press
   the spot. While riding: one big button, or saying "bump", drops a pin where the rider is, labelled after the ride.
