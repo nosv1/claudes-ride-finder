@@ -5,7 +5,7 @@
 import { NAV } from './config.js';
 import { Guide, callout, shown, turnName } from './nav.js';
 import { bearing, distance, relAngle, miles, fmtDuration } from './geo.js';
-import { turnArrow, turnOnto, turn } from './fly.js';
+import { turnArrow, turnOnto, turn, miniMap } from './fly.js';
 import { icon, h, toast } from './ui.js';
 import { TAGS, spotKind } from './tags.js';
 import { speak, hush, preload, loadNames } from './voice.js';
@@ -43,7 +43,7 @@ export class Ride {
     this.loop = loop;
     this.onClose = onClose;
     this.crests = (crests || []).map(c => ({ m: c.mile * 1609.34 }));
-    this.spots = (spots || []).map(x => ({ m: x.mile * 1609.34, kind: spotKind(x.spot) }));
+    this.spots = (spots || []).map(x => ({ m: x.mile * 1609.34, kind: spotKind(x.spot), p: x.spot.spot }));
     this.markSpot = markSpot;
     this.marked = [];         // spots marked on this ride, to label after it
     this.guide = new Guide(route, { reroute, onDetour: () => { this.say(line('detour')); this.showDetour(); this.update(); } });
@@ -93,8 +93,13 @@ export class Ride {
     this.ontoEl = h('div.ride-onto');
     this.thenEl = h('div.ride-then', { hidden: true });
     this.skipBtn = h('button.btn.small.ride-skip', { hidden: true, onclick: () => { this.guide.skip(); this.say(line('skipahead')); this.update(); } }, 'Skip ahead');
+    // The whole ride, small, under the banner: where you are on it, what's ridden, your spots. A tap: Overview.
+    this.mini = miniMap(this.route.path, 'ride-mini');
+    this.mini.marks(this.spots.map(s => ({ p: s.p, color: s.kind.color })));
+    this.mini.el.title = 'The whole ride: tap for Overview';
+    this.mini.el.addEventListener('click', () => this.overview());
     this.banner = h('div.ride-banner', {}, h('div.ride-next', {}, this.arrowEl, h('div.ride-words', {}, this.distEl, this.ontoEl)),
-      this.thenEl, this.skipBtn);
+      this.thenEl, this.skipBtn, this.mini.el);
     this.crestEl = h('div.fly-crest.ride-crest', { hidden: true });
     this.spotEl = h('div.fly-crest.ride-crest.ride-spot', { hidden: true });
     // One tap, no menus: a bump just happened. It's labelled after the ride.
@@ -208,6 +213,7 @@ export class Ride {
       this.shownAt = [g.from[0] + (g.to[0] - g.from[0]) * k, g.from[1] + (g.to[1] - g.from[1]) * k];
       this.heading = this.heading == null ? this.want : turn(this.heading, this.want, 1 - Math.exp(-dt / 0.7));
       this.mapView.setNavArrow(this.shownAt, this.heading);
+      this.mini.put(this.shownAt);
       if (this.following && !this.held) {
         const z = zoomFor(this.fix.speed) + this.zoomOff, zNow = this.map.getZoom();
         this.map.jumpTo({ center: [this.shownAt[1], this.shownAt[0]], bearing: this.heading, pitch: 50, zoom: zNow + (z - zNow) * Math.min(1, dt * 1.5) });
@@ -236,7 +242,9 @@ export class Ride {
     const t = this.guide.main;
     this.riddenAt = t.m;
     const i = t.path.findIndex((_, k) => t.cum[k] > t.m);
-    this.mapView.setRidden([...t.path.slice(0, i < 0 ? t.path.length : i), t.pointAt(t.m)]);
+    const done = [...t.path.slice(0, i < 0 ? t.path.length : i), t.pointAt(t.m)];
+    this.mapView.setRidden(done);
+    this.mini.ridden(done);
   }
 
   tag(k) {
@@ -310,7 +318,9 @@ export class Ride {
     // A rough fix (worse than 50 m) can't tell speed.
     this.speedEl.replaceChildren(h('b', {}, f && f.accuracy <= 50 ? `${Math.round(f.speed * 2.237)}` : '–'), h('small', {}, 'mph'));
     const leftS = this.route.seconds * g.leftM / Math.max(1, g.main.total);
-    this.leftEl.textContent = state === 'done' ? `${miles(this.ridden)} mi ridden` : `${miles(g.leftM)} mi left · ${this.loop ? 'back' : 'there'} about ${clock(Date.now() + leftS * 1000)}`;
+    // Miles left, big enough to read at a glance; then when you'd be there.
+    this.leftEl.replaceChildren(...(state === 'done' ? [h('b', {}, `${miles(this.ridden)} mi`), ' ridden']
+      : [h('b', {}, `${miles(g.leftM)} mi left`), ` · ${this.loop ? 'back' : 'there'} about ${clock(Date.now() + leftS * 1000)}`]));
     const m = g.main.m, crest = state === 'on' && this.crests.find(c => c.m - m > -30 && c.m - m < NAV.crestM);
     const ft = d => `${Math.round(d * 3.281 / 10) * 10} ft`;
     this.crestEl.hidden = !crest;

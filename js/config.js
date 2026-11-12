@@ -9,7 +9,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.11.5';
+export const APP_VERSION = '2026.11.11.6';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.

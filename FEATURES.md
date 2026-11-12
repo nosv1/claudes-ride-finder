@@ -663,6 +663,8 @@ colored road), Add a stop here, Street View here.
   left and when you'd be back (or there). **Tag road** (big buttons: Rough, Gravel, Don't ride, Great) tags the mile
   or so of the road around you. **End** takes two taps (a bump on the mount doesn't end it). At the end: miles ridden
   and time.
+- **Mini-map** under the banner at the right (96 px on a phone, 130 on a bigger screen): the whole ride north up,
+  ridden part grey, your spots, you as a yellow dot; a tap is Overview. Miles left are bold in the bar.
 - **Mark spot** (big and round, right above the bar): one tap pins where you are and says "Spot marked.", no menus.
   After the ride, Your spots opens with the ones just marked, each with its labels to tap.
 - **Your spots on the ride** (within 30 m of it): a banner in the spot's color from about 1,000 ft out ("⚠ Bump ahead ·

@@ -573,6 +573,10 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   assert.equal(await page.eval('RF.ride.guide.state'), 'on');
   assert.match(await page.eval("document.querySelector('.ride-banner').innerText"), /↱[\s\S]*(mi|ft)[\s\S]*MO Y/);
   assert.match(await page.eval("document.querySelector('.ride-panel').innerText"), /mi left · (back|there) about \d+:\d\d/);
+  // The mini-map: the whole ride, with you on it, and your spot; a tap shows the whole ride (Overview).
+  await sleep(300);
+  assert.ok(await page.eval("+document.querySelector('.ride-mini .dot').getAttribute('cx') > -8"), 'you, on the mini-map');
+  assert.equal(await page.eval("document.querySelectorAll('.ride-mini .marks circle').length"), 1, 'the bump on it');
   await sleep(600);
   assert.ok(Math.abs(await page.eval('RF.mapView.map.getPitch()') - 50) < 1, 'heading-up, tilted');
   // The map can be dragged while riding: it stops following until Recenter.
@@ -591,6 +595,9 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   assert.equal(await at(), dragged, 'and stays where it was dragged as you ride on');
   await page.eval("document.querySelector('.ride-recenter').click()");
   assert.equal(await page.eval('RF.ride.following'), true);
+  await page.eval("document.querySelector('.ride-mini').click()");
+  assert.equal(await page.eval('RF.ride.following'), false, 'the mini-map opens Overview');
+  await page.eval("document.querySelector('.ride-recenter').click()");
   // An iPhone that doesn't know the speed says -1: no "-2 mph".
   await page.eval(`(() => { const p = RF.store.byId.get(${MO150}).geom[3]; __gps({ coords: { latitude: p[0], longitude: p[1], heading: -1, speed: -1, accuracy: 5 }, timestamp: Date.now() }); })()`);
   assert.ok(await page.eval("+document.querySelector('.ride-speed b').textContent >= 0"));

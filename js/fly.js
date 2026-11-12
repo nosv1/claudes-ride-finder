@@ -79,6 +79,38 @@ export const turnArrow = type => RIGHT.has(type) ? '↱' : LEFT.has(type) ? '↰
 // A heading turned part of the way (k, 0–1) toward another, the short way around.
 export const turn = (from, to, k) => (from + ((to - from + 540) % 360 - 180) * k + 360) % 360;
 
+// A ride drawn small, north up, in a box of class `cls`: { el, x(lon), y(lat) in the drawing, dot (the rider: place
+// it with put([lat, lon])), ridden(path so far: drawn grey over the line), marks([{ p, color }]: dots on it), at(click
+// event) → [lat, lon] }. The fly-through's and Ride mode's mini-map.
+export function miniMap(path, cls) {
+  const b = boundsOf(path), k = Math.cos((b[0] + b[2]) / 2 * Math.PI / 180);
+  const w = (b[3] - b[1]) * k || 1e-6, ht = b[2] - b[0] || 1e-6, S = 100 / Math.max(w, ht);
+  const x = lon => (lon - b[1]) * k * S + (100 - w * S) / 2, y = lat => (b[2] - lat) * S + (100 - ht * S) / 2;
+  const pts = list => {
+    const step = Math.max(1, Math.floor(list.length / 500));
+    return list.filter((_, i) => i % step === 0).concat([list[list.length - 1]]).map(p => `${x(p[1]).toFixed(1)},${y(p[0]).toFixed(1)}`).join(' ');
+  };
+  const el = h(`div.${cls}`);
+  el.innerHTML = `<svg viewBox="-8 -8 116 116"><polyline points="${pts(path)}" fill="none" stroke="#4dabf7" stroke-width="3"
+    stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <polyline class="ridden" points="" fill="none" stroke="#868e96" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <g class="marks"></g>
+    <circle cx="${x(path[0][1]).toFixed(1)}" cy="${y(path[0][0]).toFixed(1)}" r="4" fill="#fff"/>
+    <circle class="dot" r="6" fill="#ffd43b" stroke="#111" stroke-width="2"/></svg>`;
+  const dot = el.querySelector('.dot');
+  return {
+    el, x, y, dot,
+    put: p => { dot.setAttribute('cx', x(p[1]).toFixed(1)); dot.setAttribute('cy', y(p[0]).toFixed(1)); },
+    ridden: list => el.querySelector('.ridden').setAttribute('points', list && list.length > 1 ? pts(list) : ''),
+    marks: list => { el.querySelector('.marks').innerHTML = list.map(m => `<circle cx="${x(m.p[1]).toFixed(1)}" cy="${y(m.p[0]).toFixed(1)}" r="3.5" fill="${m.color}" stroke="#111" stroke-width="1.5"/>`).join(''); },
+    at: e => {
+      const box = el.querySelector('svg').getBoundingClientRect();
+      const cx = (e.clientX - box.left) / box.width * 116 - 8, cy = (e.clientY - box.top) / box.height * 116 - 8;
+      return [b[2] - (cy - (100 - ht * S) / 2) / S, b[1] + (cx - (100 - w * S) / 2) / S / k];
+    },
+  };
+}
+
 export class Fly {
   // crests: [{ mile }] along the route; profile: the elevation profile, or null; roadAt(p, heading):
   // the road there as { ref, name, curvy, limit, posted }, if known (else the router's names);
@@ -308,26 +340,13 @@ export class Fly {
 
   // The whole ride, north up, with the rider on it; a tap there jumps the ride to that spot.
   miniMap() {
-    const path = this.route.path, b = boundsOf(path), k = Math.cos((b[0] + b[2]) / 2 * Math.PI / 180);
-    const w = (b[3] - b[1]) * k || 1e-6, ht = b[2] - b[0] || 1e-6, S = 100 / Math.max(w, ht);
-    this.miniX = lon => (lon - b[1]) * k * S + (100 - w * S) / 2;
-    this.miniY = lat => (b[2] - lat) * S + (100 - ht * S) / 2;
-    const step = Math.max(1, Math.floor(path.length / 500));
-    const line = path.filter((_, i) => i % step === 0).concat([path[path.length - 1]])
-      .map(p => `${this.miniX(p[1]).toFixed(1)},${this.miniY(p[0]).toFixed(1)}`).join(' ');
-    const el = h('div.fly-mini', { title: 'The whole ride: tap to jump there' });
-    el.innerHTML = `<svg viewBox="-8 -8 116 116"><polyline points="${line}" fill="none" stroke="#4dabf7" stroke-width="3"
-      stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-      <circle cx="${this.miniX(path[0][1]).toFixed(1)}" cy="${this.miniY(path[0][0]).toFixed(1)}" r="4" fill="#fff"/>
-      <circle class="dot" r="6" fill="#ffd43b" stroke="#111" stroke-width="2"/></svg>`;
-    this.miniDot = el.querySelector('.dot');
-    el.addEventListener('click', e => {
-      const box = el.querySelector('svg').getBoundingClientRect();
-      const x = (e.clientX - box.left) / box.width * 116 - 8, y = (e.clientY - box.top) / box.height * 116 - 8;
-      const at = [b[2] - (y - (100 - ht * S) / 2) / S, b[1] + (x - (100 - w * S) / 2) / S / k];
-      this.seek(this.f.secondsAt(this.f.metersAtIndex(nearestIndex(path, at))));
-    });
-    return el;
+    const path = this.route.path, m = miniMap(path, 'fly-mini');
+    this.miniX = m.x;
+    this.miniY = m.y;
+    this.miniDot = m.dot;
+    m.el.title = 'The whole ride: tap to jump there';
+    m.el.addEventListener('click', e => this.seek(this.f.secondsAt(this.f.metersAtIndex(nearestIndex(path, m.at(e))))));
+    return m.el;
   }
 
   // The forecast here, for when you'd be here: the clock time, sky, temperature, rain, gusts.

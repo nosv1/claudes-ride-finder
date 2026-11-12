@@ -463,6 +463,7 @@ body.riding .stop-marker { display: none; }
 .ride-here { flex: 1; min-width: 0; }
 .ride-road { display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 16px; }
 .ride-left { font-size: 14px; color: var(--muted); }
+.ride-left b { font-size: 17px; color: var(--text); }
 .ride-speed { flex: none; text-align: center; line-height: 1; }
 .ride-speed b { display: block; font-size: 30px; font-weight: 800; }
 .ride-speed small { font-size: 11px; color: var(--muted); }
@@ -487,6 +488,13 @@ body.riding .stop-marker { display: none; }
 .nav-arrow { width: 40px; height: 40px; }
 .nav-arrow svg { width: 40px; height: 40px; fill: #1c7ed6; stroke: #fff; stroke-width: 3; stroke-linejoin: round; filter: drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
 @media (min-width: 900px) { .ride-banner { left: 20px; right: auto; width: 420px; } }
+/* Under the banner at the right, so it moves down with a "then" line. */
+.ride-mini {
+  position: absolute; top: calc(100% + 8px); right: 0; width: 96px; height: 96px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--shadow); cursor: pointer;
+}
+.ride-mini svg { width: 100%; height: 100%; display: block; }
+@media (min-width: 600px) { .ride-mini { width: 130px; height: 130px; } }
 
 /* ---------- your road tags ---------- */
 .tag-picks { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
