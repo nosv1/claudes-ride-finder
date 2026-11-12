@@ -2297,7 +2297,7 @@ function runSearch(focused = document.activeElement === q) {
     else results.hidden = true;
     return;
   }
-  const local = [...mine, ...localResults(text, store.search)];
+  const local = [...mine, ...localResults(text, store.search, mapView.center())];
   showResults(local, text.length >= 3);
   if (text.length < 3) return;
   photonTimer = setTimeout(async () => {

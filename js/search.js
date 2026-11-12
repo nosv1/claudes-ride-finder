@@ -18,7 +18,8 @@ export function matchesAll(qWords, text) {
 }
 
 // index: { places: [[name, lat, lon, kind]], roads: [[key, name, s, w, n, e, curveMetres, town]] }
-export function localResults(q, index) {
+// near: [lat, lon] (the map's center): roads close to it come first, so "hwy 7" from Kansas City is MO 7, not AR 7.
+export function localResults(q, index, near = null) {
   let qw = normWords(q).filter(w => !ROUTE_WORDS.has(w));
   if (!qw.length) qw = normWords(q);
   if (!qw.length) return [];
@@ -33,12 +34,17 @@ export function localResults(q, index) {
       }
     }
   }
-  const roads = found.sort((a, b) => b[6] - a[6]).slice(0, 6).map(([key, name, s, w, n, e, curves, town]) => ({
+  // Curvy miles, worth a fifth at 160 km away and a twenty-fifth at 400.
+  const rank = r => r[6] / (near ? 1 + (km(near, [(r[2] + r[4]) / 2, (r[3] + r[5]) / 2]) / 80) ** 2 : 1);
+  const roads = found.sort((a, b) => rank(b) - rank(a)).slice(0, 6).map(([key, name, s, w, n, e, curves, town]) => ({
     kind: 'road', key, label: key + (name ? ` · ${name}` : ''),
     sub: `${town ? `near ${town} · ` : ''}${miles(curves)} mi of curves`, bounds: [s, w, n, e],
   }));
+  // Towns: the nearest first (a city counts as nearer than a village the same distance away), so "greenwood" from
+  // Kansas City is Greenwood, Missouri, not Arkansas; with no map to go by, cities first.
+  const away = p => km(near, [p[1], p[2]]) * (1 + PLACE_RANK[p[3]] * 0.5);
   const places = index.places.filter(p => matchesAll(qw, p[0]))
-    .sort((a, b) => PLACE_RANK[a[3]] - PLACE_RANK[b[3]] || a[0].length - b[0].length).slice(0, 4)
+    .sort((a, b) => near ? away(a) - away(b) : PLACE_RANK[a[3]] - PLACE_RANK[b[3]] || a[0].length - b[0].length).slice(0, 4)
     .map(([name, lat, lon, kind]) => ({ kind: 'town', label: name, sub: kind[0].toUpperCase() + kind.slice(1), at: [lat, lon] }));
   // Route-looking queries ("150", "mo y") list roads first; names list towns first.
   return qw.some(w => /\d/.test(w) || w.length <= 2) ? [...roads, ...places] : [...places, ...roads];

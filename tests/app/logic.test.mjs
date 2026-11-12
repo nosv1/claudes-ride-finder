@@ -585,7 +585,13 @@ test('search words normalise like riders type', () => {
 
 test('search finds routes, roads near towns, and towns', { skip: !haveTiles }, () => {
   const index = loadSearch(), keys = q => localResults(q, index).filter(r => r.kind === 'road').map(r => r.key);
-  assert.equal(keys('hwy 7')[0], 'MO 7');
+  // Ranked by curves and how near the map is: from Kansas City, MO 7; from the Ozarks in Arkansas, AR 7.
+  const near = (q, at) => localResults(q, index, at).filter(r => r.kind === 'road').map(r => r.key);
+  assert.equal(near('hwy 7', [38.95, -94.6])[0], 'MO 7');
+  assert.equal(near('hwy 7', [35.95, -93.2])[0], 'AR 7');
+  const town = (q, at) => localResults(q, index, at).find(r => r.kind === 'town');
+  assert.ok(town('greenwood', [38.9, -94.4]).at[0] > 38, 'Greenwood, Missouri from Kansas City');
+  assert.ok(town('greenwood', [35.3, -94.3]).at[0] < 36, 'Greenwood, Arkansas from Fort Smith');
   assert.ok(keys('MO Y camdenton').includes('MO Y'));
   assert.ok(localResults('lees summit', index).some(r => r.label === "Lee's Summit"));
 });
