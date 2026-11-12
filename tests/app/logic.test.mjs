@@ -9,6 +9,7 @@ import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
 import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
+import { bikeFor, rangeOf, leftIn, upgradeBikes } from '../../js/bikes.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
 import { fetchRoute, routerTrouble } from '../../js/routing.js';
@@ -942,4 +943,21 @@ test('your spots on a ride: the ones it passes within 30 m, in the order it pass
   const hits = spotsOn(path, [spot(38.9001, -94.382, 'late'), spot(38.9, -94.395, 'early'), spot(38.91, -94.39, 'off')]);
   assert.deepEqual(hits.map(x => x.spot.id), ['early', 'late'], 'the one 1 km off the road isn’t on it');
   assert.ok(hits[0].mile > 0.2 && hits[0].mile < 0.3 && hits[1].mile > 0.9 && hits[1].mile < 1.1, JSON.stringify(hits.map(x => x.mile)));
+});
+
+test('your bikes: range and what’s left, the ride’s bike or your default, and the one picked bike from before becomes the first', () => {
+  const gsxr = { id: 'g', name: 'GSX-R', gal: 4.5, mpg: 38, tankMiles: 20 }, rebel = { id: 'r', name: 'Rebel', gal: 2.9, mpg: 65, tankMiles: 0 };
+  assert.equal(rangeOf(gsxr), 171);
+  assert.equal(leftIn(gsxr), 151);
+  assert.equal(rangeOf({ id: 'x', gal: 4 }), null, 'no mpg yet: no range');
+  const settings = { bikes: [gsxr, rebel], defaultBike: 'r' };
+  assert.equal(bikeFor(settings, {}).name, 'Rebel', 'the default');
+  assert.equal(bikeFor(settings, { bikeId: 'g' }).name, 'GSX-R', 'the ride’s own pick');
+  assert.equal(bikeFor({ bikes: [gsxr] }, {}).name, 'GSX-R', 'no default: the first');
+  assert.equal(bikeFor({}, {}), null);
+  const old = upgradeBikes({ bike: { id: 'gsxr750', gal: 4.5, mpg: 38 }, tankMiles: 84, genHours: 3 });
+  assert.deepEqual([old.bikes.length, old.bikes[0].name, old.bikes[0].gal, old.bikes[0].mpg, old.bikes[0].tankMiles, old.defaultBike === old.bikes[0].id, 'bike' in old, 'tankMiles' in old, old.genHours],
+    [1, 'Suzuki GSX-R750', 4.5, 38, 84, true, false, false, 3]);
+  const kept = { bikes: [rebel], defaultBike: 'r' };
+  assert.deepEqual(upgradeBikes(kept), { bikes: [rebel], defaultBike: 'r' }, 'already a list: left alone');
 });

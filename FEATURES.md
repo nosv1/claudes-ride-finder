@@ -669,13 +669,14 @@ colored road), Add a stop here, Street View here.
   left and when you'd be back (or there). **Tag road** (big buttons: Rough, Gravel, Don't ride, Great) tags the mile
   or so of the road around you. **End** takes two taps (a bump on the mount doesn't end it). At the end: miles ridden
   and time.
-- **The tank** (a line in the bar): "⛽ ~95 mi in tank · gas in 4 mi", counted down from what's left at the start. Fuel
-  on the ride page holds **your bike** (picked from a list of common bikes, `BIKES` in config.js, which fills in the
-  tank and a typical mpg, both changeable; range = gal × mpg) and **miles since you filled up** (your trip meter),
-  both kept in settings, and also on the account page (Your bike; the bottom link reads "Your bike, and signing in" or
-  "Your rides, bike and account"). Ride mode adds the miles ridden to that (kept every mile and at the end), so it stays right
-  from ride to ride until you fill up. Tap the line: Filled up, or type the trip meter. The ride page's gas plan
-  plans the first stop from what's in the tank now. Only stations on the ride count (90+ only if that's on). When the next one is the last in reach (keeping
+- **The tank** (a line in the bar): "⛽ ~95 mi in tank · gas in 4 mi", counted down from what's left at the start in
+  the ride's bike. **Your bikes** are typed in on the account page (`bikes.js`; kept in settings): a name, the tank in
+  gallons and the mpg (range = gal × mpg), and each bike's trip meter (miles since filling up, or Just filled up). One
+  is the **Default** (the first added; Make default on another). Fuel on the ride page uses the default, or another
+  picked for that ride (`trip.bikeId`), and shows "GSX-R750: ≈ 87 of 171 mi left (84 since filling up)" with Filled up
+  and Edit; its gas plan plans the first stop from what's in the tank. Ride mode adds the miles ridden to that bike's
+  trip meter (kept every mile and at the end). Tap the line: Filled up, or type the trip meter. The one picked preset
+  bike from before (2026.11.11.8–12) became the first, default bike. Only stations on the ride count (90+ only if that's on). When the next one is the last in reach (keeping
   15% in the tank) and the ride's end is further: "Get gas at Casey's in 3 mi: the one after is 62 mi, past your
   range", in yellow, and said "Get gas at the next station."; none in reach: "Low: …" and "Fuel's getting low." Each
   said once.

@@ -470,9 +470,14 @@ body.riding .stop-marker { display: none; }
 .ride-tag.wide { width: 100%; margin-bottom: 10px; }
 .ride-trip-row { display: flex; gap: 8px; margin-bottom: 6px; }
 .ride-trip { flex: 1; min-width: 0; font-size: 20px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
-.bike select { max-width: 100%; }
-.bike .field select { width: 100%; }
-#tank-miles { width: 7em; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
+.bike-card { flex-direction: column; align-items: stretch; gap: 6px; cursor: default; }
+.bike-row { display: flex; align-items: center; gap: 8px; }
+.bike-name { flex: 1; min-width: 0; font-weight: 600; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
+.bike-nums { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+input.num { width: 4.5em; padding: 7px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); text-align: right; }
+.tag.default { --c: #69db7c; }
+.bike-now { margin-bottom: 8px; }
+.bike-now .field select { width: 100%; }
 .ride-speed { flex: none; text-align: center; line-height: 1; }
 .ride-speed b { display: block; font-size: 30px; font-weight: 800; }
 .ride-speed small { font-size: 11px; color: var(--muted); }

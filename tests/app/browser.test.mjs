@@ -550,11 +550,9 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   assert.ok(await page.eval("__said.includes('In half a mile, turn right onto Missouri D.')"));
   assert.ok(await page.eval("!!document.querySelector('.voice-field select option')"), 'a list of voices (the phone’s default at least)');
   await page.eval("localStorage.removeItem('rf2-voice-pick')");
-  // Your bike and the trip meter (Fuel on the ride page): Ride mode starts from what's left in the tank.
-  await page.eval("(() => { const s = document.getElementById('bike-pick'); s.value = 'rebel500'; s.dispatchEvent(new Event('change')); })()");
-  await page.waitFor("/About 189 mi on a full tank/.test(document.getElementById('sheetBody').innerText)", 5000);
-  await page.eval("(() => { const i = document.getElementById('tank-miles'); i.value = '50'; i.dispatchEvent(new Event('change')); })()");
-  await page.waitFor("/≈ 139 mi left in the tank/.test(document.getElementById('sheetBody').innerText)", 5000);
+  // Your default bike, 50 mi since filling up: the ride page says what's left, and Ride mode starts from it.
+  await page.eval("Object.assign(RF.settings, { bikes: [{ id: 'r', name: 'Rebel', gal: 2.9, mpg: 65, tankMiles: 50 }], defaultBike: 'r' }); RF.go('trip')");
+  await page.waitFor("/Rebel: ≈ 139 of 189 mi left \\(50 since filling up\\)/.test(document.getElementById('sheetBody').innerText)", 5000);
   // A bump you marked before, on the ride a little past where it picks you up again below.
   await page.eval(`import('./js/tags.js').then(T => { const g = RF.store.byId.get(${MO150}).geom; T.addSpot(g[Math.floor(g.length / 2) + 5], 'bump'); })`);
   await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Ride it here/.test(b.textContent)).click()");
@@ -633,8 +631,8 @@ test('Ride mode: follows you along the ride, says the turn, notices you left it,
   await page.eval("[...document.querySelectorAll('.ride-tag')].find(b => /Filled up/.test(b.textContent)).click()");
   await page.eval("RF.ride.range = 120; RF.ride.gas = []; RF.ride.update()");
   assert.match(await page.eval("document.querySelector('.ride-gas').innerText"), /^⛽ ~120 mi in tank$/);
-  assert.equal(await page.eval('RF.settings.tankMiles'), 0, 'filled up: kept');
-  await page.eval("Object.assign(RF.settings, { bike: null, tankMiles: 0 })");
+  assert.equal(await page.eval('RF.settings.bikes[0].tankMiles'), 0, 'filled up: kept on the bike');
+  await page.eval("Object.assign(RF.settings, { bikes: [], defaultBike: null })");
   // Coming up on the bump: on screen, and said.
   assert.ok(await page.eval("__said.includes('Bump ahead.')"), await page.eval('JSON.stringify(__said)'));
   assert.match(await page.eval("document.querySelector('.ride-spot').hidden ? '' : document.querySelector('.ride-spot').innerText"), /Bump( ahead · \d+ ft)?/);
@@ -679,14 +677,39 @@ test('road tags: tag a road on its card, see it on the map and in the list, and 
   await page.eval("import('./js/tags.js').then(T => T.restoreTags([]))");
 });
 
-test('your bike is on the account page too, signed out, and the bottom link says so', async () => {
-  await page.eval("RF.go('home')");
-  await page.eval("[...document.querySelectorAll('#sheetBody .foot-links button')].find(b => /Your bike/.test(b.textContent)).click()");
-  assert.match(await sheetText(), /Your bike[\s\S]*Pick your bike[\s\S]*Miles since you filled up/);
-  await page.eval("(() => { const s = document.getElementById('bike-pick'); s.value = 'gsxr750'; s.dispatchEvent(new Event('change')); })()");
-  await page.waitFor("/About 171 mi on a full tank/.test(document.getElementById('sheetBody').innerText)", 5000);
-  assert.equal(await page.eval('RF.settings.bike.id'), 'gsxr750');
-  await page.eval("Object.assign(RF.settings, { bike: null, tankMiles: 0 }); RF.go('home')");
+test('your bikes: typed in on the account page, one the default; the ride page uses it, or another picked for that ride', async () => {
+  await page.eval("Object.assign(RF.settings, { bikes: [], defaultBike: null }); RF.go('home')");
+  await page.eval("[...document.querySelectorAll('#sheetBody .foot-links button')].find(b => /Your bikes/.test(b.textContent)).click()");
+  assert.match(await sheetText(), /Your bikes[\s\S]*Add your bike/);
+  const type = (sel, k, v) => page.eval(`(() => { const i = [...document.querySelectorAll('${sel}')][${k}]; i.value = '${v}'; i.dispatchEvent(new Event('change')); })()`);
+  const click = re => page.eval(`[...document.querySelectorAll('#sheetBody button')].find(b => ${re}.test(b.textContent)).click()`);
+  // Adding one puts the cursor in its name; the page redraws once you're out of the box.
+  const added = async n => { await page.waitFor(`document.querySelectorAll('.bike-name').length === ${n}`, 5000); await sleep(100); await page.eval('document.activeElement.blur()'); };
+  await click('/Add your bike/');
+  await added(1);
+  await type('.bike-name', 0, 'GSX-R');
+  await type('.bike-card input.num', 0, '4.5');
+  await type('.bike-card input.num', 1, '38');
+  await type('.bike-card input.num', 2, '20');
+  await page.waitFor("/Default[\\s\\S]*About 171 mi on a full tank[\\s\\S]*≈ 151 mi left/.test(document.getElementById('sheetBody').innerText)", 5000);
+  assert.equal(await page.eval("document.querySelector('.bike-name').value"), 'GSX-R');
+  // A second bike; make it the default.
+  await click('/Add another bike/');
+  await added(2);
+  await type('.bike-name', 1, 'Rebel');
+  await type('.bike-card input.num', 3, '2.9');
+  await type('.bike-card input.num', 4, '65');
+  await click('/Make default/');
+  assert.equal(await page.eval("RF.settings.bikes.find(b => b.id === RF.settings.defaultBike).name"), 'Rebel');
+  // The ride page: the default, and the other picked for this ride only.
+  await page.eval(pointTrip);
+  await page.waitFor("!!document.getElementById('bike-pick')", 10000);
+  assert.match(await page.eval("document.getElementById('bike-pick').selectedOptions[0].textContent"), /Rebel \(default\)/);
+  assert.match(await sheetText(), /Rebel: ≈ 189 of 189 mi left/);
+  await page.eval("(() => { const s = document.getElementById('bike-pick'); s.value = RF.settings.bikes[0].id; s.dispatchEvent(new Event('change')); })()");
+  await page.waitFor("/GSX-R: ≈ 151 of 171 mi left \\(20 since filling up\\)/.test(document.getElementById('sheetBody').innerText)", 5000);
+  assert.equal(await page.eval("RF.settings.bikes.find(b => b.id === RF.settings.defaultBike).name"), 'Rebel', 'the default stays');
+  await page.eval("Object.assign(RF.settings, { bikes: [], defaultBike: null }); RF.trip.bikeId = null; RF.go('home')");
 });
 
 test('your spots: mark one from the map’s menu, say what it is, see it on the map, follow the account, and remove it', async () => {

@@ -1,5 +1,5 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { BIKES, CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor, APP_VERSION } from './config.js';
+import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor, APP_VERSION } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
 import { visible, hillLevel, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong, setMyMph, limitOf } from './roads.js';
 import * as T from './trip.js';
@@ -11,6 +11,7 @@ import * as W from './weather.js';
 import { Fly } from './fly.js';
 import { Ride } from './ride.js';
 import { phoneVoices, recorded, loadVoices, voicePick, setVoicePick, speak, loadNames, SAMPLE, RATES } from './voice.js';
+import { newBikeId, complete, rangeOf, leftIn, bikeFor, upgradeBikes } from './bikes.js';
 import { TAGS, allTags, tagOf, setTags, setSpeed, speedFixes, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged,
   SPOT_KINDS, spotKind, spots, spotById, addSpot, setSpot, removeSpot, spotsForMap } from './tags.js';
 import * as A from './account.js';
@@ -31,6 +32,7 @@ const settings = Object.assign({
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
   basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1, places: [],
 }, load(SETTINGS_KEY));
+upgradeBikes(settings);   // one picked bike (before the list) becomes your first, default bike
 // Settings saved before the highway tiers existed list only the ramp tiers: show the new ones too.
 if (!settings.highwayTiers) {
   settings.rampTiers = [...new Set([...settings.rampTiers, ...RAMP_TIERS.flatMap((t, i) => t.highway ? [i] : [])])];
@@ -124,7 +126,7 @@ async function start() {
     apply: (data, { merge }) => {
       if (data.settings) {
         if (merge && myPlaces().length) data.settings.places = mergePlaces(data.settings.places || [], myPlaces());
-        Object.assign(settings, data.settings);
+        Object.assign(settings, upgradeBikes(data.settings));
         save(SETTINGS_KEY, settings);
         applySettings();
         loadView();
@@ -1086,7 +1088,7 @@ function homeView() {
 function footLinks() {
   return [
     h('div.foot-links', {},
-      view === 'account' ? '' : h('button.link', { onclick: () => go('account') }, iconEl(icon.person), A.signedIn() ? 'Your rides, bike and account' : 'Your bike, and signing in'),
+      view === 'account' ? '' : h('button.link', { onclick: () => go('account') }, iconEl(icon.person), A.signedIn() ? 'Your rides, bikes and account' : 'Your bikes, and signing in'),
       view === 'about' ? '' : h('button.link', { onclick: () => go('about') }, 'About, credits and riding safe'),
       canInstall() ? h('button.link', { onclick: install }, iconEl(icon.download), 'Install app') : '',
       updateTo ? h('button.link.update', { onclick: applyUpdate }, `Update to ${updateTo}`) : ''),
@@ -1245,7 +1247,7 @@ function accountView() {
       acct.signingIn ? h('p.muted', {}, 'Signing in…') : box,
       acct.error ? h('p.error', {}, acct.error) : '',
       h('p.muted.small', {}, 'Optional. Without it everything works as it does now, kept on this device. Everything in your account is locked on your own devices before it’s sent, so nobody else can read it, not even whoever runs Ride Finder. You can delete it all from here any time.'),
-      bikeSection(),
+      bikesSection(),
     ];
   }
   const u = A.user(), base = location.href.split('#')[0];
@@ -1253,7 +1255,7 @@ function accountView() {
     return [
       backBar('Unlock your rides', u.email || u.name),
       h('p', {}, 'Your rides, tags and settings are locked so only your own devices can read them, and this one doesn’t have the key yet.'),
-      h('p', {}, 'On a phone or PC where Ride Finder already shows your rides, open ', h('b', {}, 'Your rides, bike and account'), ' and tap ',
+      h('p', {}, 'On a phone or PC where Ride Finder already shows your rides, open ', h('b', {}, 'Your rides, bikes and account'), ' and tap ',
         h('b', {}, 'Send the link to another device'), '. Open that link here, and this device can read them too.'),
       h('div.section', {}, h('h3', {}, iconEl(icon.warn), 'Lost the link and your other devices?'),
         h('p.small.muted', {}, 'Then nobody can unlock what’s in the account, us included. You can start over: that deletes everything in it, and the next sign-in starts a new, empty account.'),
@@ -1267,7 +1269,7 @@ function accountView() {
     acct.rides == null ? h('p.muted', {}, acct.error || 'Loading your rides…')
       : acct.rides.length ? h('div.cards', {}, acct.rides.map(r => rideCard(r, { remove: true })))
         : h('p.muted', {}, 'No saved rides yet. Plan one, then tap Save to your rides on its page.'),
-    bikeSection(),
+    bikesSection(),
     acct.links.length ? h('div.section', {}, h('h3', {}, iconEl(icon.share), 'Rides you’ve shared'),
       h('p.muted.small', {}, 'Anyone with one of these links can open the ride. Take one down and it stops working.'),
       h('div.cards', {}, acct.links.map(l => h('div.card.link-card', {},
@@ -1930,7 +1932,8 @@ function startRide() {
     route: r, loop: trip.loop, roadAt, tagRoad: tagHere, crests: P.blindCrestsOn(r.path, store.roads),
     spots: P.spotsOn(r.path, spots()), markSpot: p => addSpot(p),
     // Gas on the way (90+ only, if that's on), and your range: the bar counts it down and says when to stop.
-    gas: { range: tankRange(), used: tankUsed(), onTank: used => setSetting({ tankMiles: Math.round(used * 10) / 10 }),
+    // The bike this ride is on: what's in its tank to start, and the miles ridden added to its trip meter as you go.
+    gas: { range: tankRange(), used: tankUsed(), onTank: used => { const b = myBike(); if (complete(b)) setBike(b.id, { tankMiles: Math.round(used * 10) / 10 }); },
       stops: P.planFuel(r.path, store.fuel, tankRange(), trip.need90).ok.map(a => ({ m: a.mile * 1609.34, name: a.item.name, city: a.item.city })) },
     voice: load(VOICE_KEY) !== false, onVoice: on => save(VOICE_KEY, on),
     // The way back onto the ride: from where you are, the way you're going, onto it going its way. If the router
@@ -2107,56 +2110,82 @@ function sortable(list, onMove) {
   });
 }
 
-// Your bike (kept in settings, so every ride and device has it): its tank and mpg make the range on a full tank, and
-// tankMiles is how far you've gone since filling up (your trip meter), carried from ride to ride. With no bike set,
-// the range picked before (or the ride's own).
-const myBike = () => settings.bike || null;
-const tankRange = () => myBike() ? Math.round(myBike().gal * myBike().mpg) : settings.tankRange || trip.range;
-const tankUsed = () => Math.max(0, +settings.tankMiles || 0);
+// Your bikes (see bikes.js): typed in on the account page; a ride uses your default one unless it picks another.
+const bikes = () => settings.bikes || [];
+const myBike = () => bikeFor(settings, trip);
+const tankRange = () => rangeOf(myBike()) || trip.range;
+const tankUsed = () => complete(myBike()) ? Math.max(0, +myBike().tankMiles || 0) : 0;
 const tankLeft = () => Math.max(0, tankRange() - tankUsed());
-const GALLONS = Array.from({ length: 56 }, (_, i) => +(2.5 + i / 10).toFixed(1));   // 2.5 to 8.0
-const MPGS = [30, 35, 38, 40, 42, 45, 48, 50, 52, 55, 60, 65, 70];
 const fuelChanged = () => { if (route) refreshInfo(false); renderSoon(); };
+function setBike(id, patch) {
+  setSetting({ bikes: bikes().map(b => b.id === id ? { ...b, ...patch } : b) });
+  fuelChanged();
+}
+const bikeName = b => b.name || 'Your bike';
 
-// Your bike on the account page: the same as Fuel on a ride's page, without needing a ride.
-const bikeSection = () => h('div.section', {}, h('h3', {}, iconEl(icon.fuel), 'Your bike'), bikeFields());
+// A number box (text, so typing in it isn't redrawn away): a number ≥ 0 is kept, anything else puts the old one back.
+const doneOnEnter = e => { if (e.key === 'Enter') e.target.blur(); };
+const numBox = (value, set, attrs = {}) => h('input.num', { type: 'text', inputmode: 'decimal', enterkeyhint: 'done', value: value ?? '', maxlength: 6, ...attrs,
+  onkeydown: doneOnEnter,
+  onchange: e => { const v = parseFloat(e.target.value); if (Number.isFinite(v) && v >= 0) set(v); else renderSoon(); } });
 
-function bikeFields() {
-  const b = myBike(), pick = b ? b.id : '';
-  const set = patch => { setSetting({ bike: { id: 'other', gal: 4, mpg: 45, ...b, ...patch } }); fuelChanged(); };
-  return h('div.bike', {},
-    h('div.field', {}, h('label', { for: 'bike-pick' }, 'Your bike’s model'),
-      h('select', { id: 'bike-pick', onchange: e => {
-        const x = BIKES.find(k => k.id === e.target.value);
-        if (x) set({ id: x.id, gal: x.gal, mpg: x.mpg });
-        else if (e.target.value === 'other') set({ id: 'other' });
-      } },
-        h('option', { value: '', selected: !pick, disabled: true }, 'Pick your bike…'),
-        BIKES.map(x => h('option', { value: x.id, selected: pick === x.id }, `${x.name} (${x.gal} gal)`)),
-        h('option', { value: 'other', selected: pick === 'other' }, 'Not listed: set the tank and mpg below'))),
-    b ? h('div.btn-row', {},
-      h('label.inline', {}, 'Tank ', h('select', { onchange: e => set({ gal: +e.target.value }) },
-        GALLONS.map(v => h('option', { value: v, selected: Math.abs(b.gal - v) < 0.05 }, `${v.toFixed(1)} gal`)))),
-      h('label.inline', {}, 'at ', h('select', { onchange: e => set({ mpg: +e.target.value }) },
-        MPGS.map(v => h('option', { value: v, selected: b.mpg === v }, `${v} mpg`))))) : '',
-    b ? h('p.muted.small', {}, `About ${tankRange()} mi on a full tank. Check the tank size in your manual; mpg drops riding hard.`) : '',
-    h('div.field', {}, h('label', { for: 'tank-miles' }, 'Miles since you filled up (your trip meter)'),
-      h('div.start-row', {},
-        h('input', { id: 'tank-miles', type: 'number', inputmode: 'decimal', min: 0, max: 999, step: 1, value: tankUsed() ? Math.round(tankUsed()) : 0,
-          onchange: e => { setSetting({ tankMiles: Math.max(0, +e.target.value || 0) }); fuelChanged(); } }),
-        h('button.btn', { onclick: () => { setSetting({ tankMiles: 0 }); fuelChanged(); toast('Full tank.'); } }, 'Just filled up'))),
-    h('p.muted.small', {}, `≈ ${Math.round(tankLeft())} mi left in the tank. Ride mode adds the miles you ride, so this keeps itself up to date until you fill up. Kept with your settings${A.signedIn() ? ', on all your devices' : ''}; also under Fuel on a ride’s page.`));
+// The account page's Your bikes: each one's name, tank and mpg (its range), trip meter, and which is the default.
+function bikesSection() {
+  const list = bikes(), def = bikeFor(settings, null);
+  return h('div.section.bikes', {}, h('h3', {}, iconEl(icon.fuel), 'Your bikes'),
+    list.length ? '' : h('p.muted.small', {}, 'Add your bike, and the ride page and Ride mode know how far a tank goes, what’s left in it, and when to get gas.'),
+    list.map(b => h('div.card.bike-card', {},
+      h('div.bike-row', {},
+        h('input.bike-name', { type: 'text', placeholder: 'Its name, like “GSX-R”', value: b.name || '', maxlength: 40, 'aria-label': 'Bike name',
+          enterkeyhint: 'done', onkeydown: doneOnEnter,
+          onchange: e => setBike(b.id, { name: e.target.value.trim() }) }),
+        b === def ? h('span.tag.sm.default', {}, 'Default')
+          : h('button.btn.small', { onclick: () => { setSetting({ defaultBike: b.id }); fuelChanged(); } }, 'Make default'),
+        h('button.icon-btn', { title: 'Remove', html: icon.trash, onclick: () => {
+          const was = { bikes: list, defaultBike: settings.defaultBike };
+          setSetting({ bikes: list.filter(x => x !== b), ...(b === def ? { defaultBike: (list.find(x => x !== b) || {}).id || null } : {}) });
+          fuelChanged();
+          toast(`${bikeName(b)} removed.`, { label: 'Undo', run: () => { setSetting(was); fuelChanged(); } });
+        } })),
+      h('div.bike-nums', {},
+        h('label.inline', {}, 'Tank ', numBox(b.gal, v => setBike(b.id, { gal: v }), { 'aria-label': 'Tank, gallons', placeholder: '4.5' }), ' gal'),
+        h('label.inline', {}, 'Gets ', numBox(b.mpg, v => setBike(b.id, { mpg: v }), { 'aria-label': 'Miles per gallon', placeholder: '40' }), ' mpg')),
+      h('p.muted.small', {}, complete(b) ? `About ${rangeOf(b)} mi on a full tank.` : 'Fill in the tank (gallons, from the manual) and the mpg it gets for its range.'),
+      h('div.bike-nums', {},
+        h('label.inline', {}, 'Trip meter ', numBox(Math.round(+b.tankMiles || 0), v => setBike(b.id, { tankMiles: v }), { 'aria-label': 'Miles since filling up' }), ' mi since filling up'),
+        h('button.btn.small', { onclick: () => { setBike(b.id, { tankMiles: 0 }); toast(`${bikeName(b)}: full tank.`); } }, 'Just filled up')),
+      complete(b) ? h('p.muted.small', {}, `≈ ${Math.round(leftIn(b))} mi left in the tank. Ride mode adds the miles you ride on it.`) : '')),
+    h('button.btn', { onclick: () => {
+      const b = { id: newBikeId(), name: '', gal: null, mpg: null, tankMiles: 0 };
+      setSetting({ bikes: [...list, b], ...(list.length ? {} : { defaultBike: b.id }) });
+      setTimeout(() => { const el = [...document.querySelectorAll('.bike-name')].pop(); if (el) el.focus(); }, 50);
+    } }, iconEl(icon.plus), list.length ? 'Add another bike' : 'Add your bike'),
+    h('p.fineprint', {}, `Kept with your settings${A.signedIn() ? ', on all your devices' : ''}. A ride uses your default bike; its page can pick another.`));
+}
+
+// The ride page's bike: which of yours (the default unless picked here), and what's in its tank.
+function bikeLine() {
+  const list = bikes(), b = myBike();
+  if (!list.length) {
+    return h('p.muted.small', {}, `Planned with a ${trip.range} mi range. `, h('button.link', { onclick: () => go('account') }, 'Add your bike'),
+      ' (its tank and mpg) to plan from what’s in your tank.');
+  }
+  return h('div.bike-now', {},
+    list.length > 1 ? h('div.field', {}, h('label', { for: 'bike-pick' }, 'Bike'),
+      h('select', { id: 'bike-pick', onchange: e => { trip.bikeId = e.target.value; tripChanged({ reroute: false }); fuelChanged(); } },
+        list.map(x => h('option', { value: x.id, selected: x === b }, `${bikeName(x)}${x.id === bikeFor(settings, null).id ? ' (default)' : ''}`)))) : '',
+    h('div.start-row', {},
+      h('span.grow', {}, complete(b) ? `${bikeName(b)}: ≈ ${Math.round(tankLeft())} of ${tankRange()} mi left (${Math.round(tankUsed())} since filling up)`
+        : `${bikeName(b)}: add its tank and mpg`),
+      complete(b) ? h('button.btn.small', { onclick: () => { setBike(b.id, { tankMiles: 0 }); toast('Full tank.'); } }, 'Filled up') : '',
+      h('button.btn.small', { onclick: () => go('account') }, 'Edit')));
 }
 
 function fuelSection() {
   const f = info && info.fuel;
   return h('div.section', {},
     h('h3', {}, iconEl(icon.fuel), 'Fuel'),
-    bikeFields(),
-    myBike() ? '' : h('div.btn-row', {},
-      h('label.inline', {}, 'Or just a range ',
-        h('select', { onchange: e => { trip.range = +e.target.value; setSetting({ tankRange: trip.range }); tripChanged({ reroute: false }); fuelChanged(); } },
-          [60, 80, 100, 120, 150, 180, 200, 250].map(v => h('option', { value: v, selected: tankRange() === v }, `${v} mi`))))),
+    bikeLine(),
     h('div.btn-row', {},
       h('label.switch', {}, h('input', { type: 'checkbox', checked: trip.need90,
         onchange: e => { trip.need90 = e.target.checked; fuelChanged(); } }), h('span', {}, '90+ only'))),
@@ -2169,8 +2198,8 @@ function fuelSection() {
           h('div', {}, `Mile ${Math.round(a.mile)} · ${a.item.name}`),
           h('div.muted.small', {}, [a.item.city, FUEL_STATUS[a.item.status].label].filter(Boolean).join(' · '))),
         h('button.icon-btn', { title: 'Add as a stop', html: icon.plus, onclick: () => addStation(a.item) })))
-        : h('p.muted.small', {}, `No fuel stop needed with a ${tankRange()} mi range.`)),
-    h('p.fineprint', {}, 'Your bike and tank are kept for every ride. In Ride mode the bar counts down what’s left (tap it when you fill up) and says when to get gas; the first stop above is planned from what’s in the tank now.'));
+        : h('p.muted.small', {}, complete(myBike()) ? `No fuel stop needed: ≈ ${Math.round(tankLeft())} mi in the tank.` : `No fuel stop needed with a ${tankRange()} mi range.`)),
+    h('p.fineprint', {}, 'The first stop is planned from what’s in the tank now. In Ride mode the bar counts it down (tap it when you fill up), says when to get gas, and adds the miles to the bike’s trip meter.'));
 }
 
 function exportSection() {

@@ -9,7 +9,7 @@ const SHELL = [
   './', './index.html', './app.css', './manifest.webmanifest',
   './js/main.js', './js/config.js', './js/geo.js', './js/roads.js', './js/trip.js', './js/plan.js',
   './js/search.js', './js/routing.js', './js/elevation.js', './js/store.js', './js/mapview.js', './js/ui.js',
-  './js/weather.js', './js/fly.js', './js/nav.js', './js/ride.js', './js/voice.js', './js/tags.js', './js/account.js', './js/seal.js',
+  './js/weather.js', './js/fly.js', './js/nav.js', './js/ride.js', './js/voice.js', './js/tags.js', './js/account.js', './js/seal.js', './js/bikes.js',
   './tiles/index.js', './tiles/fuel.js', './tiles/search.js', './favicon.svg',
   'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.0/maplibre-gl.js',
   'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.0/maplibre-gl.css',
