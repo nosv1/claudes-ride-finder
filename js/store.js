@@ -40,7 +40,7 @@ export async function initData() {
   store.index = window.TILE_INDEX;
   store.available = new Set(store.index.tiles);
   store.speedAvailable = new Set(store.index.speed || []);
-  store.fuel = (window.FUEL || []).map(([lat, lon, name, city, status, hours]) => ({ lat, lon, name, city, status, hours }));
+  store.fuel = (window.FUEL || []).map(([lat, lon, name, city, status, hours, oct]) => ({ lat, lon, name, city, status, hours, oct: oct ?? null }));
   store.search = window.SEARCH || store.search;
 }
 

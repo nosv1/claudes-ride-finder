@@ -693,7 +693,8 @@ test('your bikes: typed in on the account page, one the default; the ride page u
   await type('.bike-name', 0, 'GSX-R');
   await type('.bike-item input.num', 0, '4.5');
   await type('.bike-item input.num', 1, '38');
-  await page.eval("(() => { const s = document.querySelector('.bike-fuel'); s.value = 'premium'; s.dispatchEvent(new Event('change')); })()");
+  assert.deepEqual(await page.eval("[...document.querySelector('.bike-fuel').options].map(o => o.textContent)"), ['85', '87', '88', '89', '90', '91', '92', '93', '94'], 'numbers only');
+  await page.eval("(() => { const s = document.querySelector('.bike-fuel'); s.value = '91'; s.dispatchEvent(new Event('change')); })()");
   await page.waitFor("/Default[\\s\\S]*About 171 mi on a full tank/.test(document.getElementById('sheetBody').innerText)", 5000);
   assert.doesNotMatch(await sheetText(), /Trip meter/, 'the trip meter is the ride’s, typed in before setting off');
   assert.equal(await page.eval("document.querySelector('.bike-name').value"), 'GSX-R');
@@ -714,8 +715,8 @@ test('your bikes: typed in on the account page, one the default; the ride page u
   await page.waitFor("/GSX-R: ≈ 171 of 171 mi left/.test(document.getElementById('sheetBody').innerText)", 5000);
   await page.eval("(() => { const i = document.getElementById('trip-meter'); i.value = '20'; i.dispatchEvent(new Event('change')); })()");
   await page.waitFor("/GSX-R: ≈ 151 of 171 mi left in the tank/.test(document.getElementById('sheetBody').innerText)", 5000);
-  // It takes 91+: premium stations only, no 90+ box to forget.
-  assert.match(await sheetText(), /Premium stations only: GSX-R takes 91\+/);
+  // It takes 91: stations with 91+ only, no 90+ box to forget.
+  assert.match(await sheetText(), /Stations with 91\+ only: GSX-R takes 91\./);
   assert.equal(await page.eval("[...document.querySelectorAll('#sheetBody .switch span')].some(s => s.textContent === '90+ only')"), false);
   assert.equal(await page.eval("RF.settings.bikes[0].tankMiles"), 20, 'kept on that bike');
   assert.equal(await page.eval("RF.settings.bikes.find(b => b.id === RF.settings.defaultBike).name"), 'Rebel', 'the default stays');

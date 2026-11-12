@@ -244,11 +244,22 @@ export function stopIndexAt(path, items, m) {
 // ---------- fuel ----------
 
 // Assume a full tank at the start; refuel at the farthest usable station before the reserve.
+// Whether a station sells octane `n` or higher. Mapped grades decide when there are any (oct: the highest). Otherwise
+// up to 89 is taken as there (nearly every US station has 87 and 89), and 90–91 only where premium is listed
+// without grades or the brand nearly always has it (status 2 or 1); higher, only where it's mapped.
+export function sellsOctane(s, n) {
+  if (!n || n <= 0) return true;
+  if (s.oct != null) return s.oct >= n;
+  if (n <= 89) return s.status !== -1 || n <= 87;
+  return n <= 91 && s.status >= 1;
+}
+
 // leftMi: what's in the tank at the start (a full tank if left out); the first stop is planned from that.
-export function planFuel(path, stations, rangeMi, need90, leftMi = rangeMi) {
+// octane: the least the bike takes (0 or left out: any station; true, from before numbers: 90).
+export function planFuel(path, stations, rangeMi, octane, leftMi = rangeMi) {
   const { hits: along, totalMiles } = alongRoute(path, stations, FUEL.nearRoute, 300);
-  const usable = rangeMi * FUEL.reserve;
-  const ok = along.filter(a => !need90 || a.item.status >= 1);
+  const usable = rangeMi * FUEL.reserve, n = octane === true ? 90 : +octane || 0;
+  const ok = along.filter(a => sellsOctane(a.item, n));
   const picks = [], gaps = [];
   // Starting with less than a full tank is starting "behind": the first stop has to come within what's left.
   let pos = Math.min(0, (Math.max(0, leftMi) - rangeMi) * FUEL.reserve);
