@@ -233,6 +233,9 @@ export function mergeTags(a, b) {
 
 export const rideId = () => session ? read(RIDE_KEY) : null;
 export const rideName = () => (account.rides || []).find(r => r.id === rideId())?.name || '';
+// The selected saved ride's name, or '' when none is selected. Before Your rides has loaded (or while they're locked)
+// a selected ride has no name yet, but it's still selected and its changes still save to it.
+export const selectedRide = () => rideId() ? rideName() || 'Your saved ride' : '';
 export function setRideId(id) { write(RIDE_KEY, id); changed(); }
 let sent = null;  // the trip last saved or opened, so opening a ride doesn't save it straight back
 

@@ -596,10 +596,13 @@ colored road), Add a stop here, Street View here.
   *is* that saved ride: changes save 1.5 s after they settle ("Saving…", then "In your rides. Changes save as you
   go."), and its name is editable there. A saved ride is **selected** only by picking it from Your rides (or saving
   it); the home bar then names it ("Ozark coffee run · from your rides", with **New** and Ride). **Planning never
-  changes it** (2026-11-11, the rider was overwriting saved rides): Plan a ride's start/end/Generate/picking a loop,
-  Start here / End here (map menu, place card, search), and Plan a loop with this road first step off it
-  (`newRideFromSaved`): the ride on screen carries on as a new, unsaved ride, the toast says "New ride. X stays in
-  your rides as it was.", and Plan a ride says so up front. Edits on the ride's own page (stops, Start from me,
+  changes it** (2026-11-11, the rider was overwriting saved rides): Plan a ride's start/end/Must include ✕/picking a
+  loop (Generate's own pick too), Start here / End here (map menu, place card, search), and Plan a loop with this road
+  step off it (`newRideFromSaved`) right before they change the ride: the ride on screen carries on as a new, unsaved
+  ride, the toast says "New ride. X stays in your rides as it was.", and Plan a ride says so up front. A Generate
+  that stops before changing anything (no end, no location, Stop) leaves the ride selected; one that finishes after a
+  ride was opened or saved lists its loops without putting one on screen, and opening a ride clears loops listed for
+  the one before. Before Your rides has loaded, a selected ride shows as "Your saved ride". Edits on the ride's own page (stops, Start from me,
   options, 90+ only) and the map's Add to ride / Add a stop still go into it. **New ride** (was Clear all) starts an
   empty ride (Undo puts it back, saved ride and all); opening a shared link does too. The home list shows the latest 3 (and the empty ride page 5) under **Your rides**;
   the account page lists them all, each with delete (with Undo). Opening one replaces the ride on screen (Undo).

@@ -175,6 +175,33 @@ test('planning never changes a saved ride: it makes a new one; a ride is selecte
   await pc.eval("[...document.querySelectorAll('#sheetBody .card')].find(e => e.textContent.includes('Ozark coffee run')).click()");
   await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)}`);
   assert.deepEqual(await pc.eval('RF.trip.items.map(i => i.label)'), labels);
+  // Plan a ride says so up front; a Generate that stops before changing anything (one way, no end) leaves it selected.
+  await pc.eval("RF.go('plan')");
+  assert.match(await sheet(pc), /Planning here makes a new ride\. Ozark coffee run stays in your rides as it is\./);
+  await pc.eval("[...document.querySelectorAll('#sheetBody .seg.shape button')].find(b => b.textContent === 'One way').click()");
+  await pc.eval("document.querySelector('#sheetBody .cta').click()");
+  await pc.waitFor("/Set where you’re headed first|Set a start first/.test(RF.gen.status)");
+  assert.equal(await pc.eval('RF.account.rideId()'), id, 'still selected');
+  await pc.eval("[...document.querySelectorAll('#sheetBody .seg.shape button')].find(b => b.textContent === 'Loop').click()");
+  // New ride: the saved one stays as it was, and Undo selects it again.
+  await pc.eval("RF.go('trip')");
+  const newRideBtn = "[...document.querySelectorAll('#sheetBody .btn')].find(b => /New ride/.test(b.textContent))";
+  const newRide = async () => { await pc.waitFor(newRideBtn); await pc.eval(`${newRideBtn}.click()`); };
+  await newRide();
+  assert.equal(await pc.eval('RF.account.rideId()'), null);
+  assert.match(await pc.eval("document.getElementById('toast').innerText"), /New ride\. Ozark coffee run stays in your rides as it was\./);
+  await pc.eval("[...document.querySelectorAll('#toast button')].find(b => b.textContent === 'Undo').click()");
+  assert.equal(await pc.eval('RF.account.rideId()'), id);
+  assert.deepEqual(await pc.eval('RF.trip.items.map(i => i.label)'), labels);
+  // Loops listed for another ride don't stay on screen once a saved ride is opened (a card there would replace it).
+  await newRide();
+  await pc.eval("RF.gen.options.push({ items: [], route: null }); RF.go('account')");
+  await pc.waitFor("[...document.querySelectorAll('#sheetBody .card')].some(e => e.textContent.includes('Ozark coffee run'))");
+  await pc.eval("[...document.querySelectorAll('#sheetBody .card')].find(e => e.textContent.includes('Ozark coffee run')).click()");
+  await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)} && RF.view === 'trip'`);
+  assert.equal(await pc.eval('RF.gen.options.length'), 0);
+  await sleep(2500);
+  assert.equal((await api(pc, `/rides/${id}`)).trip, before, 'the saved ride wasn’t touched');
 });
 
 test('a ride deleted on the PC leaves the phone’s list when the phone comes back to the app', async () => {

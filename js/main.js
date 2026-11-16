@@ -304,6 +304,7 @@ function loadSavedTrip() {
 }
 
 function showRide(t) {
+  if (gen.running || gen.options.length) stopGenerating('');  // its loops were for the ride that was on screen
   trip = t;
   go('trip');
   const pts = trip.items.flatMap(it => it.pts);
@@ -351,11 +352,16 @@ async function openSavedRide(id) {
   }
 }
 
-let routeTimer = null, routeSeq = 0;
-function tripChanged({ reroute = true } = {}) {
+// Keep the ride on this device, and in the selected saved ride (it keeps up with its changes).
+function saveTrip() {
   const packed = T.encodeTrip(trip);
   save(TRIP_KEY, packed);
-  if (trip.items.length) A.rideChanged(packed);  // a saved ride keeps up with its changes
+  if (trip.items.length) A.rideChanged(packed);
+}
+
+let routeTimer = null, routeSeq = 0;
+function tripChanged({ reroute = true } = {}) {
+  saveTrip();
   mapView.setStops(trip.items.map((it, i) => ({ p: it.pts[0], label: it.label, n: i + 1, index: i })), dropStop);
   mapView.showTripRoads(trip.items.flatMap(it => it.ids || []));
   showGoogleParts = false;
@@ -486,9 +492,9 @@ function flipRoad(it) {
 
 // Make this road a must-include and open the planner.
 function planAround(g) {
-  newRideFromSaved();
   const inTrip = trip.items.some(it => it.ids && it.ids.some(id => g.ids.includes(id)) && !it.gen);
   if (!inTrip) {
+    newRideFromSaved();
     T.addRoad(trip, g);
     tripChanged();
   }
@@ -509,12 +515,15 @@ const addStation = s => addPlace([s.lat, s.lon], `Gas: ${s.name}`, s.name);
 
 // A saved ride is selected only by picking it from your rides (or saving it); planning never changes it. Anything that
 // plans (Plan a ride, Start here / End here, Plan a loop with this road, Generate) first steps off the selected ride:
-// what's on screen carries on as a new, unsaved ride, and the saved one stays in your rides as it was.
-function newRideFromSaved() {
-  if (!A.rideId()) return;
-  const name = A.rideName() || 'Your saved ride';
+// what's on screen carries on as a new, unsaved ride, and the saved one stays in your rides as it was. Each step off
+// happens right before the trip changes, so a planner that changes nothing (a Generate that stops early) leaves the
+// ride selected. undo: puts the trip back (then the saved ride is selected again). Whether there was one to step off.
+function newRideFromSaved(undo) {
+  const id = A.rideId(), name = A.selectedRide();
+  if (!id) return false;
   A.setRideId(null);
-  toast(`New ride. ${name} stays in your rides as it was.`);
+  toast(`New ride. ${name} stays in your rides as it was.`, undo && { label: 'Undo', run: () => { undo(); A.setRideId(id); tripChanged(); } });
+  return true;
 }
 
 // keep: an edit made on the ride's own page (Start from me), which does go into the selected ride.
@@ -636,7 +645,6 @@ const nextExtra = () => EXTRAS.find(t => t > settings.genExtra) || null;
 
 async function generateRun(run) {
   const live = () => { if (run !== genRun) throw STOPPED; };
-  newRideFromSaved();  // the loops it finds are a new ride, never the saved one
   const oneWay = settings.genShape === 'oneway';
   let hours = settings.genHours;
   genRoutes = new Map();
@@ -655,6 +663,8 @@ async function generateRun(run) {
       return renderSoon();
     }
   }
+  // A ride saved or opened while this runs is left alone: the loops are listed, not put on screen.
+  const rideAtStart = A.rideId();
   const end = oneWay ? T.endOf(trip) : null;
   if (oneWay && !end) {
     gen = { options: [], index: -1, running: false, status: 'Set where you’re headed first: Pick on map, or right-click (long-press) a spot and choose “End a ride here”.' };
@@ -761,7 +771,7 @@ async function generateRun(run) {
   list.sort((a, b) => worth(b) - worth(a));
   if (fastest) list.forEach(o => { o.vsFastest = o.route && o.route.seconds - fastest.route.seconds; });
   gen = { options: fastest ? [...list, fastest] : list, index: -1, running: false, status, next: fastest && !list.length ? nextExtra() : null };
-  if (gen.options[0].route) selectOption(0);
+  if (gen.options[0].route && A.rideId() === rideAtStart) selectOption(0);
   else renderSoon();
 }
 
@@ -894,6 +904,7 @@ async function routeOption(opt, start, hours, end = null, live = () => {}, win =
 
 function selectOption(i) {
   const opt = gen.options[i];
+  newRideFromSaved();  // the loops it found are a new ride, never the saved one
   gen.index = i;
   trip.items = opt.items.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
   trip.loop = !opt.oneWay;
@@ -1436,7 +1447,7 @@ function tagHere(k, p, heading) {
 }
 
 function rideBar() {
-  const saved = A.rideId() && A.rideName();
+  const saved = A.selectedRide();
   return h('div.ride-bar', {},
     h('div', { onclick: () => go('trip'), style: 'cursor:pointer;flex:1' },
       h('div.muted', {}, saved ? h('b.ride-bar-name', {}, saved) : 'Your ride', saved ? ' · from your rides' : ' · not saved'),
@@ -1637,10 +1648,10 @@ function savePlaceBox(p) {
 
 function planView() {
   const start = T.startOf(trip), oneWay = settings.genShape === 'oneway', end = oneWay && T.endOf(trip);
-  const place = it => it ? it.label.replace(/^(Start|End):?\s*/, '') || 'Pinned on the map' : 'Not set yet';
+  const place = it => it ? it.label.replace(/^(Start|End):?\s*/, '') || 'Pinned on the map' : 'Not set yet', saved = A.selectedRide();
   return [
     backBar('Plan a ride', oneWay ? 'From your start to where you’re headed, the fun way' : 'A loop from your start through the best roads'),
-    A.rideId() && A.rideName() ? h('p.small.plan-new', {}, 'Planning here makes a new ride. ', h('b', {}, A.rideName()), ' stays in your rides as it is.') : '',
+    saved ? h('p.small.plan-new', {}, 'Planning here makes a new ride. ', h('b', {}, saved), ' stays in your rides as it is.') : '',
     h('div.seg.shape', {}, [['loop', 'Loop'], ['oneway', 'One way']].map(([v, l]) =>
       h(`button${settings.genShape === v ? '.on' : ''}`, { onclick: () => setSetting({ genShape: v }) }, l))),
     h('div.field', {}, h('label', {}, 'Start'),
@@ -1687,7 +1698,7 @@ function mustInclude() {
       ? h('div', {}, own.map(it => h('div.start-row.must', {},
           iconEl(it.type === 'road' ? icon.route : icon.pin),
           h('span.grow', {}, it.label, it.type === 'road' && it.curvy ? h('span.muted.small', {}, ` · ${miles(it.curvy)} mi of curves`) : ''),
-          h('button.icon-btn', { title: 'Remove', html: icon.x, onclick: () => { T.removeStop(trip, trip.items.indexOf(it)); tripChanged(); } }))),
+          h('button.icon-btn', { title: 'Remove', html: icon.x, onclick: () => { newRideFromSaved(); T.removeStop(trip, trip.items.indexOf(it)); tripChanged(); } }))),
         h('p.muted.small', {}, 'Loops will go through these and fill the rest of your time with the best roads nearby.'))
       : h('p.muted.small', {}, 'Nothing yet. To build a ride around a road, tap it on the map and choose “Plan a loop with this road”.'));
 }
@@ -1787,12 +1798,11 @@ function tripView() {
 // No "are you sure": an Undo in the toast instead.
 // A saved ride stays as it was in your rides: clearing starts a new one.
 function clearRide() {
-  const was = trip.items, wasId = A.rideId(), name = wasId && A.rideName();
+  const was = trip.items, undo = () => { trip.items = was; };
   trip.items = [];
   gen.index = -1;
-  A.setRideId(null);
+  if (!newRideFromSaved(undo)) toast('New ride', { label: 'Undo', run: () => { undo(); tripChanged(); } });
   tripChanged();
-  toast(name ? `New ride. ${name} stays in your rides.` : 'New ride', { label: 'Undo', run: () => { trip.items = was; A.setRideId(wasId); tripChanged(); } });
 }
 
 // What a ride is made of, kept per route and filters (filters can change after routing, and render runs often).
@@ -2193,7 +2203,7 @@ function bikeLine() {
   }
   return h('div.bike-now', {},
     list.length > 1 ? h('div.field', {}, h('label', { for: 'bike-pick' }, 'Bike'),
-      h('select', { id: 'bike-pick', onchange: e => { trip.bikeId = e.target.value; tripChanged({ reroute: false }); fuelChanged(); } },
+      h('select', { id: 'bike-pick', onchange: e => { trip.bikeId = e.target.value; saveTrip(); fuelChanged(); } },
         list.map(x => h('option', { value: x.id, selected: x === b }, `${bikeName(x)}${x.id === bikeFor(settings, null).id ? ' (default)' : ''}`)))) : '',
     complete(b) ? h('div.bike-nums.trip-meter', {},
       h('label.inline', {}, 'Trip meter ', numBox(Math.round(+b.tankMiles || 0), v => setBike(b.id, { tankMiles: v }),
@@ -2211,7 +2221,7 @@ function fuelSection() {
     h('div.btn-row', {},
       myBike() ? (minOctane() > 87 ? h('p.small.premium-only', {}, `Stations with ${minOctane()}+ only: ${bikeName(myBike())} takes ${minOctane()}.`) : '')
         : h('label.switch', {}, h('input', { type: 'checkbox', checked: trip.need90,
-          onchange: e => { trip.need90 = e.target.checked; tripChanged({ reroute: false }); fuelChanged(); } }), h('span', {}, '90+ only'))),
+          onchange: e => { trip.need90 = e.target.checked; saveTrip(); fuelChanged(); } }), h('span', {}, '90+ only'))),
     !f ? h('p.muted.small', {}, 'Gas stops appear once there’s a route.') : h('div', {},
       h('p.muted.small', {}, `${f.ok.length} ${octWords(minOctane())}stations on the route · longest stretch without one: ${Math.round(f.longest)} mi`),
       f.gaps.map(([a, b]) => h('p.warn.small', {}, `⚠ No ${octWords(minOctane())}gas from mile ${Math.round(a)} to ${Math.round(b)}, more than ${complete(myBike()) && a < 1 ? 'what’s in the tank' : 'your range'}.`)),

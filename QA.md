@@ -175,7 +175,9 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - New ride: the saved ride stays as it was in Your rides; Undo brings it back on screen.
 - With a saved ride selected (home bar names it): Plan a ride → Generate → pick a loop, or Start a ride here from the
   map: "New ride. X stays in your rides as it was.", the bar says "Your ride · not saved", and X in Your rides is
-  unchanged when opened again. 90+ only on a saved ride is still ticked after opening it again.
+  unchanged when opened again. 90+ only on a saved ride is still ticked after opening it again. One way with no end
+  set, Generate: it says to set an end and the ride is still selected. Generate, then open a saved ride while it
+  routes: the saved ride stays on screen and is unchanged.
 - Delete a ride on the PC, then switch to the app on the phone (after 30 s or so): it's gone from Your rides there.
 - Sign out, then sign in again: everything's still there. Delete account (tap twice): you're signed out and the
   rides are gone from the other device too after it reopens.
