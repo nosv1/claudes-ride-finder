@@ -277,7 +277,7 @@ function openLink(was) {
 // open it here. The ride you had comes back with Undo.
 function onLinkPasted() {
   if (ride || fly) return;  // not in the middle of riding or a fly-through
-  const was = trip;
+  const was = rideOnScreen();
   let opened;
   try {
     opened = openLink(was);
@@ -287,7 +287,7 @@ function onLinkPasted() {
   }
   if (opened !== true) return;
   tripChanged();
-  if (was.items.length) toast('Opened the shared ride.', { label: 'Undo', run: () => { trip = was; tripChanged(); go('trip'); } });
+  if (was.stops) toast('Opened the shared ride.', { label: 'Undo', run: () => { was.restore(); go('trip'); } });
 }
 
 function loadSavedTrip() {
@@ -303,8 +303,22 @@ function loadSavedTrip() {
   tripChanged();
 }
 
+// Replacing the ride on screen (opening another, New ride, Undo): planning for the one that was there stops, a Generate
+// in flight (even while it's still finding your location) and a location fix on its way, and its listed loops go.
+let rideSeq = 0;
+function leaveRide() {
+  rideSeq++;
+  stopGenerating('');
+}
+
+// The ride on screen, for an Undo once another replaces it: restore() puts it back with its saved ride and listed loops.
+function rideOnScreen() {
+  const t = trip, id = A.rideId(), listed = !gen.running && gen.options.length ? gen : null;
+  return { stops: t.items.length, restore: () => { leaveRide(); trip = t; A.setRideId(id); if (listed) gen = listed; tripChanged(); } };
+}
+
 function showRide(t) {
-  if (gen.running || gen.options.length) stopGenerating('');  // its loops were for the ride that was on screen
+  leaveRide();
   trip = t;
   go('trip');
   const pts = trip.items.flatMap(it => it.pts);
@@ -324,15 +338,15 @@ async function addDevice(k) {
 }
 
 // A short link (#s=): the ride is kept by the account service, so it's fetched first. was: the ride on screen when
-// the link was pasted into the open app, for Undo.
+// the link was pasted into the open app (rideOnScreen), for Undo.
 async function openSharedRide(id, was) {
   toast('Opening the shared ride…');
   try {
-    const t = T.decodeTrip(await A.openLink(id)), wasId = A.rideId();
+    const t = T.decodeTrip(await A.openLink(id));
     A.setRideId(null);
     showRide(t);
     tripChanged();
-    if (was && was.items.length) toast('Opened the shared ride.', { label: 'Undo', run: () => { trip = was; A.setRideId(wasId); tripChanged(); go('trip'); } });
+    if (was && was.stops) toast('Opened the shared ride.', { label: 'Undo', run: () => { was.restore(); go('trip'); } });
     else toast('Opened the shared ride.');
   } catch (e) {
     toast(e.status === 404 ? e.message : 'Couldn’t open that ride. Check your signal and open the link again.');
@@ -341,12 +355,12 @@ async function openSharedRide(id, was) {
 
 // Open a ride from your account in place of the one on screen (Undo puts that one back).
 async function openSavedRide(id) {
-  const was = trip, wasId = A.rideId();
+  const was = rideOnScreen();
   try {
     const r = await A.openRide(id);
     showRide(T.decodeTrip(r.trip));
     tripChanged();
-    toast(`Opened ${r.name}`, { label: 'Undo', run: () => { A.setRideId(wasId); trip = was; tripChanged(); } });
+    toast(`Opened ${r.name}`, { label: 'Undo', run: was.restore });
   } catch (e) {
     toast(e.message);
   }
@@ -498,7 +512,7 @@ function planAround(g) {
     T.addRoad(trip, g);
     tripChanged();
   }
-  gen = { options: [], index: -1, running: false, status: T.startOf(trip) ? '' : 'Now set a start: your location or a spot on the map.' };
+  stopGenerating(T.startOf(trip) ? '' : 'Now set a start: your location or a spot on the map.');
   go('plan');
 }
 
@@ -517,13 +531,24 @@ const addStation = s => addPlace([s.lat, s.lon], `Gas: ${s.name}`, s.name);
 // plans (Plan a ride, Start here / End here, Plan a loop with this road, Generate) first steps off the selected ride:
 // what's on screen carries on as a new, unsaved ride, and the saved one stays in your rides as it was. Each step off
 // happens right before the trip changes, so a planner that changes nothing (a Generate that stops early) leaves the
-// ride selected. undo: puts the trip back (then the saved ride is selected again). Whether there was one to step off.
-function newRideFromSaved(undo) {
-  const id = A.rideId(), name = A.selectedRide();
-  if (!id) return false;
+// ride selected.
+const keptAsItWas = name => `New ride. ${name} stays in your rides as it was.`;
+function newRideFromSaved() {
+  const name = A.selectedRide();
+  if (!name) return;
   A.setRideId(null);
-  toast(`New ride. ${name} stays in your rides as it was.`, undo && { label: 'Undo', run: () => { undo(); A.setRideId(id); tripChanged(); } });
-  return true;
+  toast(keptAsItWas(name));
+}
+
+// Your location as the start of the ride on screen, unless another ride replaced it while the fix was on its way.
+async function startFromMe(opts) {
+  const seq = rideSeq;
+  try {
+    const p = await locate();
+    if (seq === rideSeq) setStartAt(p, 'Start: my location', opts);
+  } catch (e) {
+    if (seq === rideSeq) locationError(e);
+  }
 }
 
 // keep: an edit made on the ride's own page (Start from me), which does go into the selected ride.
@@ -663,8 +688,6 @@ async function generateRun(run) {
       return renderSoon();
     }
   }
-  // A ride saved or opened while this runs is left alone: the loops are listed, not put on screen.
-  const rideAtStart = A.rideId();
   const end = oneWay ? T.endOf(trip) : null;
   if (oneWay && !end) {
     gen = { options: [], index: -1, running: false, status: 'Set where you’re headed first: Pick on map, or right-click (long-press) a spot and choose “End a ride here”.' };
@@ -771,7 +794,7 @@ async function generateRun(run) {
   list.sort((a, b) => worth(b) - worth(a));
   if (fastest) list.forEach(o => { o.vsFastest = o.route && o.route.seconds - fastest.route.seconds; });
   gen = { options: fastest ? [...list, fastest] : list, index: -1, running: false, status, next: fastest && !list.length ? nextExtra() : null };
-  if (gen.options[0].route && A.rideId() === rideAtStart) selectOption(0);
+  if (gen.options[0].route) selectOption(0);
   else renderSoon();
 }
 
@@ -1657,9 +1680,7 @@ function planView() {
     h('div.field', {}, h('label', {}, 'Start'),
       h('div.start-row', {}, iconEl(icon.pin), h('span.grow', {}, place(start)))),
     h('div.btn-row', {},
-      h('button.btn', { onclick: async () => {
-        try { setStartAt(await locate(), 'Start: my location'); } catch (e) { locationError(e); }
-      } }, iconEl(icon.locate), 'My location'),
+      h('button.btn', { onclick: () => startFromMe() }, iconEl(icon.locate), 'My location'),
       h('button.btn', { onclick: () => startPicking('start') }, iconEl(icon.pin), 'Pick on map')),
     placeButtons(p => setStartAt(p.at, `Start: ${p.name}`)),
     oneWay ? h('div.field', {}, h('label', {}, 'End'),
@@ -1756,9 +1777,7 @@ function tripView() {
     h('div.btn-row', {},
       h('button.btn', { onclick: () => startPicking('road') }, iconEl(icon.route), 'Add road'),
       h('button.btn', { onclick: () => startPicking('stop') }, iconEl(icon.plus), 'Add stop'),
-      h('button.btn', { onclick: async () => {
-        try { setStartAt(await locate(), 'Start: my location', { keep: true }); } catch (e) { locationError(e); }
-      } }, iconEl(icon.locate), 'Start from me')),
+      h('button.btn', { onclick: () => startFromMe({ keep: true }) }, iconEl(icon.locate), 'Start from me')),
     saveRow(),
     h('div.section', {}, routeSummary()),
     weatherSection(),
@@ -1798,11 +1817,12 @@ function tripView() {
 // No "are you sure": an Undo in the toast instead.
 // A saved ride stays as it was in your rides: clearing starts a new one.
 function clearRide() {
-  const was = trip.items, undo = () => { trip.items = was; };
-  trip.items = [];
-  gen.index = -1;
-  if (!newRideFromSaved(undo)) toast('New ride', { label: 'Undo', run: () => { undo(); tripChanged(); } });
+  const was = rideOnScreen(), name = A.selectedRide();
+  leaveRide();
+  trip = { ...trip, items: [] };
+  A.setRideId(null);
   tripChanged();
+  toast(name ? keptAsItWas(name) : 'New ride', { label: 'Undo', run: was.restore });
 }
 
 // What a ride is made of, kept per route and filters (filters can change after routing, and render runs often).

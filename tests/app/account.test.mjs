@@ -200,6 +200,34 @@ test('planning never changes a saved ride: it makes a new one; a ride is selecte
   await pc.eval("[...document.querySelectorAll('#sheetBody .card')].find(e => e.textContent.includes('Ozark coffee run')).click()");
   await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)} && RF.view === 'trip'`);
   assert.equal(await pc.eval('RF.gen.options.length'), 0);
+  // Undo puts back the ride that was on screen, loops and all.
+  await pc.eval("[...document.querySelectorAll('#toast button')].find(b => b.textContent === 'Undo').click()");
+  assert.equal(await pc.eval('RF.account.rideId()'), null);
+  assert.equal(await pc.eval('RF.gen.options.length'), 1, 'the listed loops are back');
+  await pc.eval('RF.gen.options.length = 0');
+  // Planning still on its way when a saved ride is opened stops: a location fix that comes afterwards changes nothing,
+  // for Generate (still finding the start, so not marked running yet) and for My location.
+  await pc.eval('window.fixes = []; navigator.geolocation.getCurrentPosition = ok => fixes.push(ok)');
+  const openOzark = async () => {
+    await pc.eval("RF.go('account')");
+    await pc.waitFor("[...document.querySelectorAll('#sheetBody .card')].some(e => e.textContent.includes('Ozark coffee run'))");
+    await pc.eval("[...document.querySelectorAll('#sheetBody .card')].find(e => e.textContent.includes('Ozark coffee run')).click()");
+    await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)}`);
+  };
+  for (const button of ["document.querySelector('#sheetBody .cta')",
+    "[...document.querySelectorAll('#sheetBody .btn')].find(b => b.textContent.includes('My location'))"]) {
+    if (await pc.eval('RF.trip.items.length')) await newRide();
+    await pc.eval("RF.go('plan')");
+    await pc.waitFor(button);
+    await pc.eval(`${button}.click()`);
+    await pc.waitFor('fixes.length === 1');
+    await openOzark();
+    await pc.eval('fixes.splice(0).forEach(ok => ok({ coords: { latitude: 38.95, longitude: -94.4, accuracy: 20 } }))');
+    await sleep(500);
+    assert.equal(await pc.eval('RF.account.rideId()'), id, 'still selected');
+    assert.deepEqual(await pc.eval('RF.trip.items.map(i => i.label)'), labels, 'its start wasn’t replaced');
+  }
+  await pc.eval('delete navigator.geolocation.getCurrentPosition');
   await sleep(2500);
   assert.equal((await api(pc, `/rides/${id}`)).trip, before, 'the saved ride wasn’t touched');
 });
