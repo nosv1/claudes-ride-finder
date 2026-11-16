@@ -5,6 +5,7 @@
 // Everything sent to the account is locked first (seal.js), with the account's key, which stays on your devices: the
 // first device makes it, and each other device gets it from an "add a device" link (#k=<key>). A device signed in
 // without it is "locked": it can't read or save anything in the account until it opens that link.
+import { check } from './check.js';
 import { API_URL, GOOGLE_CLIENT_ID } from './config.js';
 import { lock, unlock, newAccountKey, keyId, newLinkCode, linkParts } from './seal.js';
 
@@ -46,7 +47,7 @@ async function api(method, path, body, { timeout = 10000 } = {}) {
     return out;
   } catch (e) {
     if (e.status) throw e;
-    throw new Error('Couldn’t reach your account. Check your signal and try again.');
+    throw new Error('Couldn’t reach your account. Check your signal and try again.', { cause: e });
   } finally {
     clearTimeout(timer);
   }
@@ -201,8 +202,8 @@ async function refreshOnce() {
       applying = true;
       try { sync.apply(data, { merge: firstSync }); } finally { applying = false; }
       write(DATA_AT_KEY, Math.max(me.dataAt, firstSync ? Date.now() : 0));
-      if (firstSync || typeof me.data !== 'string') pushData();
-    } else if (!data || localAt > me.dataAt) pushData();
+      if (firstSync || typeof me.data !== 'string') void pushData();  // sent again next time if it fails
+    } else if (!data || localAt > me.dataAt) void pushData();
     firstSync = false;
   }
   changed();
@@ -268,19 +269,23 @@ const savingNow = () => { account.saving = !!pending || putting > 0; };
 // The ride on screen is saved ride id, or none. trip: as it's saved (just opened or saved), so it isn't saved straight
 // back. check: only if it can still be saved to (an Undo: signed in, not locked, still in your rides). A change to the
 // ride selected before that's still waiting to be saved goes right away.
-export function selectRide(id, { trip = null, check = false } = {}) {
-  if (check && !(id && session && !account.locked && (account.rides == null || account.rides.some(r => r.id === id)))) id = null;
+export function selectRide(id, { trip = null, check: mustSave = false } = {}) {
+  if (!check(id == null || typeof id === 'string', 'selectRide: a ride id or none')) return;
+  if (mustSave && !canSaveTo(id)) id = null;
   if (id && trip) savedAs.set(id, trip);
   if (pending && pending.id !== id) flushSave();
   write(RIDE_KEY, id);
   changed();
 }
 
+// Signed in, not locked, and still in your rides (as far as they've loaded).
+const canSaveTo = id => !!id && !!session && !account.locked && (account.rides == null || account.rides.some(r => r.id === id));
+
 function flushSave() {
   clearTimeout(rideTimer);
   const p = pending;
   pending = null;
-  if (p) putRide(p.id, p.trip);
+  if (p) void putRide(p.id, p.trip);  // says what went wrong (account.error) itself
 }
 
 async function putRide(id, trip) {

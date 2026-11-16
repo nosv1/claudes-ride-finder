@@ -156,7 +156,7 @@ test('Share makes a short link that opens the ride without signing in, and shows
 });
 
 test('planning never changes a saved ride: it makes a new one; a ride is selected only from your rides', async () => {
-  const id = await pc.eval('RF.account.rideId()'), key = await pc.eval('RF.account.account.key');
+  const id = await pc.eval('RF.account.rideId()');
   const before = (await api(pc, `/rides/${id}`)).trip, labels = await pc.eval('RF.trip.items.map(i => i.label)');
   // Selected: the home bar names it (the bar shows once there's a route; the router isn't asked in these tests).
   await pc.eval("RF.setRoute({ path: [[38.9, -94.3], [38.95, -94.35]], meters: 8000, seconds: 600, maneuvers: [] }); RF.go('home')");
@@ -329,4 +329,10 @@ test('deleting the account takes everything with it and signs you out', async ()
   // The PC's session went with the account too.
   const pcMe = await fetch(worker.url + '/me', { headers: { Authorization: 'Bearer ' + await token(pc) } });
   assert.equal(pcMe.status, 401);
+});
+
+// Last: nothing the pages did along the way failed a check (CODING.md, rule 5) or threw without being caught.
+test('no failed checks or uncaught errors on the pages', () => {
+  assert.deepEqual(pc.logs.filter(l => /^Check failed|^EXCEPTION/.test(l)), []);
+  assert.deepEqual(phone.logs.filter(l => /^Check failed|^EXCEPTION/.test(l)), []);
 });

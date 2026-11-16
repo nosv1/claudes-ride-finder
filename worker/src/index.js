@@ -38,7 +38,7 @@ const LIMITS = { save: 1000, link: 200, login: 50, speak: 400 };
 const VOICES = ['pandora', 'draco', 'helena', 'thalia', 'apollo', 'orion', 'luna', 'asteria', 'athena', 'arcas', 'zeus'];
 const SPEAK_CHARS = 2000;  // a day; Aura-2 is 2,727 neurons per 1,000 characters, of 10,000 free a day per account
 const MAX_SPEAK = 120;
-const SPOKEN = /^[\p{L}\p{N} .,'’&!?:;()\/-]+$/u;
+const SPOKEN = /^[\p{L}\p{N} .,'’&!?:;()/-]+$/u;
 const DAY = 86400e3;
 
 export default {

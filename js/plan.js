@@ -40,6 +40,7 @@ export function metersOn(path, roads, ok) {
 // (its most-ridden piece) },
 // fitM being the metres on pieces `fits` accepts (the map's filters), fits the metres of the whole ride that do.
 // `pieces` are the runs of the route on one road and kind, { k, key, hill, pts }, to light up on the map.
+/** @param {(r: any) => boolean} [fits] */
 export function rideMix(path, roads, fits = () => true) {
   const kind = r => r.surface === 1 ? null : r.cls >= 0 ? r.cls : r.rampTier >= 0 ? -1 : r.roller ? -2 : null;
   const cells = new Map(), area = pad(boundsOf(path), 0.02);
@@ -408,8 +409,10 @@ export function buildOptions(groups, start, hours, required = [], end = null) {
   let ways = null;
   if (end) {
     const axis = bearing(start, end), len = km(start, end), off = g => alongLine(start, end, g.center).off;
-    ways = [[(axis + 270) % 360, g => off(g) < 0, 'left'], [(axis + 90) % 360, g => off(g) > 0, 'right'],
+    /** @type {[number, (g: any) => boolean, string][]} */
+    const sides = [[(axis + 270) % 360, g => off(g) < 0, 'left'], [(axis + 90) % 360, g => off(g) > 0, 'right'],
       [axis, g => Math.abs(off(g)) <= len / 4, 'near'], [axis, () => true, 'any']];
+    ways = sides;
     dirs = ways.map(w => w[0]);
   } else if (req.length) {
     const mid = [req.reduce((s, r) => s + r.center[0], 0) / req.length, req.reduce((s, r) => s + r.center[1], 0) / req.length];

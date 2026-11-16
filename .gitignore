@@ -5,3 +5,6 @@ __pycache__/
 
 # Cloudflare dev state and local database (tests/worker.test.mjs)
 worker/.wrangler/
+
+# Development tools (npm install): lint and type checks, not part of the site
+node_modules/

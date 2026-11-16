@@ -40,7 +40,7 @@ export async function fetchForecast(points) {
     latitude: points.map(x => x.p[0].toFixed(3)).join(','),
     longitude: points.map(x => x.p[1].toFixed(3)).join(','),
     hourly: 'temperature_2m,precipitation_probability,wind_gusts_10m,weather_code',
-    temperature_unit: 'fahrenheit', wind_speed_unit: 'mph', timeformat: 'unixtime', forecast_days: WEATHER.days,
+    temperature_unit: 'fahrenheit', wind_speed_unit: 'mph', timeformat: 'unixtime', forecast_days: String(WEATHER.days),
   });
   const res = await fetch(`${WEATHER.url}?${q}`);
   if (!res.ok) throw new Error(`Open-Meteo: HTTP ${res.status}`);

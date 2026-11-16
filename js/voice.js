@@ -56,6 +56,7 @@ const next = () => {
 if (player) player.addEventListener('ended', next);
 
 // A road's name the way it's said: route numbers spelled out ("MO 150" → "Missouri 150").
+/** @type {[RegExp, string][]} */
 const SAY = [[/^MO\b/, 'Missouri'], [/^KS\b/, 'Kansas'], [/^TX\b/, 'Texas'], [/^US\b/, 'U.S.'], [/^I[- ](?=\d)/, 'Interstate '],
   [/^FM\b/, 'Farm to Market'], [/^RM\b/, 'Ranch to Market'], [/^CR\b/, 'County Road'],
   [/^SH\b/, 'State Highway'], [/^OK\b/, 'Oklahoma'], [/^AR\b/, 'Arkansas']];
@@ -73,7 +74,7 @@ export function loadNames(names, pick = voicePick()) {
   if (!v || !v.speaker) return Promise.resolve();
   return Promise.all([...new Set(names.filter(Boolean))].map(name => {
     const text = nameText(name), key = `${v.speaker}|${text}`;
-    if (!/^[\p{L}\p{N} .,'’&!?:;()\/-]{1,120}$/u.test(text)) return null;
+    if (!/^[\p{L}\p{N} .,'’&!?:;()/-]{1,120}$/u.test(text)) return null;
     if (named.has(key)) return named.get(key);
     const job = fetch(`${API_URL}/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: v.speaker }) })
       .then(r => (r.ok ? r.blob() : null))
@@ -99,7 +100,7 @@ export function speak(phrase, pick = voicePick()) {
     if (globalThis.speechSynthesis) speechSynthesis.cancel();
     // A robotic voice (chime) beeps first: a robot calling in, not one trying to sound like a person.
     const name = nameClip(v, phrase.name);
-    if (!name && phrase.name) loadNames([phrase.name], pick);  // for next time (a heads-up comes before the call)
+    if (!name && phrase.name) void loadNames([phrase.name], pick);  // for next time (a heads-up comes before the call)
     queue = [...(v.chime ? [CHIME] : []), ...phrase.clips.map(k => `voice/${v.id}/${k}.${v.ext}`)].map(u => loaded.get(u) || u);
     if (name) queue.push(name);
     player.playbackRate = +pick.rate || 1;

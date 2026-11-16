@@ -2,6 +2,9 @@
 
 Run everything from the repo root.
 
+Before every commit, also `npm run check`: lint with zero warnings and the type check (CODING.md). It needs
+`npm install` once.
+
 | Command | What it checks | Needs |
 |---|---|---|
 | `python -m unittest discover tests` | Build logic in `build_tiles.py`: curve, sweeper and hill scoring, blind crests, roller coasters (and which file they go in), speed and surface rules, 90+ octane, the search index; plus sanity checks on the built `tiles/` (including the MO-150 sweeper) | Python packages from the build (osmium, numpy, Pillow) |

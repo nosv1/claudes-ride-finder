@@ -35,7 +35,7 @@ export class Ride {
   // gas: { range (miles on a full tank), used (miles since filling up), onTank(used) (to keep it), stops: [{ m, name, city }]
   // along the ride }: the tank counted down, and when to stop.
   // voice: start with it on; onVoice(on) when it's switched. loop: the ride ends where it started. onClose().
-  constructor(mapView, { route, reroute, roadAt, crests, tagRoad, spots, markSpot, gas, voice = true, onVoice = () => {}, loop = false, onClose }) {
+  constructor(mapView, { route, reroute, roadAt, crests, tagRoad, spots, markSpot, gas, voice = true, onVoice = (/** @type {boolean} */ _on) => {}, loop = false, onClose }) {
     this.mapView = mapView;
     this.map = mapView.map;
     this.route = route;
@@ -80,12 +80,12 @@ export class Ride {
     this.zoomed = e => { if (e.originalEvent && this.following) this.zoomOff = this.map.getZoom() - zoomFor(this.fix && this.fix.speed); };
     this.map.on('dragstart', this.dragged);
     this.map.on('zoomend', this.zoomed);
-    this.awake = () => { if (!document.hidden) this.keepAwake(); };
+    this.awake = () => { if (!document.hidden) void this.keepAwake(); };  // it catches its own failures
     document.addEventListener('visibilitychange', this.awake);
-    this.keepAwake();
+    void this.keepAwake();
     this.say(line('start'));  // in the tap that opened Ride mode: iPhones only play sound once a tap has let them
-    preload();  // every clip, while there's signal
-    loadNames(this.guide.turns.map(turnName));  // and the roads' names, in a voice that says them
+    void preload();  // every clip, while there's signal (it catches its own failures)
+    void loadNames(this.guide.turns.map(turnName));  // and the roads' names, in a voice that says them
     this.watch = navigator.geolocation ? navigator.geolocation.watchPosition(p => this.onFix(p), e => this.gpsError(e),
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }) : null;
     if (this.watch == null) this.gpsError({ code: 2 });

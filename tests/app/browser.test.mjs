@@ -321,8 +321,8 @@ test('the version shows on the home list, and a newer one on the site is offered
   await page.eval("RF.go('home')");
   await sleep(300);
   const { APP_VERSION } = await import('../../js/config.js');
-  assert.match(await sheetText(), new RegExp(`Version ${APP_VERSION.replace(/\./g, '\.')}`));
-  await page.eval(`(() => { const f = window.fetch; window.fetch = (u, o) => /version\.json/.test(String(u))
+  assert.match(await sheetText(), new RegExp(`Version ${APP_VERSION.replace(/\./g, '\\.')}`));
+  await page.eval(`(() => { const f = window.fetch; window.fetch = (u, o) => /version\\.json/.test(String(u))
     ? Promise.resolve(new Response('{ "version": "2999.01.01.1" }')) : f(u, o); })()`);
   await page.eval("void document.dispatchEvent(new Event('visibilitychange'))");
   await sleep(500);
@@ -674,7 +674,7 @@ test('road tags: tag a road on its card, see it on the map and in the list, and 
   assert.ok(saved.length === 1 && saved[0].tags[0] === 'avoid' && saved[0].note === 'Bumpy as hell' && saved[0].pieces.some(x => x.id === MO150), 'kept on the device');
   await page.waitFor("RF.mapView.map.getSource('tags').serialize().data.features.length > 0", 5000);
   await page.eval("RF.go('home')");
-  await page.waitFor("[...document.querySelectorAll('.road-card')].some(c => /MO 150\s*Don’t ride/.test(c.innerText))", 10000);
+  await page.waitFor("[...document.querySelectorAll('.road-card')].some(c => /MO 150\\s*Don’t ride/.test(c.innerText))", 10000);
   // The generator's roads: MO-150 isn't one of them now.
   assert.equal(await page.eval(`import('./js/tags.js').then(T => T.avoidedIds().has(${MO150}))`), true);
   await page.eval("import('./js/tags.js').then(T => T.restoreTags([]))");
@@ -949,4 +949,9 @@ test('a loop built around a chosen road always goes through it', { skip: !NETWOR
   assert.ok(loops.length >= 2, JSON.stringify(loops));
   loops.forEach(l => assert.ok(l.includes('MO 150'), `loop without MO 150: ${l}`));
   assert.ok(await page.eval("RF.trip.items.some(i => i.label === 'MO 150' && !i.gen)"));
+});
+
+// Last: nothing the pages did along the way failed a check (CODING.md, rule 5) or threw without being caught.
+test('no failed checks or uncaught errors on the page', () => {
+  assert.deepEqual(page.logs.filter(l => /^Check failed|^EXCEPTION/.test(l)), []);
 });

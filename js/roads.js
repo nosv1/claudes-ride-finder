@@ -145,6 +145,7 @@ export function stretchOf(roads, r, filters = null) {
 }
 
 // The road (among those `ok` accepts) within maxM meters of a point, nearest first; or null.
+/** @param {(r: any) => boolean} [ok] */
 export function roadNear(roads, at, ok = () => true, maxM = 30) {
   let best = null, bd = maxM;
   for (const r of roads) {

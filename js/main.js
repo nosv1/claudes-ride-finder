@@ -9,9 +9,10 @@ import { fetchRoute, routeRefs, routerTrouble } from './routing.js';
 import { profile } from './elevation.js';
 import * as W from './weather.js';
 import { Fly } from './fly.js';
+import { check } from './check.js';
 import { Ride } from './ride.js';
 import { phoneVoices, recorded, loadVoices, voicePick, setVoicePick, speak, loadNames, SAMPLE, RATES } from './voice.js';
-import { newBikeId, complete, rangeOf, leftIn, bikeFor, upgradeBikes, OCTANES, octaneOf } from './bikes.js';
+import { newBikeId, complete, rangeOf, bikeFor, upgradeBikes, OCTANES, octaneOf } from './bikes.js';
 import { TAGS, allTags, tagOf, setTags, setSpeed, speedFixes, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged,
   SPOT_KINDS, spotKind, spots, spotById, addSpot, setSpot, removeSpot, spotsForMap } from './tags.js';
 import * as A from './account.js';
@@ -54,6 +55,8 @@ let showKey = false;         // the map key's explanations are open
 let fixing = '';             // status while trying roads the other way to stop doubling back
 // Plan a ride's planner: the loops (or ways there) listed and the one picked, whether Generate is running (locating:
 // still finding your location for the start), what it says, and next: a longer extra time to try in one tap.
+/** @typedef {{ options: any[], index: number, running: boolean, status: string, locating?: boolean, next?: number | null }} Gen */
+/** @type {(status?: string, more?: Partial<Gen>) => Gen} */
 const genState = (status = '', more = {}) => ({ options: [], index: -1, running: false, status, ...more });
 let gen = genState();
 let showGoogleParts = false;
@@ -120,7 +123,7 @@ async function start() {
   applySettings();
   loadSavedTrip();
   addEventListener('hashchange', onLinkPasted);
-  loadVoices().then(() => { if (view === 'trip') renderSoon(); });
+  loadVoices().then(() => { if (view === 'trip') renderSoon(); }).catch(() => { /* offline: the phone's own voice */ });
   // Phones list their voices a moment after the page loads.
   if (globalThis.speechSynthesis) speechSynthesis.addEventListener('voiceschanged', () => { if (view === 'trip') renderSoon(); });
   // Signed in: settings and road tags follow the account (whichever copy changed last), and so do saved rides.
@@ -151,15 +154,15 @@ async function start() {
   mapView.on('spot', (id, at) => { if (!usePick(at)) go('spot', id); });
   mapView.on('pin', () => { if (place && !usePick(place.at)) go('place', place); });
   mapView.on('stop', () => { if (!picking) go('trip'); });
-  mapView.on('empty', at => { if (!usePick(at)) { clearSelection(); speedAt(at); } });
+  mapView.on('empty', at => { if (!usePick(at)) { clearSelection(); void speedAt(at); } });  // speedAt can't fail: it waits, then looks
   mapView.on('hover', onHover);
   mapView.on('menu', spotMenu);
   mapView.map.on('movestart', closeMenu);
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
-  checkForUpdate();
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(e => console.warn('No offline copy', e));
+  void checkForUpdate();  // it catches its own failures (and below)
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
-    checkForUpdate();
+    void checkForUpdate();
     A.lookAgain();  // rides, settings and tags changed on another device
   });
 }
@@ -263,12 +266,12 @@ function openLink(pasted = false) {
   const deviceKey = location.hash.match(/^#k=([\w-]+)/);
   if (deviceKey) {
     history.replaceState(null, '', location.pathname + location.search);
-    addDevice(deviceKey[1]);
+    void addDevice(deviceKey[1]);  // says what went wrong itself
     return false;
   }
   if (shortLink) {
     history.replaceState(null, '', location.pathname + location.search);
-    openSharedRide(shortLink[1]);
+    void openSharedRide(shortLink[1]);  // says what went wrong itself
     return 'short';
   }
   if (!fromLink) return false;
@@ -331,6 +334,7 @@ function rideOnScreen() {
 // what the toast says, with Undo when there was a ride (or listed loops) to go back to. show: open its page and fit
 // the map to it (New ride stays where it is).
 function replaceRide(t, { msg = '', id = null, show = true } = {}) {
+  if (!check(t && Array.isArray(t.items), 'replaceRide: a trip with stops')) return;
   const was = rideOnScreen();
   leaveRide();
   trip = t;
@@ -457,7 +461,8 @@ function refreshInfo(withProfile) {
   mapView.setRetrace(info.back.lines);
   mapView.setLights(info.lights);
   mapView.setRouteStations(fuel.along.map(a => ({ k: a.item.k, status: a.item.status, pick: fuel.picks.includes(a) })));
-  if (withProfile) profile(r.path).then(p => { if (route === r && info) { info.profile = p; renderSoon(); } });
+  if (withProfile) profile(r.path).then(p => { if (route === r && info) { info.profile = p; renderSoon(); } })
+    .catch(() => { /* no elevation: the ride shows without its profile */ });
   renderSoon();
 }
 
@@ -682,7 +687,10 @@ async function generate() {
   try {
     await generateRun(run);
   } catch (e) {
-    if (e !== STOPPED) throw e;
+    if (e === STOPPED) return;
+    console.error('Generate failed', e);
+    if (run === genRun) gen = genState('Something went wrong building rides. Try again.');
+    renderSoon();
   }
   if (run === genRun) revealGen();
 }
@@ -744,7 +752,9 @@ async function generateRun(run) {
   // One way: the time is the straight way there plus the extra the rider will spend on fun roads, and a
   // way there has to come in near that extra (+15 min is +8 to +24, not 80–120% of the whole ride).
   // The straight way is an option too: Fastest, the one the others are measured against.
-  let win = { lo: hours * GEN.under, hi: hours * GEN.overrun }, fastest = null;
+  /** @type {any} */
+  let fastest = null;
+  let win = { lo: hours * GEN.under, hi: hours * GEN.overrun };
   if (oneWay) {
     const direct = await fetchRoute([{ p: s, via: false }, { p: e, via: false }], +trip.pref);
     live();
@@ -779,6 +789,7 @@ async function generateRun(run) {
   const worthy = r => !r.roller && !avoid.has(r.id) && visible(r, { ...f, mode: f.mode === 'curvy' ? 'curvy' : 'ride' }) && (!r.oneway || r.highway);
   const groups = P.candidateGroups(store.roads, s, reach, worthy, e);
   for (const g of groups) g.score *= weightOf(g.ids);
+  /** @type {any[]} */
   const options = P.buildOptions(groups, s, planHours, required, e);
   if (!options.length) {
     gen = genState(oneWay ? `No good roads close enough to the way there for ${extraLabel(settings.genExtra)}. Try more extra time, or loosen the filters.`
@@ -1252,7 +1263,7 @@ function rideCard(r, { remove = false } = {}) {
   return h(`div.card${here ? '.here' : ''}`, { onclick: () => here ? go('trip') : openSavedRide(r.id) },
     iconEl(icon.route),
     h('div.card-main', {}, h('div.card-title', {}, r.name), h('div.card-sub', {}, here ? 'On the map now' : `Saved ${ago(r.updated)}`)),
-    remove ? h('button.icon-btn', { title: 'Delete this ride', html: icon.trash, onclick: e => { e.stopPropagation(); removeRide(r); } }) : '');
+    remove ? h('button.icon-btn', { title: 'Delete this ride', html: icon.trash, onclick: e => { e.stopPropagation(); void removeRide(r); } }) : '');
 }
 
 // Signed in: your latest rides on the home list; the rest are on the account page.
@@ -1347,7 +1358,7 @@ function accountView() {
   const acct = A.account;
   if (!A.signedIn()) {
     const box = h('div.gsi');
-    if (!acct.signingIn) A.signInButton(box);
+    if (!acct.signingIn) void A.signInButton(box);  // shows what went wrong in the box
     return [
       backBar('Your rides on every device'),
       h('p', {}, 'Sign in to keep your rides, road tags and settings in your account, the same on your phone and your PC. Shared rides get short links, too.'),
@@ -1591,7 +1602,8 @@ function roadView() {
   profile(r.geom, 160).then(p => prof.replaceChildren(p
     ? h('div', {}, h('div.chart-head', {}, h('span', {}, 'Elevation · this section'), h('span', {}, `${Math.round(p.lo).toLocaleString()}–${Math.round(p.hi).toLocaleString()} ft`)),
       elevationChart(p, s => mapView.setDot(s && s.p)))
-    : h('div.muted.small', {}, 'Elevation unavailable right now.')));
+    : h('div.muted.small', {}, 'Elevation unavailable right now.')))
+    .catch(() => prof.replaceChildren(h('div.muted.small', {}, 'Elevation unavailable right now.')));
   return [
     backBar(g.key, r.name && r.name !== g.key ? r.name : (r.ref && r.ref !== g.key ? r.ref : null)),
     h('div.tag', { style: `--c:${g.roller ? ROLLER.color : cls.color}` }, g.cls >= 0 ? cls.label : g.roller ? 'Roller coaster' : 'Mostly straight'),
@@ -1749,7 +1761,7 @@ function planView() {
     oneWay ? extraTime() : rideTime(),
     h('button.cta', { onclick: generate }, iconEl(icon.route), gen.running ? 'Stop' : oneWay ? 'Find fun ways there' : 'Generate loops'),
     gen.status ? h('p.muted.gen-status', {}, gen.status,
-      !gen.running && gen.next ? h('button.btn.small.try-next', { onclick: () => { setSetting({ genExtra: gen.next }); generate(); } }, `Try ${extraLabel(gen.next)}`) : '') : '',
+      !gen.running && gen.next ? h('button.btn.small.try-next', { onclick: () => { setSetting({ genExtra: gen.next }); void generate(); } }, `Try ${extraLabel(gen.next)}`) : '') : '',
     gen.options.length ? h('div.cards', {}, gen.options.map(optionCard)) : '',
     gen.index >= 0 ? h('button.btn.primary.wide.sticky', { onclick: () => go('trip') }, gen.options[gen.index] && gen.options[gen.index].oneWay ? 'Ride this way →' : 'Ride this loop →') : '',
     h('p.fineprint', {}, 'Uses the filters at the top (speed, hills, paved). Riding time doesn’t include stops. Or build your own: tap roads on the map and Add to ride.'),
@@ -1847,7 +1859,7 @@ function tripView() {
           if (settings.genShape !== shape) setSetting({ genShape: shape });
           go('plan');
         }
-        generate();
+        void generate();
       };
       const roads = { all: 'roads nearby, sweeping highways included', back: 'back roads nearby', highway: 'highway sweeps nearby' }[settings.roadType] || 'roads nearby';
       return there ? [
@@ -1862,7 +1874,7 @@ function tripView() {
     })()),
     // A loop rides back to the start after the last stop; one way finishes at the last stop.
     h('div.field', {}, h('label', {}, 'Ride ends'),
-      h('div.seg.ride-ends', {}, [[true, 'Back at the start'], [false, 'At the last stop']].map(([loop, l]) =>
+      h('div.seg.ride-ends', {}, (/** @type {[boolean, string][]} */ ([[true, 'Back at the start'], [false, 'At the last stop']])).map(([loop, l]) =>
         h(`button${trip.loop === loop ? '.on' : ''}`, { onclick: () => { if (trip.loop !== loop) { trip.loop = loop; tripChanged(); } } }, l)))),
     h('div.field', {}, h('label', {}, 'Between roads'),
       h('div.seg', {}, [['1', 'Fastest'], ['0.5', 'Balanced'], ['0', 'Back roads']].map(([v, l]) =>
@@ -2262,7 +2274,7 @@ function bikesSection() {
     h('button.btn.wide.add-bike', { onclick: () => {
       const b = { id: newBikeId(), name: '', gal: null, mpg: null, tankMiles: 0 };
       setSetting({ bikes: [...list, b], ...(list.length ? {} : { defaultBike: b.id }) });
-      setTimeout(() => { const el = [...document.querySelectorAll('.bike-name')].pop(); if (el) el.focus(); }, 50);
+      setTimeout(() => { const el = /** @type {HTMLElement | undefined} */ ([...document.querySelectorAll('.bike-name')].pop()); if (el) el.focus(); }, 50);
     } }, iconEl(icon.plus), list.length ? 'Add another bike' : 'Add your bike'),
     h('p.fineprint', {}, `Kept with your settings${A.signedIn() ? ', on all your devices' : ''}. A ride uses your default bike (its page can pick another), and that's where the trip meter goes, before you set off.`));
 }
@@ -2330,7 +2342,7 @@ function exportSection() {
 // they play over your music, where the phone's own voices stop it.
 function voiceField() {
   const pick = voicePick(), phone = phoneVoices(), natural = !pick.phone && recorded().find(v => v.id === pick.id && v.speaker);
-  if (natural) loadNames([SAMPLE.name], pick);  // so Test says the road too
+  if (natural) void loadNames([SAMPLE.name], pick);  // so Test says the road too (it never fails: no name, no clip)
   const set = patch => { const p = { ...voicePick(), ...patch }; setVoicePick(p); speak(SAMPLE, p); renderSoon(); };
   const choose = value => set(value.startsWith('rec:') ? { id: value.slice(4), phone: false } : { phone: true, uri: value.slice(6) });
   const now = pick.phone ? `phone:${pick.uri || ''}` : `rec:${pick.id}`;
@@ -2385,12 +2397,13 @@ async function shareTrip() {
       else if (e.name !== 'AbortError') prompt('Copy this link:', url);
     }
   };
-  send();
+  void send();  // it handles its own failures
 }
 
 // ---------- top bar: search & chips ----------
 
 function renderChips() {
+  /** @type {(label: any, opts?: { on?: boolean, menuItems?: any[], onclick?: (e: Event) => void, title?: string }) => HTMLElement} */
   const chip = (label, { on, menuItems, onclick, title } = {}) => h(`button.chip${on ? '.on' : ''}`, {
     title, onclick: menuItems ? e => menu(menuItems, e.currentTarget) : onclick,
   }, label, menuItems ? iconEl(icon.chevron, 'chev') : '');
@@ -2493,7 +2506,7 @@ q.addEventListener('focus', () => runSearch(true));  // empty, it lists your pla
 q.addEventListener('blur', () => setTimeout(() => { if (!q.value.trim() && document.activeElement !== q) results.hidden = true; }, 250));
 q.addEventListener('keydown', e => {
   if (e.key === 'Escape') { q.value = ''; runSearch(); q.blur(); }
-  if (e.key === 'Enter' && shown.length) pickResult(shown[0]);
+  if (e.key === 'Enter' && shown.length) void pickResult(shown[0]);
 });
 $('#qClear').addEventListener('click', () => {
   q.value = '';
@@ -2508,7 +2521,7 @@ document.addEventListener('keydown', e => {
   if (e.key === '/' && document.activeElement !== q) { e.preventDefault(); q.focus(); }
   if (e.key === 'Escape') closeMenu();
 });
-document.addEventListener('pointerdown', e => { if (!e.target.closest('#topbar')) results.hidden = true; });
+document.addEventListener('pointerdown', e => { if (!(/** @type {Element} */ (e.target)).closest('#topbar')) results.hidden = true; });
 
 // ---------- map buttons ----------
 
@@ -2531,4 +2544,4 @@ $('#layersBtn').addEventListener('click', e => menu([
 ], e.currentTarget));
 $('#q').placeholder = matchMedia('(hover: hover)').matches ? 'Search roads, towns, places   ( / )' : 'Search roads, towns, places';
 
-start();
+start().catch(e => console.error('The app didn’t start', e));

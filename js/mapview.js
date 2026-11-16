@@ -1,7 +1,6 @@
 // The map: MapLibre with Esri raster basemaps, hillshade and 3D terrain from AWS Terrain Tiles,
 // and GeoJSON sources for roads, the route, gas stations and blind crests. Everything here
 // works in [lat, lon]; MapLibre's [lon, lat] stays inside this file.
-/* global maplibregl */
 import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN, HIGHWAYS, ROLLER, tiersFor } from './config.js';
 import { TAGS } from './tags.js';
 import { speedBin, isMinor, limitOf } from './roads.js';
@@ -21,6 +20,7 @@ const zoomWidth = base => ['interpolate', ['linear'], ['zoom'], 7, ['*', base, 0
 
 // Mirrors roads.visible() as a MapLibre filter.
 function roadFilter(f) {
+  /** @type {any[]} */
   const all = ['all'];
   if (f.hideUnpaved) all.push(['!=', ['get', 'surf'], 1]);
   if (f.mode === 'speed') {
@@ -30,6 +30,7 @@ function roadFilter(f) {
   }
   const highways = ['in', ['get', 'rt'], ['literal', tiersFor(f.roadType, f.rampTiers)]];
   const classes = ['in', ['get', 'cls'], ['literal', [...f.classes]]];
+  /** @type {any[]} */
   const curvy = ['all', f.rollers ? ['any', classes, ['==', ['get', 'rc'], 1]] : classes];
   if (f.minHills > 0) curvy.push(['>=', ['get', 'hill'], f.minHills]);
   if (f.mode === 'ride') curvy.push(['>=', ['get', 'spd'], f.minSpeed]);
@@ -209,7 +210,7 @@ export class MapView {
         resolve();
       }, 50);
     });
-    this.ready.then(() => {
+    void this.ready.then(() => {  // ready never fails: it waits for the map's style
       this.map.addImage('shield', shieldImage('#222'), SHIELD_OPTS);
       this.map.addImage('shield-route', shieldImage('#1c7ed6'), SHIELD_OPTS);
       this.map.addImage('blind', blindImage(), { pixelRatio: 2 });
@@ -355,7 +356,7 @@ export class MapView {
       el.addEventListener('pointerdown', e => {
         if (!e.isPrimary || e.button > 0) return;
         const r = dot.getBoundingClientRect(), touch = e.pointerType !== 'mouse';
-        press = { id: e.pointerId, x: e.clientX, y: e.clientY, fx: e.clientX, fy: e.clientY, touch, lifted: false,
+        press = { id: e.pointerId, x: e.clientX, y: e.clientY, fx: e.clientX, fy: e.clientY, touch, lifted: false, timer: null,
           dx: r.x + r.width / 2 - e.clientX, dy: r.y + r.height / 2 - e.clientY };
         el.setPointerCapture(e.pointerId);
         if (touch) press.timer = setTimeout(() => press && lift(), 350);
@@ -476,6 +477,7 @@ export class MapView {
 
   // Keep the map centred on the part not covered by the UI; fits and flights work within it.
   updateInsets() { this.map.setPadding(this.insets()); }
+  /** @param {number[]} bounds [south, west, north, east] */
   fit([s, w, n, e], maxZoom = 13) {
     this.map.fitBounds([[w, s], [e, n]], { padding: 30, maxZoom, duration: 700 });
   }

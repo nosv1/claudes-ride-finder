@@ -1,0 +1,115 @@
+{
+  "js/account.js": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "js/elevation.js": {
+    "no-shadow": {
+      "count": 1
+    }
+  },
+  "js/fly.js": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "js/main.js": {
+    "complexity": {
+      "count": 5
+    },
+    "max-lines-per-function": {
+      "count": 3
+    },
+    "max-params": {
+      "count": 1
+    },
+    "no-shadow": {
+      "count": 8
+    }
+  },
+  "js/mapview.js": {
+    "max-lines-per-function": {
+      "count": 3
+    },
+    "max-params": {
+      "count": 1
+    }
+  },
+  "js/nav.js": {
+    "complexity": {
+      "count": 2
+    }
+  },
+  "js/plan.js": {
+    "complexity": {
+      "count": 2
+    },
+    "max-params": {
+      "count": 1
+    },
+    "no-shadow": {
+      "count": 2
+    }
+  },
+  "js/ride.js": {
+    "complexity": {
+      "count": 3
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "js/roads.js": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "js/trip.js": {
+    "no-shadow": {
+      "count": 1
+    }
+  },
+  "js/ui.js": {
+    "complexity": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "js/voice.js": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "tests/app/account.test.mjs": {
+    "no-shadow": {
+      "count": 1
+    }
+  },
+  "tests/app/browser.test.mjs": {
+    "no-shadow": {
+      "count": 4
+    }
+  },
+  "tests/app/logic.test.mjs": {
+    "complexity": {
+      "count": 1
+    },
+    "max-params": {
+      "count": 1
+    },
+    "no-shadow": {
+      "count": 1
+    }
+  },
+  "worker/src/index.js": {
+    "complexity": {
+      "count": 2
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  }
+}
