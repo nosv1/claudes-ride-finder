@@ -10,7 +10,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, sleep } from './cdp.mjs';
 import { startWorker } from '../worker-dev.mjs';
-import { unlock, linkParts } from '../../js/seal.js';
+import { lock, unlock, linkParts } from '../../js/seal.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
@@ -339,29 +339,37 @@ test('a ride deleted on the PC leaves the phone’s list when the phone comes ba
   assert.equal(await phone.eval('RF.trip.items.length'), stops, 'its stops stay on screen');
 });
 
-test('changes to a saved ride get there in order, before a delete or sign-out, and after a reload', async () => {
-  const key = await pc.eval('RF.account.account.key');
-  const packed = () => pc.eval("import('./js/trip.js').then(T => T.encodeTrip(RF.trip))");
-  // What the account holds, asked with the phone's session (the PC signs out along the way).
-  const inAccount = async rid => unlock(key, (await api(phone, `/rides/${rid}`)).trip);
-  const toggle = () => pc.eval("document.querySelector('.switch input').click()");
-  const saveNew = async () => {
-    await pc.eval("RF.go('trip')");
-    await pc.waitFor("document.querySelector('#sheetBody .save-btn')");
-    await pc.eval("document.querySelector('#sheetBody .save-btn').click()");
-    await pc.waitFor('RF.account.rideId()');
-    await pc.waitFor("document.querySelector('.switch input')");
-    return pc.eval('RF.account.rideId()');
-  };
-  // hold(match): the calls match picks wait for held.shift()() (sent then, or sent now and answered then).
-  const hold = (match, { sendNow = false } = {}) => pc.eval(`window.realFetch = window.realFetch || fetch; window.held = []; window.sent = [];
-    window.fetch = (u, o) => {
-      sent.push(String(u));
-      const go = () => realFetch(u, o), p = ${sendNow} ? go() : null;
-      return (${match})(String(u), o || {}) ? new Promise(r => held.push(() => r(p || go()))) : p || go();
-    }`);
-  const putRide = "(u, o) => o.method === 'PUT' && u.includes('/rides/')";
+// Saving to a saved ride on the PC. What the account holds is asked with the phone's session and key (the PC signs
+// out along the way).
+const packed = () => pc.eval("import('./js/trip.js').then(T => T.encodeTrip(RF.trip))");
+const inAccount = async rid => unlock(await phone.eval('RF.account.account.key'), (await api(phone, `/rides/${rid}`)).trip);
+async function toggle() {  // Return to start, on the ride page
+  if (await pc.eval('RF.view') !== 'trip') await pc.eval("RF.go('trip')");
+  await pc.waitFor("document.querySelector('.switch input')");
+  await pc.eval("document.querySelector('.switch input').click()");
+}
+async function saveNew() {
+  await pc.eval("RF.go('trip')");
+  await pc.waitFor("document.querySelector('#sheetBody .save-btn')");
+  await pc.eval("document.querySelector('#sheetBody .save-btn').click()");
+  await pc.waitFor('RF.account.rideId()');
+  await pc.waitFor("document.querySelector('.switch input')");
+  return pc.eval('RF.account.rideId()');
+}
+// hold(match): the calls match picks wait for held.shift()() (sent then, or sent now and answered then).
+const hold = (match, { sendNow = false } = {}) => pc.eval(`window.realFetch = window.realFetch || fetch; window.held = []; window.sent = [];
+  window.fetch = (u, o) => {
+    sent.push(String(u));
+    const go = () => realFetch(u, o), p = ${sendNow} ? go() : null;
+    return (${match})(String(u), o || {}) ? new Promise(r => held.push(() => r(p || go()))) : p || go();
+  }`);
+const putRide = "(u, o) => o.method === 'PUT' && u.includes('/rides/')";
+// No signal for saves to a ride: they fail at once.
+const offline = () => pc.eval(`window.realFetch = window.realFetch || fetch;
+  window.fetch = (u, o) => o && o.method === 'PUT' && String(u).includes('/rides/') ? Promise.reject(new TypeError('offline')) : realFetch(u, o)`);
+const online = () => pc.eval('window.fetch = window.realFetch || fetch');
 
+test('changes to a saved ride get there in order, before a delete or sign-out, and after a reload', async () => {
   // A change made while a save is on its way waits for it, so the newer copy is the one that stays.
   let id = await saveNew();
   await hold(putRide);
@@ -401,6 +409,7 @@ test('changes to a saved ride get there in order, before a delete or sign-out, a
   await pc.eval('held.shift()()');
   await sleep(500);
   assert.equal(await pc.eval("localStorage.getItem('rf2-ride-id')"), null, 'no ride selected for an account signed out of');
+  assert.equal(await pc.eval("document.getElementById('toast').innerText"), 'Saved to your rides.', 'and changes don’t save');
   await pc.eval('window.fetch = realFetch');
 
   // Sign out while a save is on its way: it gets there before the session ends.
@@ -421,16 +430,102 @@ test('changes to a saved ride get there in order, before a delete or sign-out, a
   // A save that failed (no signal) isn't lost when the app closes: it goes once the app is back and your rides load.
   await pc.eval(`RF.account.finishSignIn(${JSON.stringify(WHO)})`);
   id = await saveNew();
-  await pc.eval(`window.fetch = (u, o) => o && o.method === 'PUT' && String(u).includes('/rides/') ? Promise.reject(new TypeError('offline')) : realFetch(u, o)`);
+  await offline();
   await toggle();
-  const offline = await packed();
+  const unsent = await packed();
   await pc.waitFor('RF.account.account.error', 5000);
-  assert.notEqual(await inAccount(id), offline);
+  assert.notEqual(await inAccount(id), unsent);
   await pc.goto(base);
   await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)} && RF.account.account.rides?.length > 0`, 30000);
-  for (let i = 0; i < 40 && await inAccount(id) !== offline; i++) await sleep(250);
-  assert.equal(await inAccount(id), offline, 'sent after the reload');
+  for (let i = 0; i < 40 && await inAccount(id) !== unsent; i++) await sleep(250);
+  assert.equal(await inAccount(id), unsent, 'sent after the reload');
   await pc.waitFor("!localStorage.getItem('rf2-unsent')", 5000);
+});
+
+test('a change kept for later goes only while it’s the newest, and isn’t lost to a reload, an expired session or a slow sign-out', async () => {
+  const reload = async rid => {
+    await pc.goto(base);
+    await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(rid)} && RF.account.account.rides?.length > 0`, 30000);
+  };
+  const reaches = async (rid, want, what) => {
+    for (let i = 0; i < 40 && await inAccount(rid) !== want; i++) await sleep(250);
+    assert.equal(await inAccount(rid), want, what);
+  };
+  // A change that failed here, then the ride changed on the phone: the phone's change stays.
+  let id = await pc.eval('RF.account.rideId()');
+  const theirs = await packed();
+  await offline();
+  await toggle();
+  await pc.waitFor('RF.account.account.error', 5000);
+  await sleep(20);
+  const locked = await lock(await phone.eval('RF.account.account.key'), theirs);
+  assert.equal(await phone.eval(`fetch(${JSON.stringify(`${worker.url}/rides/${id}`)}, { method: 'PUT',
+    headers: { Authorization: 'Bearer ' + JSON.parse(localStorage.getItem('rf2-account')).token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trip: ${JSON.stringify(locked)} }) }).then(r => r.status)`), 200, 'the phone changed it');
+  await reload(id);
+  await sleep(2000);
+  assert.equal(await inAccount(id), theirs, 'the change made later on the phone wasn’t overwritten');
+  assert.equal(await pc.eval("localStorage.getItem('rf2-unsent')"), null);
+
+  // Back to the copy whose save is on its way, then the app closes before it gets there: it goes after the reload.
+  await toggle();
+  await pc.waitFor('!RF.account.account.saving', 5000);
+  await hold(putRide);
+  await toggle();
+  const onItsWay = await packed();
+  await pc.waitFor('held.length === 1', 5000);
+  await toggle();
+  await toggle();
+  assert.equal(await packed(), onItsWay);
+  await reload(id);
+  await reaches(id, onItsWay, 'sent after the reload');
+
+  // Changed before Your rides have loaded (no key yet): it goes once they have.
+  await pc.eval('RF.account.account.key = null');
+  await toggle();
+  const early = await packed();
+  assert.equal(await pc.eval(`JSON.parse(localStorage.getItem('rf2-unsent'))?.[${JSON.stringify(id)}]?.trip`), early, 'kept');
+  await pc.eval('RF.account.refresh()');
+  await reaches(id, early, 'sent once Your rides loaded');
+
+  // A change that failed, then the session runs out: it goes once you sign in again.
+  await offline();
+  await toggle();
+  const beforeExpiry = await packed();
+  await pc.waitFor('RF.account.account.error', 5000);
+  await pc.eval(`window.realFetch(${JSON.stringify(`${worker.url}/logout`)}, { method: 'POST',
+    headers: { Authorization: 'Bearer ' + JSON.parse(localStorage.getItem('rf2-account')).token } })`);  // the session ends elsewhere
+  await online();
+  await pc.eval('RF.account.refresh().catch(() => 0)');
+  assert.equal(await pc.eval('RF.account.signedIn()'), false);
+  await pc.eval(`RF.account.finishSignIn(${JSON.stringify(WHO)})`);
+  await reaches(id, beforeExpiry, 'sent after signing in again');
+
+  // Sign out while a save is on its way, and change the ride again meanwhile: that change gets there too.
+  id = await saveNew();
+  await hold(putRide);
+  await toggle();
+  await pc.waitFor('held.length === 1', 5000);
+  await pc.eval('window.out = RF.account.signOut(), 0');
+  await toggle();
+  const meanwhile = await packed();
+  await pc.eval('held.shift()()');
+  await pc.waitFor('held.length === 1', 5000);
+  await pc.eval('held.shift()()');
+  await pc.eval('out');
+  assert.equal(await inAccount(id), meanwhile);
+  await online();
+
+  // Something going wrong after a save (here, something listening to the account) doesn't stop the saves after it.
+  await pc.eval(`RF.account.finishSignIn(${JSON.stringify(WHO)})`);
+  id = await saveNew();
+  await pc.eval(`window.boom = true; RF.account.onAccountChanged(() => {
+    if (window.boom && !RF.account.account.saving) { window.boom = false; throw new Error('a listener went wrong'); }
+  })`);
+  await toggle();
+  await pc.waitFor('!window.boom', 5000);
+  await toggle();
+  await reaches(id, await packed(), 'the next save still went');
 });
 
 test('with the service down, Share falls back to the long link', async () => {

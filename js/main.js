@@ -1321,7 +1321,8 @@ function saveRow() {
         if (plans !== plannings) return toast('Saved to your rides as it was when you tapped Save. This is a new ride.');
         A.selectRide(saved, { trip: packed });
         saveTrip();
-        toast('Saved to your rides. Changes save as you go.');
+        // Signed out meanwhile: it's in the account, but not selected, so changes don't save.
+        toast(A.rideId() === saved ? 'Saved to your rides. Changes save as you go.' : 'Saved to your rides.');
       } catch (e) {
         toast(e.message);
       } finally {
