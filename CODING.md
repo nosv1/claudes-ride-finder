@@ -11,12 +11,12 @@ handled where it happens.
 ## The rules
 
 | # | Power of Ten | Here | Checked by |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | Simple control flow: no goto, setjmp or recursion | No recursion (a retry is a loop with a bound), no labels, no `with`. | lint, review |
 | 2 | Every loop has a fixed upper bound | Retries, polling and waits have a stated limit (tries, a timeout). No `while (true)`. | lint, review |
 | 3 | No memory allocation after startup | Not applicable: JavaScript allocates and frees memory itself. Instead, nothing grows without bound: caches and maps kept for the session have a limit or are cleared. | review |
 | 4 | A function fits on a page | 60 lines at most (blank lines and comments don't count), complexity 15 at most, nesting 4 deep at most, 5 parameters at most (pass an options object beyond that). | lint |
-| 5 | Assertions: at least two per function | Use `check(ok, what)` (js/check.js) for what must be true where data crosses a boundary (the account service, links, storage, another module) and for invariants a change relies on. A failed check is logged ("Check failed: …", which fails the browser tests) and returns false: the caller recovers by doing nothing or keeping what's there, never by throwing at the rider. | review, tests |
+| 5 | Assertions: at least two per function | Where they say something, not a count per function: use `check(ok, what)` (js/check.js) for what must be true where data crosses a boundary (the account service, links, storage, another module, a function exported for other modules) and for invariants a change relies on. A function that only passes on what's already been checked needs none. A failed check is logged ("Check failed: …", which fails the browser tests) and returns false: the caller recovers by doing nothing or keeping what's there, never by throwing at the rider. | review, tests |
 | 6 | Data in the smallest scope | `const` by default, no `var`, no shadowing. Module-level state only when several functions share it, with a comment saying what it holds. | lint, review |
 | 7 | Check every return value and parameter | Every promise is awaited, returned, given a `.catch`, or marked `void` when the function it calls handles its own failures (say so in a comment). Errors are caught where something sensible can be done (a toast, a fallback), not passed up to nowhere. Async work that touches the ride on screen checks it's still the same ride (`onScreen()` in main.js). | lint (no-floating-promises), review |
 | 8 | Limit the preprocessor | Not applicable. Nearest thing: no `eval` and no code built from strings. | lint |

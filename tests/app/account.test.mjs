@@ -301,6 +301,7 @@ test('planning never changes a saved ride: it makes a new one; a ride is selecte
   await pc.waitFor('RF.account.account.rides.length === 2');
   await sleep(300);
   assert.equal(await pc.eval('RF.account.rideId()'), null, 'the planned ride is a new one, not the ride just saved');
+  assert.match(await toastText(), /^Saved to your rides as it was when you tapped Save/, 'and it says the save went');
   const planned = await pc.eval(`RF.account.account.rides.find(r => r.id !== ${JSON.stringify(id)}).id`);
   const plannedBefore = (await api(pc, `/rides/${planned}`)).trip;
   await sleep(2500);
@@ -336,6 +337,100 @@ test('a ride deleted on the PC leaves the phone’s list when the phone comes ba
   await phone.waitFor('RF.account.account.rides.length === 0');
   assert.equal(await phone.eval('RF.account.rideId()'), null, 'no longer saving to the deleted ride');
   assert.equal(await phone.eval('RF.trip.items.length'), stops, 'its stops stay on screen');
+});
+
+test('changes to a saved ride get there in order, before a delete or sign-out, and after a reload', async () => {
+  const key = await pc.eval('RF.account.account.key');
+  const packed = () => pc.eval("import('./js/trip.js').then(T => T.encodeTrip(RF.trip))");
+  // What the account holds, asked with the phone's session (the PC signs out along the way).
+  const inAccount = async rid => unlock(key, (await api(phone, `/rides/${rid}`)).trip);
+  const toggle = () => pc.eval("document.querySelector('.switch input').click()");
+  const saveNew = async () => {
+    await pc.eval("RF.go('trip')");
+    await pc.waitFor("document.querySelector('#sheetBody .save-btn')");
+    await pc.eval("document.querySelector('#sheetBody .save-btn').click()");
+    await pc.waitFor('RF.account.rideId()');
+    await pc.waitFor("document.querySelector('.switch input')");
+    return pc.eval('RF.account.rideId()');
+  };
+  // hold(match): the calls match picks wait for held.shift()() (sent then, or sent now and answered then).
+  const hold = (match, { sendNow = false } = {}) => pc.eval(`window.realFetch = window.realFetch || fetch; window.held = []; window.sent = [];
+    window.fetch = (u, o) => {
+      sent.push(String(u));
+      const go = () => realFetch(u, o), p = ${sendNow} ? go() : null;
+      return (${match})(String(u), o || {}) ? new Promise(r => held.push(() => r(p || go()))) : p || go();
+    }`);
+  const putRide = "(u, o) => o.method === 'PUT' && u.includes('/rides/')";
+
+  // A change made while a save is on its way waits for it, so the newer copy is the one that stays.
+  let id = await saveNew();
+  await hold(putRide);
+  await toggle();
+  await pc.waitFor('held.length === 1', 5000);
+  await toggle();
+  const want = await packed();
+  await sleep(2500);
+  assert.equal(await pc.eval('held.length'), 1, 'the second save waits for the first');
+  await pc.eval('held.shift()()');
+  await pc.waitFor('held.length === 1', 5000);
+  await pc.eval('held.shift()()');
+  await pc.waitFor('!RF.account.account.saving', 5000);
+  assert.equal(await inAccount(id), want);
+  await pc.eval('window.fetch = realFetch');
+
+  // Deleted with a change still waiting: the change goes first, so Undo brings the ride back with it.
+  await toggle();
+  const edited = await packed();
+  assert.equal(await pc.eval(`RF.account.deleteRide(${JSON.stringify(id)}).then(w => w.trip)`), edited);
+
+  // Deleted on the phone with a change waiting here: once the PC sees it's gone, nothing is sent to it.
+  id = await saveNew();
+  await toggle();
+  await phone.eval(`RF.account.deleteRide(${JSON.stringify(id)})`);
+  await pc.eval('RF.account.refresh()');
+  await sleep(2000);
+  assert.equal(await pc.eval('RF.account.rideId()'), null);
+  assert.equal(await pc.eval('RF.account.account.error'), '', 'nothing was sent to the deleted ride');
+
+  // Save to your rides, then sign out while it's on its way: the signed-out device doesn't keep it selected.
+  await pc.waitFor("document.querySelector('#sheetBody .save-btn')");
+  await hold("(u, o) => o.method === 'POST' && u.endsWith('/rides')", { sendNow: true });
+  await pc.eval("document.querySelector('#sheetBody .save-btn').click()");
+  await pc.waitFor('held.length === 1');
+  await pc.eval('RF.account.signOut()');
+  await pc.eval('held.shift()()');
+  await sleep(500);
+  assert.equal(await pc.eval("localStorage.getItem('rf2-ride-id')"), null, 'no ride selected for an account signed out of');
+  await pc.eval('window.fetch = realFetch');
+
+  // Sign out while a save is on its way: it gets there before the session ends.
+  await pc.eval(`RF.account.finishSignIn(${JSON.stringify(WHO)})`);
+  id = await saveNew();
+  await hold(putRide);
+  await toggle();
+  const last = await packed();
+  await pc.waitFor('held.length === 1', 5000);
+  await pc.eval('window.out = RF.account.signOut(), 0');
+  await sleep(500);
+  assert.equal(await pc.eval("sent.some(u => u.endsWith('/logout'))"), false, 'the sign-out waits for the save');
+  await pc.eval('held.shift()()');
+  await pc.eval('out');
+  assert.equal(await inAccount(id), last);
+  await pc.eval('window.fetch = realFetch');
+
+  // A save that failed (no signal) isn't lost when the app closes: it goes once the app is back and your rides load.
+  await pc.eval(`RF.account.finishSignIn(${JSON.stringify(WHO)})`);
+  id = await saveNew();
+  await pc.eval(`window.fetch = (u, o) => o && o.method === 'PUT' && String(u).includes('/rides/') ? Promise.reject(new TypeError('offline')) : realFetch(u, o)`);
+  await toggle();
+  const offline = await packed();
+  await pc.waitFor('RF.account.account.error', 5000);
+  assert.notEqual(await inAccount(id), offline);
+  await pc.goto(base);
+  await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)} && RF.account.account.rides?.length > 0`, 30000);
+  for (let i = 0; i < 40 && await inAccount(id) !== offline; i++) await sleep(250);
+  assert.equal(await inAccount(id), offline, 'sent after the reload');
+  await pc.waitFor("!localStorage.getItem('rf2-unsent')", 5000);
 });
 
 test('with the service down, Share falls back to the long link', async () => {

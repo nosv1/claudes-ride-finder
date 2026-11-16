@@ -182,6 +182,9 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   goes. Generate with no start, deny location after opening a saved ride: no location toast, the "Opened" Undo stays.
   Save to your rides on a slow connection, then open a saved ride at once: that ride stays selected, and the saved
   one is in Your rides.
+- On a saved ride, DevTools → Network → Offline, add a stop: it says it couldn't reach your account. Reload with the
+  network back on: the stop is there when the ride is opened on the other device. Add a stop and sign out at once:
+  the stop is in the account (check from the other device).
 - Delete a ride on the PC, then switch to the app on the phone (after 30 s or so): it's gone from Your rides there.
 - Sign out, then sign in again: everything's still there. Delete account (tap twice): you're signed out and the
   rides are gone from the other device too after it reopens.

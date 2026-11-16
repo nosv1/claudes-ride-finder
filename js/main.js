@@ -1309,14 +1309,16 @@ function saveRow() {
     const busy = !!(savingNew && savingNew());
     return h('button.btn.wide.save-btn', { disabled: busy, onclick: async () => {
       // The ride as it was when Save was tapped is saved. Still on screen when that's done, it's selected (and any edit
-      // made meanwhile saves to it); if another ride replaced it, or planning made it a new ride (a loop picked, Start
-      // here), it's just in your rides, and the toast (with that ride's Undo) stays. A failed save says so either way.
+      // made meanwhile saves to it). If planning made it a new ride (a loop picked, Start here), it's just in your
+      // rides, and the toast says so; if another ride replaced it, the toast (with that ride's Undo) stays. A failed
+      // save says so either way.
       if (savingNew && savingNew()) return;
       const still = savingNew = onScreen(), packed = T.encodeTrip(trip), plans = plannings;
       renderSoon();
       try {
         const saved = await A.saveRide(P.tripName(trip).replace(/^Ride: /, ''), packed);
-        if (!still() || plans !== plannings) return;  // replaced, or planned into a new ride meanwhile
+        if (!still()) return;  // replaced meanwhile
+        if (plans !== plannings) return toast('Saved to your rides as it was when you tapped Save. This is a new ride.');
         A.selectRide(saved, { trip: packed });
         saveTrip();
         toast('Saved to your rides. Changes save as you go.');
