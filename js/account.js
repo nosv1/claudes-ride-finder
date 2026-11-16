@@ -159,7 +159,9 @@ export async function refresh() {
   account.key = k;
   account.locked = !k;
   if (!k) {
+    // Locked: nothing can be saved to a ride, and whether it's still there can't be told, so none is selected.
     Object.assign(account, { rides: [], links: [] });
+    write(RIDE_KEY, null);
     return changed();
   }
   // The ride on screen was deleted on another device: it's just a ride on this one now.
@@ -233,11 +235,23 @@ export function mergeTags(a, b) {
 
 export const rideId = () => session ? read(RIDE_KEY) : null;
 export const rideName = () => (account.rides || []).find(r => r.id === rideId())?.name || '';
-// The selected saved ride's name, or '' when none is selected. Before Your rides has loaded (or while they're locked)
-// a selected ride has no name yet, but it's still selected and its changes still save to it.
+// The selected saved ride's name, or '' when none is selected. Until Your rides load (with the account's key) a
+// selected ride has no name yet; it's still selected, and the next change after they load saves to it.
 export const selectedRide = () => rideId() ? rideName() || 'Your saved ride' : '';
 export function setRideId(id) { write(RIDE_KEY, id); changed(); }
 let sent = null;  // the trip last saved or opened, so opening a ride doesn't save it straight back
+
+// The ride on screen is saved ride id (trip: as it's saved, so it isn't saved straight back), or none.
+export function selectRide(id, trip = null) {
+  if (id) sent = trip;
+  setRideId(id);
+}
+
+// Undo selecting a ride again: only while it can still be saved to (signed in, not locked, still in your rides).
+export function reselectRide(id) {
+  const ok = id && session && !account.locked && (account.rides == null || account.rides.some(r => r.id === id));
+  setRideId(ok ? id : null);
+}
 
 const touch = (id, patch) => {
   const r = (account.rides || []).find(x => x.id === id);
@@ -288,16 +302,9 @@ export async function renameRide(id, name) {
 }
 
 // { name, trip } unlocked (a ride saved before locking existed comes as it was).
-async function getRide(id) {
+export async function getRide(id) {
   const r = await api('GET', `/rides/${id}`), k = key();
   return { ...r, name: await unlock(k, r.name) ?? r.name, trip: await unlock(k, r.trip) ?? r.trip };
-}
-
-export async function openRide(id) {
-  const r = await getRide(id);
-  sent = r.trip;
-  setRideId(id);
-  return r;
 }
 
 // Returns the ride as it was ({ name, trip }), for an undo.

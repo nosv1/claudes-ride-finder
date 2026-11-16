@@ -252,7 +252,8 @@ const placeButtons = use => myPlaces().length
 
 // A shared ride in the address, opened and then taken out of the address: true for a long link (#r=, the ride is in
 // it), 'short' for a short one (#s=, fetched from the account service, so it opens a moment later), false for none.
-function openLink(was) {
+// pasted: into the open app (it says so, with Undo); otherwise the app is starting.
+function openLink(pasted = false) {
   const fromLink = location.hash.match(/^#(?:r|trip)=([\w-]+)/);  // #trip= is the older, longer link
   const shortLink = location.hash.match(/^#s=([\w-]+)/);
   const deviceKey = location.hash.match(/^#k=([\w-]+)/);
@@ -263,13 +264,13 @@ function openLink(was) {
   }
   if (shortLink) {
     history.replaceState(null, '', location.pathname + location.search);
-    openSharedRide(shortLink[1], was);
+    openSharedRide(shortLink[1]);
     return 'short';
   }
   if (!fromLink) return false;
-  showRide(T.decodeTrip(fromLink[1]));
+  const t = T.decodeTrip(fromLink[1]);
   history.replaceState(null, '', location.pathname + location.search);
-  A.setRideId(null);  // someone else's ride: changes to it don't go into a ride of yours
+  replaceRide(t, pasted && 'Opened the shared ride.');  // someone else's ride: changes to it don't go into a ride of yours
   return true;
 }
 
@@ -277,17 +278,12 @@ function openLink(was) {
 // open it here. The ride you had comes back with Undo.
 function onLinkPasted() {
   if (ride || fly) return;  // not in the middle of riding or a fly-through
-  const was = rideOnScreen();
-  let opened;
   try {
-    opened = openLink(was);
+    openLink(true);
   } catch (e) {
     console.warn('Could not open the link', e);
-    return toast('That link didn’t open a ride. It may have been cut short when it was copied.');
+    toast('That link didn’t open a ride. It may have been cut short when it was copied.');
   }
-  if (opened !== true) return;
-  tripChanged();
-  if (was.stops) toast('Opened the shared ride.', { label: 'Undo', run: () => { was.restore(); go('trip'); } });
 }
 
 function loadSavedTrip() {
@@ -303,18 +299,26 @@ function loadSavedTrip() {
   tripChanged();
 }
 
-// Replacing the ride on screen (opening another, New ride, Undo): planning for the one that was there stops, a Generate
-// in flight (even while it's still finding your location) and a location fix on its way, and its listed loops go.
-let rideSeq = 0;
+// The ride on screen has a token, and replacing it (opening another, a shared link, New ride, Undo) makes a new one.
+// Anything still on its way for the ride that was there checks it before touching the ride: onScreen() at the start,
+// then still() after each wait. leaveRide also stops what's running for it right away: Generate (and its listed
+// loops), a pick on the map, a route or a doubling-back fix being worked out.
+let rideToken = 0;
+const onScreen = () => { const t = rideToken; return () => t === rideToken; };
 function leaveRide() {
-  rideSeq++;
+  rideToken++;
   stopGenerating('');
+  stopPicking();
+  routeSeq++;
+  clearTimeout(routeTimer);
+  fixing = '';
 }
 
-// The ride on screen, for an Undo once another replaces it: restore() puts it back with its saved ride and listed loops.
+// The ride on screen, for an Undo once another replaces it: restore() puts it back with its listed loops, and with its
+// saved ride if that's still yours to save to.
 function rideOnScreen() {
   const t = trip, id = A.rideId(), listed = !gen.running && gen.options.length ? gen : null;
-  return { stops: t.items.length, restore: () => { leaveRide(); trip = t; A.setRideId(id); if (listed) gen = listed; tripChanged(); } };
+  return { empty: !t.items.length && !listed, restore: () => { leaveRide(); trip = t; A.reselectRide(id); if (listed) gen = listed; tripChanged(); } };
 }
 
 function showRide(t) {
@@ -323,6 +327,24 @@ function showRide(t) {
   go('trip');
   const pts = trip.items.flatMap(it => it.pts);
   if (pts.length) mapView.fit(boundsOf(pts), 12);
+}
+
+// Ride t in place of the one on screen, as saved ride id (packed: as it's saved) or as no saved ride. msg: what the
+// toast says, with Undo when there was a ride (or listed loops) to go back to.
+function replaceRide(t, msg, id = null, packed = null) {
+  const was = rideOnScreen();
+  showRide(t);
+  A.selectRide(id, packed);
+  tripChanged();
+  if (msg) toast(msg, !was.empty ? { label: 'Undo', run: () => { was.restore(); go('trip'); } } : undefined);
+}
+
+// Opening rides from the account service takes a moment, and the last one asked for wins: one that comes after a newer
+// open was asked for, or after the ride on screen was replaced meanwhile, is dropped.
+let opening = 0;
+function opener() {
+  const mine = ++opening, still = onScreen();
+  return () => mine === opening && still();
 }
 
 // An "add a device" link (#k=): this device keeps the account's key, so it can read your rides once signed in.
@@ -337,32 +359,26 @@ async function addDevice(k) {
   }
 }
 
-// A short link (#s=): the ride is kept by the account service, so it's fetched first. was: the ride on screen when
-// the link was pasted into the open app (rideOnScreen), for Undo.
-async function openSharedRide(id, was) {
+// A short link (#s=): the ride is kept by the account service, so it's fetched first.
+async function openSharedRide(id) {
+  const ok = opener();
   toast('Opening the shared ride…');
   try {
     const t = T.decodeTrip(await A.openLink(id));
-    A.setRideId(null);
-    showRide(t);
-    tripChanged();
-    if (was && was.stops) toast('Opened the shared ride.', { label: 'Undo', run: () => { was.restore(); go('trip'); } });
-    else toast('Opened the shared ride.');
+    if (ok()) replaceRide(t, 'Opened the shared ride.');
   } catch (e) {
-    toast(e.status === 404 ? e.message : 'Couldn’t open that ride. Check your signal and open the link again.');
+    if (ok()) toast(e.status === 404 ? e.message : 'Couldn’t open that ride. Check your signal and open the link again.');
   }
 }
 
 // Open a ride from your account in place of the one on screen (Undo puts that one back).
 async function openSavedRide(id) {
-  const was = rideOnScreen();
+  const ok = opener();
   try {
-    const r = await A.openRide(id);
-    showRide(T.decodeTrip(r.trip));
-    tripChanged();
-    toast(`Opened ${r.name}`, { label: 'Undo', run: was.restore });
+    const r = await A.getRide(id);
+    if (ok()) replaceRide(T.decodeTrip(r.trip), `Opened ${r.name}`, id, r.trip);
   } catch (e) {
-    toast(e.message);
+    if (ok()) toast(e.message);
   }
 }
 
@@ -542,12 +558,12 @@ function newRideFromSaved() {
 
 // Your location as the start of the ride on screen, unless another ride replaced it while the fix was on its way.
 async function startFromMe(opts) {
-  const seq = rideSeq;
+  const still = onScreen();
   try {
     const p = await locate();
-    if (seq === rideSeq) setStartAt(p, 'Start: my location', opts);
+    if (still()) setStartAt(p, 'Start: my location', opts);
   } catch (e) {
-    if (seq === rideSeq) locationError(e);
+    if (still()) locationError(e);
   }
 }
 
@@ -599,13 +615,17 @@ async function fixDoubleBack() {
   const flipped = [];
   let failed = false;
   clearTimeout(routeTimer);
-  const seq = ++routeSeq;
+  const seq = ++routeSeq, still = onScreen();
   for (const it of roads) {
     it.pts.reverse();
     fixing = `Trying ${it.label} the other way…`;
     renderSoon();
     const r = await fetchRoute(T.routablePoints(trip), +trip.pref);
-    if (seq !== routeSeq) { it.pts.reverse(); fixing = ''; return; }  // the ride changed meanwhile
+    if (seq !== routeSeq) {  // the ride changed meanwhile (or was replaced: then it's left as it was, for Undo)
+      it.pts.reverse();
+      if (still()) fixing = '';
+      return;
+    }
     if (!r) failed = true;
     const back = r && !r.fallback ? P.retrace(r.path).meters : Infinity;
     if (back < best.back - 200 && r.meters < best.r.meters * 1.15) {
@@ -673,25 +693,29 @@ async function generateRun(run) {
   const oneWay = settings.genShape === 'oneway';
   let hours = settings.genHours;
   genRoutes = new Map();
-  let start = T.startOf(trip);
-  if (!start) {
-    try {
-      gen.status = 'Finding your location for the start…';
-      renderSoon();
-      const here = await locate();
-      live();
-      setStartAt(here, 'Start: my location');
-      start = T.startOf(trip);
-    } catch (e) {
-      locationError(e);
-      gen.status = 'Set a start first: use your location or pick a spot on the map.';
-      return renderSoon();
-    }
-  }
+  // Checked before finding your location, which sets a start (and so steps off a saved ride).
   const end = oneWay ? T.endOf(trip) : null;
   if (oneWay && !end) {
     gen = { options: [], index: -1, running: false, status: 'Set where you’re headed first: Pick on map, or right-click (long-press) a spot and choose “End a ride here”.' };
     return renderSoon();
+  }
+  let start = T.startOf(trip);
+  if (!start) {
+    // Running from here on: Stop stops it, and an Undo doesn't bring back this run's planner.
+    gen = { options: [], index: -1, running: true, status: 'Finding your location for the start…' };
+    renderSoon();
+    let here;
+    try {
+      here = await locate();
+    } catch (e) {
+      live();  // stopped meanwhile (or the ride was replaced): nothing to say
+      locationError(e);
+      gen = { options: [], index: -1, running: false, status: 'Set a start first: use your location or pick a spot on the map.' };
+      return renderSoon();
+    }
+    live();
+    setStartAt(here, 'Start: my location');
+    start = T.startOf(trip);
   }
   const required = ownStops(), s = start.pts[0], e = end && end.pts[0];
   const kind = oneWay ? 'ways there' : 'loops';

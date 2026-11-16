@@ -170,62 +170,72 @@ test('planning never changes a saved ride: it makes a new one; a ride is selecte
   assert.equal((await api(pc, `/rides/${id}`)).trip, before, 'the saved ride wasn’t touched');
   assert.equal(await pc.eval("RF.account.account.rides.length"), 1, 'and nothing else was saved');
   // Picking it from your rides selects it again, as it was.
-  await pc.eval("RF.go('account')");
-  await pc.waitFor("[...document.querySelectorAll('#sheetBody .card')].some(e => e.textContent.includes('Ozark coffee run'))");
-  await pc.eval("[...document.querySelectorAll('#sheetBody .card')].find(e => e.textContent.includes('Ozark coffee run')).click()");
-  await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)}`);
-  assert.deepEqual(await pc.eval('RF.trip.items.map(i => i.label)'), labels);
-  // Plan a ride says so up front; a Generate that stops before changing anything (one way, no end) leaves it selected.
-  await pc.eval("RF.go('plan')");
-  assert.match(await sheet(pc), /Planning here makes a new ride\. Ozark coffee run stays in your rides as it is\./);
-  await pc.eval("[...document.querySelectorAll('#sheetBody .seg.shape button')].find(b => b.textContent === 'One way').click()");
-  await pc.eval("document.querySelector('#sheetBody .cta').click()");
-  await pc.waitFor("/Set where you’re headed first|Set a start first/.test(RF.gen.status)");
-  assert.equal(await pc.eval('RF.account.rideId()'), id, 'still selected');
-  await pc.eval("[...document.querySelectorAll('#sheetBody .seg.shape button')].find(b => b.textContent === 'Loop').click()");
-  // New ride: the saved one stays as it was, and Undo selects it again.
-  await pc.eval("RF.go('trip')");
-  const newRideBtn = "[...document.querySelectorAll('#sheetBody .btn')].find(b => /New ride/.test(b.textContent))";
-  const newRide = async () => { await pc.waitFor(newRideBtn); await pc.eval(`${newRideBtn}.click()`); };
-  await newRide();
-  assert.equal(await pc.eval('RF.account.rideId()'), null);
-  assert.match(await pc.eval("document.getElementById('toast').innerText"), /New ride\. Ozark coffee run stays in your rides as it was\./);
-  await pc.eval("[...document.querySelectorAll('#toast button')].find(b => b.textContent === 'Undo').click()");
-  assert.equal(await pc.eval('RF.account.rideId()'), id);
-  assert.deepEqual(await pc.eval('RF.trip.items.map(i => i.label)'), labels);
-  // Loops listed for another ride don't stay on screen once a saved ride is opened (a card there would replace it).
-  await newRide();
-  await pc.eval("RF.gen.options.push({ items: [], route: null }); RF.go('account')");
-  await pc.waitFor("[...document.querySelectorAll('#sheetBody .card')].some(e => e.textContent.includes('Ozark coffee run'))");
-  await pc.eval("[...document.querySelectorAll('#sheetBody .card')].find(e => e.textContent.includes('Ozark coffee run')).click()");
-  await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)} && RF.view === 'trip'`);
-  assert.equal(await pc.eval('RF.gen.options.length'), 0);
-  // Undo puts back the ride that was on screen, loops and all.
-  await pc.eval("[...document.querySelectorAll('#toast button')].find(b => b.textContent === 'Undo').click()");
-  assert.equal(await pc.eval('RF.account.rideId()'), null);
-  assert.equal(await pc.eval('RF.gen.options.length'), 1, 'the listed loops are back');
-  await pc.eval('RF.gen.options.length = 0');
-  // Planning still on its way when a saved ride is opened stops: a location fix that comes afterwards changes nothing,
-  // for Generate (still finding the start, so not marked running yet) and for My location.
-  await pc.eval('window.fixes = []; navigator.geolocation.getCurrentPosition = ok => fixes.push(ok)');
+  const toastText = () => pc.eval("document.getElementById('toast').innerText");
   const openOzark = async () => {
     await pc.eval("RF.go('account')");
     await pc.waitFor("[...document.querySelectorAll('#sheetBody .card')].some(e => e.textContent.includes('Ozark coffee run'))");
     await pc.eval("[...document.querySelectorAll('#sheetBody .card')].find(e => e.textContent.includes('Ozark coffee run')).click()");
-    await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)}`);
+    await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)} && RF.view === 'trip'`);
   };
-  for (const button of ["document.querySelector('#sheetBody .cta')",
-    "[...document.querySelectorAll('#sheetBody .btn')].find(b => b.textContent.includes('My location'))"]) {
-    if (await pc.eval('RF.trip.items.length')) await newRide();
+  await openOzark();
+  assert.deepEqual(await pc.eval('RF.trip.items.map(i => i.label)'), labels);
+  // Plan a ride says so up front; a Generate that stops before changing anything (one way, no end) leaves it selected.
+  await pc.eval("RF.go('plan')");
+  assert.match(await sheet(pc), /Planning here makes a new ride\. Ozark coffee run stays in your rides as it is\./);
+  const shape = l => pc.eval(`[...document.querySelectorAll('#sheetBody .seg.shape button')].find(b => b.textContent === '${l}').click()`);
+  await shape('One way');
+  await pc.eval("document.querySelector('#sheetBody .cta').click()");
+  await pc.waitFor("/Set where you’re headed first/.test(RF.gen.status)");
+  assert.equal(await pc.eval('RF.account.rideId()'), id, 'still selected');
+  await shape('Loop');
+  // New ride: the saved one stays as it was, and Undo selects it again.
+  await pc.eval("RF.go('trip')");
+  const newRideBtn = "[...document.querySelectorAll('#sheetBody .btn')].find(b => /New ride/.test(b.textContent))";
+  const newRide = async () => { await pc.waitFor(newRideBtn); await pc.eval(`${newRideBtn}.click()`); };
+  const undo = () => pc.eval("[...document.querySelectorAll('#toast button')].find(b => b.textContent === 'Undo').click()");
+  await newRide();
+  assert.equal(await pc.eval('RF.account.rideId()'), null);
+  assert.match(await toastText(), /New ride\. Ozark coffee run stays in your rides as it was\./);
+  await undo();
+  assert.equal(await pc.eval('RF.account.rideId()'), id);
+  assert.deepEqual(await pc.eval('RF.trip.items.map(i => i.label)'), labels);
+  // Loops listed for another ride don't stay on screen once a saved ride is opened (a card there would replace it).
+  await newRide();
+  await pc.eval('RF.gen.options.push({ items: [], route: null })');
+  await openOzark();
+  assert.equal(await pc.eval('RF.gen.options.length'), 0);
+  // Undo puts back the ride that was on screen, loops and all.
+  await undo();
+  assert.equal(await pc.eval('RF.account.rideId()'), null);
+  assert.equal(await pc.eval('RF.gen.options.length'), 1, 'the listed loops are back');
+  await pc.eval('RF.gen.options.length = 0');
+  // A pick on the map that was waiting is called off when a saved ride is opened.
+  await pc.eval("RF.go('plan')");
+  await pc.waitFor("[...document.querySelectorAll('#sheetBody .btn')].some(b => b.textContent.includes('Pick on map'))");
+  await pc.eval("[...document.querySelectorAll('#sheetBody .btn')].find(b => b.textContent.includes('Pick on map')).click()");
+  assert.equal(await pc.eval("document.getElementById('pickBanner').hidden"), false);
+  await openOzark();
+  assert.equal(await pc.eval("document.getElementById('pickBanner').hidden"), true, 'no pick waiting');
+  // Planning still on its way when a saved ride is opened stops: a location fix (or a failure to get one) that comes
+  // afterwards changes nothing and says nothing, for Generate (still finding the start) and for My location.
+  await pc.eval('window.fixes = []; navigator.geolocation.getCurrentPosition = (ok, fail) => fixes.push({ ok, fail })');
+  const generateBtn = "document.querySelector('#sheetBody .cta')";
+  const myLocationBtn = "[...document.querySelectorAll('#sheetBody .btn')].find(b => b.textContent.includes('My location'))";
+  for (const [button, found] of [[generateBtn, true], [generateBtn, false], [myLocationBtn, true], [myLocationBtn, false]]) {
+    await pc.eval("RF.go('trip')");
+    await newRide();
     await pc.eval("RF.go('plan')");
     await pc.waitFor(button);
     await pc.eval(`${button}.click()`);
     await pc.waitFor('fixes.length === 1');
     await openOzark();
-    await pc.eval('fixes.splice(0).forEach(ok => ok({ coords: { latitude: 38.95, longitude: -94.4, accuracy: 20 } }))');
+    await pc.eval(found ? 'fixes.splice(0).forEach(f => f.ok({ coords: { latitude: 38.95, longitude: -94.4, accuracy: 20 } }))'
+      : 'fixes.splice(0).forEach(f => f.fail({ code: 1 }))');
     await sleep(500);
     assert.equal(await pc.eval('RF.account.rideId()'), id, 'still selected');
     assert.deepEqual(await pc.eval('RF.trip.items.map(i => i.label)'), labels, 'its start wasn’t replaced');
+    assert.match(await toastText(), /^Opened Ozark coffee run/, 'the Undo for opening it is still there');
+    assert.equal(await pc.eval('RF.gen.status'), '', 'and its planner says nothing');
   }
   await pc.eval('delete navigator.geolocation.getCurrentPosition');
   await sleep(2500);
