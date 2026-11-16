@@ -180,6 +180,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   routes (or while it's still finding your location): the saved ride stays on screen and is unchanged. Open a ride
   by mistake with loops listed, then Undo: the loops are back. Pick on map, then open a saved ride: the pick banner
   goes. Generate with no start, deny location after opening a saved ride: no location toast, the "Opened" Undo stays.
+  Save to your rides on a slow connection, then open a saved ride at once: that ride stays selected, and the saved
+  one is in Your rides.
 - Delete a ride on the PC, then switch to the app on the phone (after 30 s or so): it's gone from Your rides there.
 - Sign out, then sign in again: everything's still there. Delete account (tap twice): you're signed out and the
   rides are gone from the other device too after it reopens.

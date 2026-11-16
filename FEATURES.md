@@ -605,10 +605,13 @@ colored road), Add a stop here, Street View here.
   shared link, New ride, Undo) gives it a new token (`leaveRide`): everything still on its way for the one that was
   there stops or is dropped without a word (Generate and its listed loops, My location / Start from me, a pick on the
   map, a route or doubling-back fix being worked out, an open still loading), and of two opens the last one asked for
-  wins. Undo puts back the ride with its listed loops, and selects its saved ride again only while it can still be
-  saved to (signed in, not locked, not deleted). A ride saved while Generate runs is stepped off when a loop comes up,
-  like picking one. Before Your rides has loaded, a selected ride shows as "Your saved ride"; a device that's locked
-  (no key) has none selected. Edits on the ride's own page (stops, Start from me,
+  wins. A Save to your rides on its way saves the ride as it was when tapped, but selects it only if it's still on
+  screen. Undo puts back the ride with its listed loops, and selects its saved ride again only while it can still be
+  saved to (signed in, not locked, not deleted), without saving it straight back. A ride saved while Generate runs is
+  stepped off when a loop comes up, like picking one; a start picked while Generate finds your location is kept, and a
+  filter change then doesn't stop it. Before Your rides has loaded, a selected ride shows as "Your saved ride"; a
+  device that's locked (or has no key at all) has none selected. Your rides as the account sent them before a save,
+  rename or delete here are asked for again, so they don't undo it. Edits on the ride's own page (stops, Start from me,
   options, 90+ only) and the map's Add to ride / Add a stop still go into it. **New ride** (was Clear all) starts an
   empty ride (Undo puts it back, saved ride and all); opening a shared link does too. The home list shows the latest 3 (and the empty ride page 5) under **Your rides**;
   the account page lists them all, each with delete (with Undo). Opening one replaces the ride on screen (Undo).

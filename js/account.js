@@ -152,9 +152,11 @@ export function lookAgain() {
 }
 
 // Your rides and links, and whichever copy of your settings and tags is newer, all unlocked here.
+let ridesEdits = 0;  // rides saved, renamed or deleted here: a list asked for before one of them is out of date
 export async function refresh() {
   lastLook = Date.now();
   if (!session) return;
+  const edits = ridesEdits;
   const me = await api('GET', '/me'), k = await findKey(me.keyId);
   account.key = k;
   account.locked = !k;
@@ -164,18 +166,20 @@ export async function refresh() {
     write(RIDE_KEY, null);
     return changed();
   }
-  // The ride on screen was deleted on another device: it's just a ride on this one now.
-  if (rideId() && !me.rides.some(r => r.id === rideId())) write(RIDE_KEY, null);
   const old = [];  // saved before locking existed: their name came back as it is, and they're locked now
-  account.rides = await Promise.all(me.rides.map(async r => {
+  const rides = await Promise.all(me.rides.map(async r => {
     const name = await unlock(k, r.name);
     if (name == null) old.push(r);
     return { id: r.id, updated: r.updated, name: name ?? r.name };
   }));
-  account.links = (await Promise.all(me.links.map(async l => {
+  const links = (await Promise.all(me.links.map(async l => {
     const o = l.owner && JSON.parse(await unlock(k, l.owner) || 'null');
     return o && { id: l.id, code: o.code, name: o.name, created: l.created };
   }))).filter(Boolean);
+  if (edits !== ridesEdits) return refresh();
+  // The ride on screen was deleted on another device: it's just a ride on this one now.
+  if (rideId() && !me.rides.some(r => r.id === rideId())) write(RIDE_KEY, null);
+  Object.assign(account, { rides, links });
   if (sync) {
     const localAt = read(DATA_AT_KEY) || 0;
     // Before locking existed, the data came as it was (an object), not locked text: take it, and send it back locked.
@@ -233,7 +237,8 @@ export function mergeTags(a, b) {
 
 // ---------- rides ----------
 
-export const rideId = () => session ? read(RIDE_KEY) : null;
+// None while signed out or locked, and none on a device with no key at all (it's locked: the account will say so).
+export const rideId = () => session && !account.locked && Object.keys(read(KEYS_KEY) || {}).length ? read(RIDE_KEY) : null;
 export const rideName = () => (account.rides || []).find(r => r.id === rideId())?.name || '';
 // The selected saved ride's name, or '' when none is selected. Until Your rides load (with the account's key) a
 // selected ride has no name yet; it's still selected, and the next change after they load saves to it.
@@ -247,9 +252,11 @@ export function selectRide(id, trip = null) {
   setRideId(id);
 }
 
-// Undo selecting a ride again: only while it can still be saved to (signed in, not locked, still in your rides).
-export function reselectRide(id) {
+// Undo selecting a ride again: only while it can still be saved to (signed in, not locked, still in your rides). trip:
+// as it was on screen, which is as it's saved (its changes saved as they were made), so it isn't saved straight back.
+export function reselectRide(id, trip = null) {
   const ok = id && session && !account.locked && (account.rides == null || account.rides.some(r => r.id === id));
+  if (ok) sent = trip;
   setRideId(ok ? id : null);
 }
 
@@ -259,14 +266,11 @@ const touch = (id, patch) => {
   if (account.rides) account.rides.sort((a, b) => b.updated - a.updated);
 };
 
-// open: it's the ride on screen (its changes are saved to it from now on).
-export async function saveRide(name, trip, { open = true } = {}) {
+// Adds it to your rides and returns its id; selectRide makes it the ride on screen.
+export async function saveRide(name, trip) {
   const k = key(), r = await api('POST', '/rides', { name: await lock(k, name), trip: await lock(k, trip) });
+  ridesEdits++;
   account.rides = [{ id: r.id, name, updated: r.updated }, ...(account.rides || [])].sort((a, b) => b.updated - a.updated);
-  if (open) {
-    sent = trip;
-    write(RIDE_KEY, r.id);
-  }
   changed();
   return r.id;
 }
@@ -297,6 +301,7 @@ export function rideChanged(trip) {
 
 export async function renameRide(id, name) {
   const r = await api('PUT', `/rides/${id}`, { name: await lock(key(), name.trim()) });
+  ridesEdits++;
   touch(id, { name: name.trim(), updated: r.updated });
   changed();
 }
@@ -311,6 +316,7 @@ export async function getRide(id) {
 export async function deleteRide(id) {
   const was = await getRide(id);
   await api('DELETE', `/rides/${id}`);
+  ridesEdits++;
   account.rides = (account.rides || []).filter(r => r.id !== id);
   if (rideId() === id) write(RIDE_KEY, null);
   changed();

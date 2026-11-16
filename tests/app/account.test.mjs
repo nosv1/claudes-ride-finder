@@ -171,12 +171,14 @@ test('planning never changes a saved ride: it makes a new one; a ride is selecte
   assert.equal(await pc.eval("RF.account.account.rides.length"), 1, 'and nothing else was saved');
   // Picking it from your rides selects it again, as it was.
   const toastText = () => pc.eval("document.getElementById('toast').innerText");
-  const openOzark = async () => {
+  const openSaved = async (name, rid) => {
+    const card = `[...document.querySelectorAll('#sheetBody .card')].find(e => e.querySelector('.card-title')?.textContent === ${JSON.stringify(name)})`;
     await pc.eval("RF.go('account')");
-    await pc.waitFor("[...document.querySelectorAll('#sheetBody .card')].some(e => e.textContent.includes('Ozark coffee run'))");
-    await pc.eval("[...document.querySelectorAll('#sheetBody .card')].find(e => e.textContent.includes('Ozark coffee run')).click()");
-    await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)} && RF.view === 'trip'`);
+    await pc.waitFor(card);
+    await pc.eval(`${card}.click()`);
+    await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(rid)} && RF.view === 'trip'`);
   };
+  const openOzark = () => openSaved('Ozark coffee run', id);
   await openOzark();
   assert.deepEqual(await pc.eval('RF.trip.items.map(i => i.label)'), labels);
   // Plan a ride says so up front; a Generate that stops before changing anything (one way, no end) leaves it selected.
@@ -237,6 +239,47 @@ test('planning never changes a saved ride: it makes a new one; a ride is selecte
     assert.match(await toastText(), /^Opened Ozark coffee run/, 'the Undo for opening it is still there');
     assert.equal(await pc.eval('RF.gen.status'), '', 'and its planner says nothing');
   }
+  // Generate finding your location, and a start picked on the map meanwhile: that start is the one it uses.
+  await pc.eval("RF.go('trip')");
+  await newRide();
+  await pc.eval("RF.go('plan')");
+  await pc.waitFor(generateBtn);
+  await pc.eval(`${generateBtn}.click()`);
+  await pc.waitFor('fixes.length === 1');
+  await pc.eval("[...document.querySelectorAll('#sheetBody .btn')].find(b => b.textContent.includes('Pick on map')).click()");
+  await pc.eval("RF.mapView.emit('empty', [38.9, -94.5])");
+  await pc.eval('fixes.splice(0).forEach(f => f.ok({ coords: { latitude: 38.95, longitude: -94.4, accuracy: 20 } }))');
+  await sleep(300);
+  assert.equal(await pc.eval('RF.trip.items[0].label'), 'Start', 'the picked start stays');
+  if (await pc.eval('RF.gen.running')) await pc.eval(`${generateBtn}.click()`);  // Stop: the router isn't asked here
+  // Save to your rides still on its way when a saved ride is opened: it's saved, but the ride opened stays selected
+  // (its Undo too), and Undo brings back the ride that was on screen, not selected (it wasn't yet).
+  await pc.eval("RF.go('trip')");
+  await pc.waitFor("document.querySelector('#sheetBody .save-btn')");
+  await pc.eval(`window.realFetch = window.realFetch || fetch; window.held = [];
+    window.fetch = (u, o) => o && o.method === 'POST' && String(u).endsWith('/rides') ? new Promise(r => held.push(() => r(realFetch(u, o)))) : realFetch(u, o)`);
+  await pc.eval("document.querySelector('#sheetBody .save-btn').click()");
+  await pc.waitFor('held.length === 1');
+  await pc.eval('window.fetch = realFetch');
+  await openOzark();
+  await pc.eval('held.splice(0).forEach(f => f())');
+  await pc.waitFor('RF.account.account.rides.length === 2');
+  await sleep(300);
+  assert.equal(await pc.eval('RF.account.rideId()'), id, 'the ride opened is still the one selected');
+  assert.match(await toastText(), /^Opened Ozark coffee run/);
+  const other = await pc.eval(`RF.account.account.rides.find(r => r.id !== ${JSON.stringify(id)})`);
+  const otherBefore = (await api(pc, `/rides/${other.id}`)).trip;
+  await undo();
+  assert.equal(await pc.eval('RF.account.rideId()'), null);
+  // Open that ride, then Ozark, then Undo: it's selected again, and not saved straight back.
+  await openSaved(other.name, other.id);
+  await openOzark();
+  await undo();
+  assert.equal(await pc.eval('RF.account.rideId()'), other.id);
+  await sleep(2500);
+  assert.equal((await api(pc, `/rides/${other.id}`)).trip, otherBefore, 'not saved straight back');
+  await openOzark();
+  await pc.eval(`RF.account.deleteRide(${JSON.stringify(other.id)})`);
   await pc.eval('delete navigator.geolocation.getCurrentPosition');
   await sleep(2500);
   assert.equal((await api(pc, `/rides/${id}`)).trip, before, 'the saved ride wasn’t touched');

@@ -79,7 +79,7 @@ const mapView = new MapView('map', {
     return { top: Sheet.wide() ? 0 : $('#topbar').getBoundingClientRect().bottom, right: 0, bottom: c.bottom, left: c.left };
   },
 });
-window.RF = { store, mapView, go: (v, arg) => go(v, arg), get view() { return view; }, get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, get fly() { return fly; }, get ride() { return ride; }, setRoute: r => { routeSeq++; clearTimeout(routeTimer); setRoute(r); }, settings, account: A };
+window.RF = { store, mapView, go: (v, arg) => go(v, arg), get view() { return view; }, get trip() { return trip; }, get route() { return route; }, get info() { return info; }, get gen() { return gen; }, get weather() { return weather; }, get fly() { return fly; }, get ride() { return ride; }, setRoute: r => { cancelRoute(); setRoute(r); }, settings, account: A };
 
 async function start() {
   // The side panel starts below the top bar, whose height depends on how the chips wrap.
@@ -208,7 +208,7 @@ function applySettings() {
 const ROAD_FILTERS = ['mode', 'roadType', 'minSpeed', 'minHills', 'hideUnpaved', 'classes', 'rampTiers'];
 
 function setSetting(patch) {
-  if (gen.running && ROAD_FILTERS.some(k => k in patch && JSON.stringify(patch[k]) !== JSON.stringify(settings[k]))) {
+  if (gen.running && !gen.locating && ROAD_FILTERS.some(k => k in patch && JSON.stringify(patch[k]) !== JSON.stringify(settings[k]))) {
     stopGenerating('Stopped: the filters changed. Generate again for rides on the roads they show.');
   }
   Object.assign(settings, patch);
@@ -252,7 +252,8 @@ const placeButtons = use => myPlaces().length
 
 // A shared ride in the address, opened and then taken out of the address: true for a long link (#r=, the ride is in
 // it), 'short' for a short one (#s=, fetched from the account service, so it opens a moment later), false for none.
-// pasted: into the open app (it says so, with Undo); otherwise the app is starting.
+// pasted: into the open app (it says so, with Undo); otherwise the app is starting. A long link cut short when it was
+// copied says so and opens nothing.
 function openLink(pasted = false) {
   const fromLink = location.hash.match(/^#(?:r|trip)=([\w-]+)/);  // #trip= is the older, longer link
   const shortLink = location.hash.match(/^#s=([\w-]+)/);
@@ -268,9 +269,17 @@ function openLink(pasted = false) {
     return 'short';
   }
   if (!fromLink) return false;
-  const t = T.decodeTrip(fromLink[1]);
   history.replaceState(null, '', location.pathname + location.search);
-  replaceRide(t, pasted && 'Opened the shared ride.');  // someone else's ride: changes to it don't go into a ride of yours
+  let t;
+  try {
+    t = T.decodeTrip(fromLink[1]);
+  } catch (e) {
+    console.warn('Could not open the link', e);
+    toast('That link didn’t open a ride. It may have been cut short when it was copied.');
+    return false;
+  }
+  // Someone else's ride: changes to it don't go into a ride of yours.
+  replaceRide(t, { msg: pasted && 'Opened the shared ride.' });
   return true;
 }
 
@@ -278,21 +287,15 @@ function openLink(pasted = false) {
 // open it here. The ride you had comes back with Undo.
 function onLinkPasted() {
   if (ride || fly) return;  // not in the middle of riding or a fly-through
-  try {
-    openLink(true);
-  } catch (e) {
-    console.warn('Could not open the link', e);
-    toast('That link didn’t open a ride. It may have been cut short when it was copied.');
-  }
+  openLink(true);
 }
 
 function loadSavedTrip() {
+  // While a short link's ride is on its way, the ride saved here shows (and stays if the link doesn't open).
+  if (openLink() === true) return;
   try {
-    // While a short link's ride is on its way, the ride saved here shows (and stays if the link doesn't open).
-    if (openLink() !== true) {
-      const saved = localStorage.getItem(TRIP_KEY) || localStorage.getItem('ride-finder-trip');  // the old app's key
-      if (saved) trip = T.decodeTrip(saved);
-    }
+    const saved = localStorage.getItem(TRIP_KEY) || localStorage.getItem('ride-finder-trip');  // the old app's key
+    if (saved) trip = T.decodeTrip(saved);
   } catch (e) {
     console.warn('Could not load trip', e);
   }
@@ -301,16 +304,16 @@ function loadSavedTrip() {
 
 // The ride on screen has a token, and replacing it (opening another, a shared link, New ride, Undo) makes a new one.
 // Anything still on its way for the ride that was there checks it before touching the ride: onScreen() at the start,
-// then still() after each wait. leaveRide also stops what's running for it right away: Generate (and its listed
-// loops), a pick on the map, a route or a doubling-back fix being worked out.
+// then still() after each wait (a ride open or a Save to your rides on its way does too). leaveRide also stops what's
+// running for it right away: Generate (and its listed loops), a pick on the map, a route or a doubling-back fix
+// being worked out.
 let rideToken = 0;
 const onScreen = () => { const t = rideToken; return () => t === rideToken; };
 function leaveRide() {
   rideToken++;
   stopGenerating('');
   stopPicking();
-  routeSeq++;
-  clearTimeout(routeTimer);
+  cancelRoute();
   fixing = '';
 }
 
@@ -318,25 +321,24 @@ function leaveRide() {
 // saved ride if that's still yours to save to.
 function rideOnScreen() {
   const t = trip, id = A.rideId(), listed = !gen.running && gen.options.length ? gen : null;
-  return { empty: !t.items.length && !listed, restore: () => { leaveRide(); trip = t; A.reselectRide(id); if (listed) gen = listed; tripChanged(); } };
-}
-
-function showRide(t) {
-  leaveRide();
-  trip = t;
-  go('trip');
-  const pts = trip.items.flatMap(it => it.pts);
-  if (pts.length) mapView.fit(boundsOf(pts), 12);
+  return { empty: !t.items.length && !listed, restore: () => { leaveRide(); trip = t; A.reselectRide(id, T.encodeTrip(t)); if (listed) gen = listed; tripChanged(); } };
 }
 
 // Ride t in place of the one on screen, as saved ride id (packed: as it's saved) or as no saved ride. msg: what the
-// toast says, with Undo when there was a ride (or listed loops) to go back to.
-function replaceRide(t, msg, id = null, packed = null) {
+// toast says, with Undo when there was a ride (or listed loops) to go back to. show: open its page and fit the map
+// to it (New ride stays where it is).
+function replaceRide(t, { msg = '', id = null, packed = null, show = true } = {}) {
   const was = rideOnScreen();
-  showRide(t);
+  leaveRide();
+  trip = t;
   A.selectRide(id, packed);
   tripChanged();
-  if (msg) toast(msg, !was.empty ? { label: 'Undo', run: () => { was.restore(); go('trip'); } } : undefined);
+  if (show) {
+    go('trip');
+    const pts = trip.items.flatMap(it => it.pts);
+    if (pts.length) mapView.fit(boundsOf(pts), 12);
+  }
+  if (msg) toast(msg, !was.empty ? { label: 'Undo', run: () => { was.restore(); if (show) go('trip'); } } : undefined);
 }
 
 // Opening rides from the account service takes a moment, and the last one asked for wins: one that comes after a newer
@@ -365,7 +367,7 @@ async function openSharedRide(id) {
   toast('Opening the shared ride…');
   try {
     const t = T.decodeTrip(await A.openLink(id));
-    if (ok()) replaceRide(t, 'Opened the shared ride.');
+    if (ok()) replaceRide(t, { msg: 'Opened the shared ride.' });
   } catch (e) {
     if (ok()) toast(e.status === 404 ? e.message : 'Couldn’t open that ride. Check your signal and open the link again.');
   }
@@ -376,7 +378,7 @@ async function openSavedRide(id) {
   const ok = opener();
   try {
     const r = await A.getRide(id);
-    if (ok()) replaceRide(T.decodeTrip(r.trip), `Opened ${r.name}`, id, r.trip);
+    if (ok()) replaceRide(T.decodeTrip(r.trip), { msg: `Opened ${r.name}`, id, packed: r.trip });
   } catch (e) {
     if (ok()) toast(e.message);
   }
@@ -390,6 +392,12 @@ function saveTrip() {
 }
 
 let routeTimer = null, routeSeq = 0;
+// A route being worked out (or about to be) for the ride as it was is dropped when it comes.
+function cancelRoute() {
+  routeSeq++;
+  clearTimeout(routeTimer);
+}
+
 function tripChanged({ reroute = true } = {}) {
   saveTrip();
   mapView.setStops(trip.items.map((it, i) => ({ p: it.pts[0], label: it.label, n: i + 1, index: i })), dropStop);
@@ -609,28 +617,31 @@ function locationError(e) {
 
 // Ride each road the other way in turn, keeping a flip when it cuts the doubling back without
 // making the ride much longer.
+// The flips are tried on a copy: the ride itself changes only at the end, so a ride changed or replaced meanwhile
+// (and put back with Undo) is never left with a road half flipped.
 async function fixDoubleBack() {
-  const roads = trip.items.filter(it => it.type === 'road' && !it.oneway);
+  const work = { ...trip, items: trip.items.map(it => ({ ...it, pts: [...it.pts] })) };
+  const roads = work.items.map((it, i) => i).filter(i => work.items[i].type === 'road' && !work.items[i].oneway);
   let best = { r: route, back: info.back.meters };
   const flipped = [];
   let failed = false;
-  clearTimeout(routeTimer);
-  const seq = ++routeSeq, still = onScreen();
-  for (const it of roads) {
+  cancelRoute();
+  const seq = routeSeq, still = onScreen();
+  for (const i of roads) {
+    const it = work.items[i];
     it.pts.reverse();
     fixing = `Trying ${it.label} the other way…`;
     renderSoon();
-    const r = await fetchRoute(T.routablePoints(trip), +trip.pref);
-    if (seq !== routeSeq) {  // the ride changed meanwhile (or was replaced: then it's left as it was, for Undo)
-      it.pts.reverse();
+    const r = await fetchRoute(T.routablePoints(work), +trip.pref);
+    if (seq !== routeSeq) {  // the ride changed meanwhile, or was replaced (then its page isn't showing this)
       if (still()) fixing = '';
-      return;
+      return renderSoon();
     }
     if (!r) failed = true;
     const back = r && !r.fallback ? P.retrace(r.path).meters : Infinity;
     if (back < best.back - 200 && r.meters < best.r.meters * 1.15) {
       best = { r, back };
-      flipped.push(it.label);
+      flipped.push(i);
     } else {
       it.pts.reverse();
     }
@@ -640,9 +651,10 @@ async function fixDoubleBack() {
     toast(failed ? routerTrouble() : 'Riding the roads the other way doesn’t help. Try dragging the stops into another order.');
     return renderSoon();
   }
+  for (const i of flipped) trip.items[i].pts.reverse();
   tripChanged({ reroute: false });
   setRoute(best.r);
-  toast(`Flipped ${flipped.join(', ')}. ${best.back >= 400 ? `Still ${miles(best.back)} mi doubled back.` : 'No more doubling back.'}`);
+  toast(`Flipped ${flipped.map(i => trip.items[i].label).join(', ')}. ${best.back >= 400 ? `Still ${miles(best.back)} mi doubled back.` : 'No more doubling back.'}`);
 }
 
 // ---------- generator ----------
@@ -701,8 +713,9 @@ async function generateRun(run) {
   }
   let start = T.startOf(trip);
   if (!start) {
-    // Running from here on: Stop stops it, and an Undo doesn't bring back this run's planner.
-    gen = { options: [], index: -1, running: true, status: 'Finding your location for the start…' };
+    // Running from here on: Stop stops it, and an Undo doesn't bring back this run's planner. Not reading roads yet, so
+    // a filter change doesn't stop it.
+    gen = { options: [], index: -1, running: true, locating: true, status: 'Finding your location for the start…' };
     renderSoon();
     let here;
     try {
@@ -714,7 +727,7 @@ async function generateRun(run) {
       return renderSoon();
     }
     live();
-    setStartAt(here, 'Start: my location');
+    if (!T.startOf(trip)) setStartAt(here, 'Start: my location');  // a start picked meanwhile is the one to use
     start = T.startOf(trip);
   }
   const required = ownStops(), s = start.pts[0], e = end && end.pts[0];
@@ -955,8 +968,7 @@ function selectOption(i) {
   gen.index = i;
   trip.items = opt.items.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
   trip.loop = !opt.oneWay;
-  routeSeq++;
-  clearTimeout(routeTimer);
+  cancelRoute();
   tripChanged({ reroute: false });
   setRoute(opt.route);
   mapView.setPreview(null);
@@ -1250,7 +1262,7 @@ function yourRides(n) {
 async function removeRide(r) {
   try {
     const gone = await A.deleteRide(r.id);
-    toast(`Deleted ${r.name}`, { label: 'Undo', run: () => A.saveRide(gone.name, gone.trip, { open: false }).catch(e => toast(e.message)) });
+    toast(`Deleted ${r.name}`, { label: 'Undo', run: () => A.saveRide(gone.name, gone.trip).catch(e => toast(e.message)) });
   } catch (e) { toast(e.message); }
 }
 
@@ -1265,8 +1277,15 @@ function saveRow() {
   const id = A.rideId();
   if (!id) {
     return h('button.btn.wide.save-btn', { onclick: async () => {
+      // The ride as it was when Save was tapped is saved. Still on screen when that's done, it's selected (and any change
+      // made meanwhile saves to it); if another ride replaced it, it's just in your rides, and the toast (with that
+      // ride's Undo) stays. A save that failed says so either way.
+      const still = onScreen(), packed = T.encodeTrip(trip);
       try {
-        await A.saveRide(P.tripName(trip).replace(/^Ride: /, ''), T.encodeTrip(trip));
+        const saved = await A.saveRide(P.tripName(trip).replace(/^Ride: /, ''), packed);
+        if (!still()) return;
+        A.selectRide(saved, packed);
+        saveTrip();
         toast('Saved to your rides. Changes save as you go.');
       } catch (e) { toast(e.message); }
     } }, iconEl(icon.plus), 'Save to your rides');
@@ -1841,12 +1860,8 @@ function tripView() {
 // No "are you sure": an Undo in the toast instead.
 // A saved ride stays as it was in your rides: clearing starts a new one.
 function clearRide() {
-  const was = rideOnScreen(), name = A.selectedRide();
-  leaveRide();
-  trip = { ...trip, items: [] };
-  A.setRideId(null);
-  tripChanged();
-  toast(name ? keptAsItWas(name) : 'New ride', { label: 'Undo', run: was.restore });
+  const name = A.selectedRide();
+  replaceRide({ ...trip, items: [] }, { msg: name ? keptAsItWas(name) : 'New ride', show: false });
 }
 
 // What a ride is made of, kept per route and filters (filters can change after routing, and render runs often).
