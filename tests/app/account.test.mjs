@@ -499,6 +499,19 @@ test('a change kept for later goes only while it’s the newest, and isn’t los
   await reaches(id, beforeRename, 'sent after the rename');
   assert.equal(await pc.eval('RF.account.rideId()'), id, 'still selected');
 
+  // No signal for a while, so several saves in a row get no answer: once it's back, the change still goes (it isn't
+  // taken for another device's).
+  await offline();
+  for (let i = 0; i < 3; i++) {
+    await pc.eval("RF.account.account.error = ''");
+    await toggle();
+    await pc.waitFor('RF.account.account.error', 5000);
+  }
+  await online();
+  await toggle();
+  await reaches(id, await packed(), 'sent once the signal is back');
+  assert.equal(await pc.eval('RF.account.rideId()'), id, 'still selected after no signal');
+
   // Changed before Your rides have loaded (no key yet): it goes once they have, unless the phone changed the ride
   // meanwhile.
   await pc.eval('RF.account.account.key = null');

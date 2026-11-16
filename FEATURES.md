@@ -619,7 +619,9 @@ colored road), Add a stop here, Street View here.
   session ran out) is kept on the device (`rf2-unsent`) and sent each time Your rides load, so a reload doesn't
   lose it; it's dropped if the ride was deleted elsewhere. Each save says which copy it builds on (the locked trip's
   fingerprint, kept per ride in `rf2-bases`: from opening the ride, saving it, or this device's last save), and the
-  account refuses one built on a copy another device has changed since (409; a rename doesn't count). That change
+  account refuses one built on a copy another device has changed since (409; a rename doesn't count). After a save
+  that got no answer, the next one looks at the account's copy first, so any number of saves with no signal never
+  makes this device's own change look like another device's. That change
   stays: the toast says so, and the ride on screen keeps this device's copy as just a ride (Save keeps it too).
   Signing out sends changes made while it waits too, and one save going wrong never stops the ones after it. Any other
   ride whose state this device doesn't know (selected before a reload) is taken as saved as it is, so an Undo back

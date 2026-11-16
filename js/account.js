@@ -357,7 +357,8 @@ const readBases = () => readMap(BASES_KEY, v => Array.isArray(v) && v.length <= 
 const baseOf = id => readBases()[id];
 // Locked trips (prints: false, fingerprints already) as ride id's base; null: none known.
 async function setBase(id, trips, { prints = false } = {}) {
-  const all = readBases(), fps = trips && (prints ? trips : await Promise.all(trips.map(fingerprint)));
+  // Fingerprinted before reading what's kept, so a base set meanwhile (another ride's) isn't written back over.
+  const fps = trips && (prints ? trips : await Promise.all(trips.map(fingerprint))), all = readBases();
   delete all[id];
   if (fps) all[id] = fps.slice(-2);
   writeMap(BASES_KEY, all);
@@ -436,8 +437,11 @@ async function putRide(id, trip) {
 
 // One save, sent with what it builds on (baseOf) so the account can refuse it if another device changed the ride.
 async function putTrip(id, trip) {
-  const locked = await lock(key(), trip), was = baseOf(id);
+  const locked = await lock(key(), trip);
+  let was = baseOf(id), sent = false;
   try {
+    was = await settledBase(id, was);
+    sent = true;
     const r = await api('PUT', `/rides/${id}`, { trip: locked, was });
     touch(id, { updated: r.updated });
     await setBase(id, [locked]);
@@ -446,7 +450,7 @@ async function putTrip(id, trip) {
   } catch (e) {
     account.error = e.message;
     // No answer: it may have got there. Not saved: the next change, or the next look at your rides, sends it.
-    if (!e.status && was) await setBase(id, [...was, await fingerprint(locked)], { prints: true });
+    if (!e.status && sent && was) await setBase(id, [...was, await fingerprint(locked)], { prints: true });
     if (savedAs.get(id) === trip) {
       remember(id, null);
       if (!pending || pending.id !== id) keepUnsent(id, trip);
@@ -454,6 +458,20 @@ async function putTrip(id, trip) {
     if (e.status === 404) forgetRide(id);
     if (e.status === 409) await changedElsewhere(id);
   }
+}
+
+// What a save to ride id builds on, as one copy. After a save whose answer never came it's one of two, so the
+// account's copy is looked at first: one of them, or another device changed the ride (refused, as the account would).
+// Sent with one, a save that gets no answer leaves two again, never more (the account takes at most two; with a third,
+// no signal for two saves in a row would drop the copy the account has, and the next save would be refused).
+async function settledBase(id, was) {
+  if (!was || was.length < 2) return was;
+  const r = await api('GET', `/rides/${id}`);
+  if (!check(r && typeof r.trip === 'string', 'a ride from the account has a trip')) return was;
+  const held = await fingerprint(r.trip);
+  if (!was.includes(held)) throw Object.assign(new Error('This ride was changed on another device.'), { status: 409 });
+  await setBase(id, [held], { prints: true });
+  return [held];
 }
 
 // The account refused a save: ride id changed on another device since this one last saw it, and that change stays.
