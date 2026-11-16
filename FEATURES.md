@@ -611,7 +611,9 @@ colored road), Add a stop here, Street View here.
   stepped off when a loop comes up, like picking one; a start picked while Generate finds your location is kept, and a
   filter change then doesn't stop it. Before Your rides has loaded, a selected ride shows as "Your saved ride"; a
   device that's locked (or has no key at all) has none selected. Your rides as the account sent them before a save,
-  rename or delete here are asked for again, so they don't undo it. Edits on the ride's own page (stops, Start from me,
+  rename or delete here are asked for again (up to twice), so they don't undo it. Each ride remembers what it was last
+  saved (or opened) as here, so it's never saved straight back as it is; a change still waiting to be saved goes as
+  soon as another ride is selected, and one that failed to save is sent again after an Undo back to it. Edits on the ride's own page (stops, Start from me,
   options, 90+ only) and the map's Add to ride / Add a stop still go into it. **New ride** (was Clear all) starts an
   empty ride (Undo puts it back, saved ride and all); opening a shared link does too. The home list shows the latest 3 (and the empty ride page 5) under **Your rides**;
   the account page lists them all, each with delete (with Undo). Opening one replaces the ride on screen (Undo).

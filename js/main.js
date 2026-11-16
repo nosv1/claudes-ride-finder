@@ -52,7 +52,10 @@ let picking = null;          // 'start' | 'stop' | 'road' while waiting for a ma
 let dragging = false;        // a stop row is being dragged: hold re-renders until it's dropped
 let showKey = false;         // the map key's explanations are open
 let fixing = '';             // status while trying roads the other way to stop doubling back
-let gen = { options: [], index: -1, running: false, status: '' };
+// Plan a ride's planner: the loops (or ways there) listed and the one picked, whether Generate is running (locating:
+// still finding your location for the start), what it says, and next: a longer extra time to try in one tap.
+const genState = (status = '', more = {}) => ({ options: [], index: -1, running: false, status, ...more });
+let gen = genState();
 let showGoogleParts = false;
 let leaveAt = null;          // when the rider leaves (ms), for the weather; null: soon (next quarter hour)
 let weather = null;          // { route, points, hourly, at, loading, error }: the forecast along the route
@@ -321,17 +324,17 @@ function leaveRide() {
 // saved ride if that's still yours to save to.
 function rideOnScreen() {
   const t = trip, id = A.rideId(), listed = !gen.running && gen.options.length ? gen : null;
-  return { empty: !t.items.length && !listed, restore: () => { leaveRide(); trip = t; A.reselectRide(id, T.encodeTrip(t)); if (listed) gen = listed; tripChanged(); } };
+  return { empty: !t.items.length && !listed && !id, restore: () => { leaveRide(); trip = t; A.selectRide(id, { check: true }); if (listed) gen = listed; tripChanged(); } };
 }
 
-// Ride t in place of the one on screen, as saved ride id (packed: as it's saved) or as no saved ride. msg: what the
-// toast says, with Undo when there was a ride (or listed loops) to go back to. show: open its page and fit the map
-// to it (New ride stays where it is).
-function replaceRide(t, { msg = '', id = null, packed = null, show = true } = {}) {
+// Ride t in place of the one on screen, as saved ride id (just opened, so saved as it is) or as no saved ride. msg:
+// what the toast says, with Undo when there was a ride (or listed loops) to go back to. show: open its page and fit
+// the map to it (New ride stays where it is).
+function replaceRide(t, { msg = '', id = null, show = true } = {}) {
   const was = rideOnScreen();
   leaveRide();
   trip = t;
-  A.selectRide(id, packed);
+  A.selectRide(id, { trip: id && T.encodeTrip(t) });
   tripChanged();
   if (show) {
     go('trip');
@@ -378,7 +381,7 @@ async function openSavedRide(id) {
   const ok = opener();
   try {
     const r = await A.getRide(id);
-    if (ok()) replaceRide(T.decodeTrip(r.trip), { msg: `Opened ${r.name}`, id, packed: r.trip });
+    if (ok()) replaceRide(T.decodeTrip(r.trip), { msg: `Opened ${r.name}`, id });
   } catch (e) {
     if (ok()) toast(e.message);
   }
@@ -404,7 +407,7 @@ function tripChanged({ reroute = true } = {}) {
   mapView.showTripRoads(trip.items.flatMap(it => it.ids || []));
   showGoogleParts = false;
   if (reroute) {
-    clearTimeout(routeTimer);
+    cancelRoute();  // at once: a route (or doubling-back fix) for the ride as it was is dropped when it comes
     routeTimer = setTimeout(computeRoute, 350);
   }
   renderSoon();
@@ -560,7 +563,7 @@ const keptAsItWas = name => `New ride. ${name} stays in your rides as it was.`;
 function newRideFromSaved() {
   const name = A.selectedRide();
   if (!name) return;
-  A.setRideId(null);
+  A.selectRide(null);
   toast(keptAsItWas(name));
 }
 
@@ -620,7 +623,7 @@ function locationError(e) {
 // The flips are tried on a copy: the ride itself changes only at the end, so a ride changed or replaced meanwhile
 // (and put back with Undo) is never left with a road half flipped.
 async function fixDoubleBack() {
-  const work = { ...trip, items: trip.items.map(it => ({ ...it, pts: [...it.pts] })) };
+  const items = trip.items, work = { ...trip, items: items.map(it => ({ ...it, pts: [...it.pts] })) };
   const roads = work.items.map((it, i) => i).filter(i => work.items[i].type === 'road' && !work.items[i].oneway);
   let best = { r: route, back: info.back.meters };
   const flipped = [];
@@ -651,10 +654,10 @@ async function fixDoubleBack() {
     toast(failed ? routerTrouble() : 'Riding the roads the other way doesn’t help. Try dragging the stops into another order.');
     return renderSoon();
   }
-  for (const i of flipped) trip.items[i].pts.reverse();
+  for (const i of flipped) items[i].pts.reverse();
   tripChanged({ reroute: false });
   setRoute(best.r);
-  toast(`Flipped ${flipped.map(i => trip.items[i].label).join(', ')}. ${best.back >= 400 ? `Still ${miles(best.back)} mi doubled back.` : 'No more doubling back.'}`);
+  toast(`Flipped ${flipped.map(i => items[i].label).join(', ')}. ${best.back >= 400 ? `Still ${miles(best.back)} mi doubled back.` : 'No more doubling back.'}`);
 }
 
 // ---------- generator ----------
@@ -668,7 +671,7 @@ let genRun = 0;
 const STOPPED = new Error('stopped');
 function stopGenerating(status = 'Stopped.') {
   genRun++;
-  gen = { options: [], index: -1, running: false, status };
+  gen = genState(status);
   renderSoon();
 }
 
@@ -705,17 +708,19 @@ async function generateRun(run) {
   const oneWay = settings.genShape === 'oneway';
   let hours = settings.genHours;
   genRoutes = new Map();
-  // Checked before finding your location, which sets a start (and so steps off a saved ride).
-  const end = oneWay ? T.endOf(trip) : null;
-  if (oneWay && !end) {
-    gen = { options: [], index: -1, running: false, status: 'Set where you’re headed first: Pick on map, or right-click (long-press) a spot and choose “End a ride here”.' };
-    return renderSoon();
-  }
+  // One way needs an end: checked before finding your location, which sets a start (and so steps off a saved ride),
+  // and again once it's found, in case the end was moved or taken off meanwhile.
+  const endOf = () => oneWay ? T.endOf(trip) : null, noEnd = () => {
+    gen = genState('Set where you’re headed first: Pick on map, or right-click (long-press) a spot and choose “End a ride here”.');
+    renderSoon();
+  };
+  let end = endOf();
+  if (oneWay && !end) return noEnd();
   let start = T.startOf(trip);
   if (!start) {
     // Running from here on: Stop stops it, and an Undo doesn't bring back this run's planner. Not reading roads yet, so
     // a filter change doesn't stop it.
-    gen = { options: [], index: -1, running: true, locating: true, status: 'Finding your location for the start…' };
+    gen = genState('Finding your location for the start…', { running: true, locating: true });
     renderSoon();
     let here;
     try {
@@ -723,17 +728,18 @@ async function generateRun(run) {
     } catch (e) {
       live();  // stopped meanwhile (or the ride was replaced): nothing to say
       locationError(e);
-      gen = { options: [], index: -1, running: false, status: 'Set a start first: use your location or pick a spot on the map.' };
+      gen = genState('Set a start first: use your location or pick a spot on the map.');
       return renderSoon();
     }
     live();
+    end = endOf();
+    if (oneWay && !end) return noEnd();
     if (!T.startOf(trip)) setStartAt(here, 'Start: my location');  // a start picked meanwhile is the one to use
     start = T.startOf(trip);
   }
   const required = ownStops(), s = start.pts[0], e = end && end.pts[0];
   const kind = oneWay ? 'ways there' : 'loops';
-  gen = { options: [], index: -1, running: true,
-    status: required.length ? `Building ${kind} through ${required.map(r => r.label).join(', ')}…` : oneWay ? 'Finding the straight way there…' : 'Loading roads around your start…' };
+  gen = genState(required.length ? `Building ${kind} through ${required.map(r => r.label).join(', ')}…` : oneWay ? 'Finding the straight way there…' : 'Loading roads around your start…', { running: true });
   renderSoon();
   // One way: the time is the straight way there plus the extra the rider will spend on fun roads, and a
   // way there has to come in near that extra (+15 min is +8 to +24, not 80–120% of the whole ride).
@@ -743,7 +749,7 @@ async function generateRun(run) {
     const direct = await fetchRoute([{ p: s, via: false }, { p: e, via: false }], +trip.pref);
     live();
     if (!direct) {
-      gen = { options: [], index: -1, running: false, status: routerTrouble() };
+      gen = genState(routerTrouble());
       return renderSoon();
     }
     const d = direct.seconds / 3600, x = settings.genExtra;
@@ -775,8 +781,8 @@ async function generateRun(run) {
   for (const g of groups) g.score *= weightOf(g.ids);
   const options = P.buildOptions(groups, s, planHours, required, e);
   if (!options.length) {
-    gen = { options: [], index: -1, running: false, next: oneWay ? nextExtra() : null, status: oneWay ? `No good roads close enough to the way there for ${extraLabel(settings.genExtra)}. Try more extra time, or loosen the filters.`
-      : 'No good roads within reach. Try a longer ride, or loosen the filters.' };
+    gen = genState(oneWay ? `No good roads close enough to the way there for ${extraLabel(settings.genExtra)}. Try more extra time, or loosen the filters.`
+      : 'No good roads within reach. Try a longer ride, or loosen the filters.', { next: oneWay ? nextExtra() : null });
     return renderSoon();
   }
   options.forEach(o => { o.oneWay = oneWay; });
@@ -795,7 +801,7 @@ async function generateRun(run) {
   await Promise.all([worker(), worker()]);
   live();
   if (!options.some(o => o.route)) {
-    gen = { options: [], index: -1, running: false, status: routerTrouble() };
+    gen = genState(routerTrouble());
     return renderSoon();
   }
   // Only loops within 80–120% of the chosen time (ways there: near the extra chosen); if none came out that close, the nearest.
@@ -830,7 +836,7 @@ async function generateRun(run) {
   const list = fastest ? shown : shown.length ? shown : options;
   list.sort((a, b) => worth(b) - worth(a));
   if (fastest) list.forEach(o => { o.vsFastest = o.route && o.route.seconds - fastest.route.seconds; });
-  gen = { options: fastest ? [...list, fastest] : list, index: -1, running: false, status, next: fastest && !list.length ? nextExtra() : null };
+  gen = genState(status, { options: fastest ? [...list, fastest] : list, next: fastest && !list.length ? nextExtra() : null });
   if (gen.options[0].route) selectOption(0);
   else renderSoon();
 }
@@ -1267,6 +1273,7 @@ async function removeRide(r) {
 }
 
 // On the ride page: save it to your rides, or, once it's there, its name and whether its changes are saved.
+let savingNew = null;  // a Save to your rides on its way: still() of the ride it's for
 function saveRow() {
   if (!A.signedIn()) {
     return h('button.link.save-link', { onclick: () => go('account') }, iconEl(icon.person), 'Sign in to keep this ride on every device');
@@ -1276,19 +1283,27 @@ function saveRow() {
   }
   const id = A.rideId();
   if (!id) {
-    return h('button.btn.wide.save-btn', { onclick: async () => {
+    const busy = !!(savingNew && savingNew());
+    return h('button.btn.wide.save-btn', { disabled: busy, onclick: async () => {
       // The ride as it was when Save was tapped is saved. Still on screen when that's done, it's selected (and any change
       // made meanwhile saves to it); if another ride replaced it, it's just in your rides, and the toast (with that
       // ride's Undo) stays. A save that failed says so either way.
-      const still = onScreen(), packed = T.encodeTrip(trip);
+      if (savingNew && savingNew()) return;
+      const still = savingNew = onScreen(), packed = T.encodeTrip(trip);
+      renderSoon();
       try {
         const saved = await A.saveRide(P.tripName(trip).replace(/^Ride: /, ''), packed);
         if (!still()) return;
-        A.selectRide(saved, packed);
+        A.selectRide(saved, { trip: packed });
         saveTrip();
         toast('Saved to your rides. Changes save as you go.');
-      } catch (e) { toast(e.message); }
-    } }, iconEl(icon.plus), 'Save to your rides');
+      } catch (e) {
+        toast(e.message);
+      } finally {
+        if (savingNew === still) savingNew = null;
+        renderSoon();
+      }
+    } }, iconEl(icon.plus), busy ? 'Saving…' : 'Save to your rides');
   }
   return h('div.saved-ride', {},
     h('input.ride-name', { type: 'text', value: A.rideName(), maxlength: 120, 'aria-label': 'Ride name',
