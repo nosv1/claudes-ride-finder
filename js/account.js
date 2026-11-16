@@ -7,13 +7,14 @@
 // without it is "locked": it can't read or save anything in the account until it opens that link.
 import { check } from './check.js';
 import { API_URL, GOOGLE_CLIENT_ID } from './config.js';
-import { lock, unlock, newAccountKey, keyId, newLinkCode, linkParts } from './seal.js';
+import { lock, unlock, fingerprint, newAccountKey, keyId, newLinkCode, linkParts } from './seal.js';
 
 const SESSION_KEY = 'rf2-account';  // { token, user: { name, email, picture } }
 const RIDE_KEY = 'rf2-ride-id';     // the saved ride the ride on screen is: its changes are saved there
 const DATA_AT_KEY = 'rf2-data-at';  // when settings or tags last changed on this device (ms), to tell which copy is newer
 const KEYS_KEY = 'rf2-keys';        // { [key id]: account key }, kept after signing out so signing back in needs no link
-const UNSENT_KEY = 'rf2-unsent';    // { [ride id]: { trip, base, at, page } }: changes to your rides not in the account yet
+const UNSENT_KEY = 'rf2-unsent';    // { [ride id]: packed trip }: changes to your rides not in the account yet
+const BASES_KEY = 'rf2-bases';     // { [ride id]: fingerprints }: each ride's trip in the account, as last known here
 
 const read = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
 const write = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } };
@@ -60,7 +61,7 @@ function forget({ expired = false } = {}) {
   session = null;
   write(SESSION_KEY, null);
   write(RIDE_KEY, null);
-  if (!expired) write(UNSENT_KEY, null);
+  if (!expired) { write(UNSENT_KEY, null); write(BASES_KEY, null); }
   dropPending();
   savedAs.clear();
   Object.assign(account, { rides: null, links: [], key: null, locked: false, saving: false });
@@ -218,16 +219,12 @@ function takeRides(rides, old) {
   for (const r of old) relock(r.id).catch(() => { /* tried again next time */ });
 }
 
-// Each change not in the account yet goes, unless its ride is gone, or was changed on another device since this one
-// last saw it (that change stays; this one is dropped), or another tab open now made it (that tab sends it, in order
-// with its others).
+// Each change not in the account yet goes, unless its ride is gone. One built on a copy that another device has
+// changed since is refused by the account (putRide), so that change stays.
 function sendUnsent(rides) {
-  for (const [rid, u] of Object.entries(readUnsent())) {
-    const r = rides.find(x => x.id === rid);
-    if (!r) forgetRide(rid);
-    else if (u.base != null && r.updated > u.base) { keepUnsent(rid, null); savedAs.delete(rid); }
-    else if (u.page !== PAGE && u.at > OPENED) continue;
-    else if ((!pending || pending.id !== rid) && savedAs.get(rid) !== u.trip) void sendRide(rid, u.trip);
+  for (const [rid, trip] of Object.entries(readUnsent())) {
+    if (!rides.some(r => r.id === rid)) forgetRide(rid);
+    else if ((!pending || pending.id !== rid) && savedAs.get(rid) !== trip) void sendRide(rid, trip);
   }
 }
 
@@ -265,7 +262,9 @@ async function syncFrom(me, k) {
 async function relock(id) {
   const r = await api('GET', `/rides/${id}`), k = key();
   if (await unlock(k, r.name) != null) return;
-  await api('PUT', `/rides/${id}`, { name: await lock(k, r.name), trip: await lock(k, r.trip) });
+  const trip = await lock(k, r.trip);
+  await api('PUT', `/rides/${id}`, { name: await lock(k, r.name), trip });
+  await setBase(id, [trip]);
 }
 
 // ---------- settings and road tags ----------
@@ -313,12 +312,13 @@ export const selectedRide = () => { const id = rideId(); return id ? nameOf(id) 
 
 // Saving the ride on screen: what each ride was last saved (or opened) as here, so it isn't saved straight back as it
 // already is (null: it's not in the account yet, a save failed or the app closed first, so it's sent again); the
-// change waiting to be saved ({ id, trip }); how many saves are on their way; and those saves, one after another
-// (queue), so an older copy never lands after a newer one. savedAs keeps the last SAVED_KEPT rides (rule 3), and is
-// cleared on signing out, as is UNSENT_KEY, the changes not in the account yet, kept so a reload doesn't lose them.
+// change waiting to be saved ({ id, trip }); how many saves are on their way, and the last one of each ride (onWay);
+// and those saves, one after another (queue), so an older copy never lands after a newer one. savedAs keeps the last
+// SAVED_KEPT rides (rule 3), and is cleared on signing out, as are UNSENT_KEY (the changes not in the account yet,
+// kept so a reload doesn't lose them) and BASES_KEY.
 const SAVED_KEPT = 50;
-const PAGE = Math.random().toString(36).slice(2), OPENED = Date.now();  // this page, to tell its changes from another tab's
 const savedAs = new Map(Object.keys(readUnsent()).map(id => [id, null]));
+const onWay = new Map();
 let pending = null, rideTimer = null, putting = 0, queue = Promise.resolve();
 const savingNow = () => { account.saving = !!pending || putting > 0; };
 function remember(id, trip) {
@@ -327,24 +327,40 @@ function remember(id, trip) {
   if (savedAs.size > SAVED_KEPT) savedAs.delete(savedAs.keys().next().value);
 }
 
-// The changes not in the account yet, as kept here: { [ride id]: { trip, base: when the account's copy this device
-// last saw was saved (null: not known yet), at: when it was kept, page } }.
-function readUnsent() {
-  const all = read(UNSENT_KEY);
-  if (all == null || !check(typeof all === 'object' && !Array.isArray(all), 'kept changes: one per ride')) return {};
-  return Object.fromEntries(Object.entries(all).filter(([, u]) =>
-    check(u && typeof u.trip === 'string' && typeof u.at === 'number', 'a kept change: its ride and when')));
+// A kept map of ride id to something, as stored (rule 5: from storage), with only the entries ok takes.
+function readMap(k, ok, what) {
+  const all = read(k);
+  if (all == null || !check(typeof all === 'object' && !Array.isArray(all), what)) return {};
+  return Object.fromEntries(Object.entries(all).filter(([, v]) => check(ok(v), what)));
 }
-
-// Ride id's change not in the account yet is trip, or (null) there's none: it's there now, or the ride's gone. base:
-// see readUnsent (by default, what it was when the change before this one was kept, or the time in Your rides).
-function keepUnsent(id, trip, base = undefined) {
-  const all = readUnsent(), known = all[id] ? all[id].base : (account.rides || []).find(r => r.id === id)?.updated;
-  delete all[id];
-  if (trip != null) all[id] = { trip, base: base === undefined ? known ?? null : base, at: Date.now(), page: PAGE };
+function writeMap(k, all) {
   const ids = Object.keys(all);
   if (ids.length > SAVED_KEPT) delete all[ids[0]];
-  write(UNSENT_KEY, ids.length ? all : null);
+  write(k, ids.length ? all : null);
+}
+
+function readUnsent() { return readMap(UNSENT_KEY, v => typeof v === 'string', 'kept changes: a trip per ride'); }
+// Ride id's change not in the account yet is trip, or (null) there's none: it's there now, or the ride's gone.
+function keepUnsent(id, trip) {
+  const all = readUnsent();
+  delete all[id];
+  if (trip != null) all[id] = trip;
+  writeMap(UNSENT_KEY, all);
+}
+
+// What a save to ride id builds on: the fingerprints of its locked trip in the account as last known here (from
+// opening it, saving it, or this device's last save to it; two when a save's answer never came, so it can't tell
+// whether it got there; none once it's known to have changed elsewhere). The account refuses a save built on
+// anything else. Unknown (a ride from before this was kept): the save goes as it is.
+const readBases = () => readMap(BASES_KEY, v => Array.isArray(v) && v.length <= 2 && v.every(f => typeof f === 'string'),
+  'kept bases: fingerprints per ride');
+const baseOf = id => readBases()[id];
+// Locked trips (prints: false, fingerprints already) as ride id's base; null: none known.
+async function setBase(id, trips, { prints = false } = {}) {
+  const all = readBases(), fps = trips && (prints ? trips : await Promise.all(trips.map(fingerprint)));
+  delete all[id];
+  if (fps) all[id] = fps.slice(-2);
+  writeMap(BASES_KEY, all);
 }
 
 // Ride id is gone (deleted here or on another device): nothing more is saved to it.
@@ -352,6 +368,7 @@ function forgetRide(id) {
   savedAs.delete(id);
   dropPending(id);
   keepUnsent(id, null);
+  void setBase(id, null);  // storage only: it doesn't fail
   if (read(RIDE_KEY) === id) write(RIDE_KEY, null);
 }
 
@@ -374,7 +391,11 @@ export function selectRide(id, { trip = null, check: mustSave = false } = {}) {
   if (!check(id == null || typeof id === 'string', 'selectRide: a ride id or none')) return;
   // Signed out meanwhile (a save or an open that finished late), or an Undo to a ride that can't be saved to now.
   if (!session || (mustSave && !canSaveTo(id))) id = null;
-  if (id && trip) remember(id, trip);
+  if (id && trip) {  // what's on screen is what the account has: a change from before (an Undo has it) is superseded
+    remember(id, trip);
+    dropPending(id);
+    keepUnsent(id, null);
+  }
   if (pending && pending.id !== id) void flushSave();
   write(RIDE_KEY, id);
   changed();
@@ -395,6 +416,7 @@ function flushSave() {
 // failures, and anything else is logged, so one save going wrong never stops the ones after it.
 function sendRide(id, trip) {
   remember(id, trip);
+  onWay.set(id, trip);
   putting++;
   savingNow();
   queue = queue.then(() => putRide(id, trip)).catch(e => console.error('Save failed', e));
@@ -402,25 +424,52 @@ function sendRide(id, trip) {
 }
 
 async function putRide(id, trip) {
-  if (session && check(typeof trip === 'string' && trip !== '', 'putRide: a packed trip')) {
-    try {
-      const r = await api('PUT', `/rides/${id}`, { trip: await lock(key(), trip) });
-      touch(id, { updated: r.updated });
-      const u = readUnsent()[id];  // a later change still to go now builds on this save
-      if (u) keepUnsent(id, u.trip === trip ? null : u.trip, r.updated);
-      account.error = '';
-    } catch (e) {
-      account.error = e.message;
-      if (savedAs.get(id) === trip) {  // not saved: the next change, or the next look at your rides, sends it
-        remember(id, null);
-        if (!pending || pending.id !== id) keepUnsent(id, trip);
-      }
-      if (e.status === 404) forgetRide(id);
-    }
+  try {
+    if (session && check(typeof trip === 'string' && trip !== '', 'putRide: a packed trip')) await putTrip(id, trip);
+  } finally {
+    if (onWay.get(id) === trip) onWay.delete(id);
+    putting--;
+    savingNow();
+    changed();
   }
-  putting--;
-  savingNow();
-  changed();
+}
+
+// One save, sent with what it builds on (baseOf) so the account can refuse it if another device changed the ride.
+async function putTrip(id, trip) {
+  const locked = await lock(key(), trip), was = baseOf(id);
+  try {
+    const r = await api('PUT', `/rides/${id}`, { trip: locked, was });
+    touch(id, { updated: r.updated });
+    await setBase(id, [locked]);
+    if (readUnsent()[id] === trip) keepUnsent(id, null);
+    account.error = '';
+  } catch (e) {
+    account.error = e.message;
+    // No answer: it may have got there. Not saved: the next change, or the next look at your rides, sends it.
+    if (!e.status && was) await setBase(id, [...was, await fingerprint(locked)], { prints: true });
+    if (savedAs.get(id) === trip) {
+      remember(id, null);
+      if (!pending || pending.id !== id) keepUnsent(id, trip);
+    }
+    if (e.status === 404) forgetRide(id);
+    if (e.status === 409) await changedElsewhere(id);
+  }
+}
+
+// The account refused a save: ride id changed on another device since this one last saw it, and that change stays.
+// This device's changes to it are dropped (the ride on screen keeps them, as just a ride here now), and nothing more
+// is saved to it until it's opened again.
+let conflictHook = null;
+export const onChangedElsewhere = fn => { conflictHook = fn; };
+async function changedElsewhere(id) {
+  const onScreen = read(RIDE_KEY) === id;
+  savedAs.delete(id);
+  dropPending(id);
+  keepUnsent(id, null);
+  await setBase(id, [], { prints: true });
+  if (onScreen) write(RIDE_KEY, null);
+  account.error = '';
+  if (conflictHook) conflictHook({ name: nameOf(id) || 'Your saved ride', onScreen });
 }
 
 const touch = (id, patch) => {
@@ -431,9 +480,11 @@ const touch = (id, patch) => {
 
 // Adds it to your rides and returns its id; selectRide makes it the ride on screen.
 export async function saveRide(name, trip) {
-  const s = session, k = key(), r = await api('POST', '/rides', { name: await lock(k, name), trip: await lock(k, trip) });
+  const s = session, k = key(), locked = await lock(k, trip);
+  const r = await api('POST', '/rides', { name: await lock(k, name), trip: locked });
   ridesEdits++;
   if (session !== s) return r.id;  // signed out meanwhile: it's in the account, and listed there next time
+  await setBase(r.id, [locked]);
   // A look at your rides that came back meanwhile may list it already.
   const others = (account.rides || []).filter(x => x.id !== r.id);
   account.rides = [{ id: r.id, name, updated: r.updated }, ...others].sort((a, b) => b.updated - a.updated);
@@ -454,7 +505,7 @@ export function rideChanged(trip) {
   }
   if (savedAs.get(id) === trip) {  // back as it's saved: nothing to send (kept until a save of it on its way is done)
     dropPending(id);
-    keepUnsent(id, putting > 0 ? trip : null);
+    keepUnsent(id, onWay.get(id) === trip ? trip : null);
     changed();
     return;
   }
@@ -474,9 +525,12 @@ export async function renameRide(id, name) {
   changed();
 }
 
-// { name, trip } unlocked (a ride saved before locking existed comes as it was).
+// { name, trip } unlocked (a ride saved before locking existed comes as it was). Its trip is what a save to it next
+// builds on.
 export async function getRide(id) {
   const r = await api('GET', `/rides/${id}`), k = key();
+  if (!check(r && typeof r.trip === 'string', 'a ride from the account has a trip')) throw new Error('That ride didn’t come through. Try again.');
+  await setBase(id, [r.trip]);
   return { ...r, name: await unlock(k, r.name) ?? r.name, trip: await unlock(k, r.trip) ?? r.trip };
 }
 

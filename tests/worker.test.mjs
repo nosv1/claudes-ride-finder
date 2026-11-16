@@ -44,6 +44,25 @@ test('sign in, save a ride, change it, see it in the list, delete it', async () 
   assert.equal((await call('GET', '/me', { token })).body.rides.length, 0);
 });
 
+test('a change to a ride built on a copy that changed since is refused, and a rename doesn’t count', async () => {
+  const { fingerprint } = await import('../js/seal.js');
+  const token = await signIn('rider-was-' + Date.now()), first = locked();
+  const id = (await call('POST', '/rides', { token, body: { name: 'nameA', trip: first } })).body.id;
+  const put = body => call('PUT', `/rides/${id}`, { token, body });
+  const second = locked();
+  assert.equal((await put({ trip: second, was: [await fingerprint(first)] })).status, 200, 'built on what’s there');
+  assert.equal((await put({ name: 'renamed' })).status, 200);
+  const third = locked();
+  assert.equal((await put({ trip: third, was: ['x', await fingerprint(second)] })).status, 200, 'one of two will do');
+  const stale = await put({ trip: locked(), was: [await fingerprint(second)] });
+  assert.equal(stale.status, 409, 'built on a copy that changed since');
+  assert.match(stale.body.error, /changed on another device/);
+  assert.equal((await put({ trip: locked(), was: [] })).status, 409, 'none: known to have changed');
+  assert.equal((await put({ trip: locked(), was: 'nope' })).status, 400);
+  assert.equal((await call('GET', `/rides/${id}`, { token })).body.trip, third, 'what was there stays');
+  assert.equal((await put({ trip: locked() })).status, 200, 'without was, as before');
+});
+
 test('the account key’s id is set once, by the first device', async () => {
   const token = await signIn('key-' + Date.now());
   assert.equal((await call('GET', '/me', { token })).body.keyId, null);

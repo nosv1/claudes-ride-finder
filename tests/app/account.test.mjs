@@ -451,25 +451,33 @@ test('a change kept for later goes only while it’s the newest, and isn’t los
     for (let i = 0; i < 40 && await inAccount(rid) !== want; i++) await sleep(250);
     assert.equal(await inAccount(rid), want, what);
   };
-  // A change that failed here, then the ride changed on the phone: the phone's change stays.
+  // The phone saves trip to the ride, as a device that doesn't know of this one's changes.
+  const phoneSaves = async (rid, trip) => {
+    const locked = await lock(await phone.eval('RF.account.account.key'), trip);
+    assert.equal(await phone.eval(`fetch(${JSON.stringify(`${worker.url}/rides/${rid}`)}, { method: 'PUT',
+      headers: { Authorization: 'Bearer ' + JSON.parse(localStorage.getItem('rf2-account')).token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trip: ${JSON.stringify(locked)} }) }).then(r => r.status)`), 200, 'the phone changed it');
+  };
+  const kept = rid => pc.eval(`JSON.parse(localStorage.getItem('rf2-unsent'))?.[${JSON.stringify(rid)}] ?? null`);
+  const toastText = () => pc.eval("document.getElementById('toast').innerText");
+
+  // A change that failed here, then the ride changed on the phone: the phone's change stays, and the ride on screen
+  // here is just a ride now (it says so).
   let id = await pc.eval('RF.account.rideId()');
   const theirs = await packed();
   await offline();
   await toggle();
   await pc.waitFor('RF.account.account.error', 5000);
-  await sleep(20);
-  const locked = await lock(await phone.eval('RF.account.account.key'), theirs);
-  assert.equal(await phone.eval(`fetch(${JSON.stringify(`${worker.url}/rides/${id}`)}, { method: 'PUT',
-    headers: { Authorization: 'Bearer ' + JSON.parse(localStorage.getItem('rf2-account')).token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ trip: ${JSON.stringify(locked)} }) }).then(r => r.status)`), 200, 'the phone changed it');
-  await reload(id);
-  await sleep(2000);
+  await phoneSaves(id, theirs);
+  await pc.goto(base);
+  await pc.waitFor('RF.account.account.rides?.length > 0 && RF.account.rideId() === null', 30000);
+  await sleep(500);
   assert.equal(await inAccount(id), theirs, 'the change made later on the phone wasn’t overwritten');
-  assert.equal(await pc.eval("localStorage.getItem('rf2-unsent')"), null);
+  assert.match(await toastText(), /was changed on another device, so this copy wasn’t saved there/);
+  assert.equal(await kept(id), null);
 
   // Back to the copy whose save is on its way, then the app closes before it gets there: it goes after the reload.
-  await toggle();
-  await pc.waitFor('!RF.account.account.saving', 5000);
+  id = await saveNew();
   await hold(putRide);
   await toggle();
   const onItsWay = await packed();
@@ -480,15 +488,35 @@ test('a change kept for later goes only while it’s the newest, and isn’t los
   await reload(id);
   await reaches(id, onItsWay, 'sent after the reload');
 
-  // Changed before Your rides have loaded (no key yet): it goes once they have.
+  // A change that failed, then the ride is renamed: a new name isn't a change to the ride, so the change still goes.
+  await offline();
+  await toggle();
+  const beforeRename = await packed();
+  await pc.waitFor('RF.account.account.error', 5000);
+  await online();
+  await pc.eval(`RF.account.renameRide(${JSON.stringify(id)}, 'Renamed run')`);
+  await pc.eval('RF.account.refresh()');
+  await reaches(id, beforeRename, 'sent after the rename');
+  assert.equal(await pc.eval('RF.account.rideId()'), id, 'still selected');
+
+  // Changed before Your rides have loaded (no key yet): it goes once they have, unless the phone changed the ride
+  // meanwhile.
   await pc.eval('RF.account.account.key = null');
   await toggle();
   const early = await packed();
-  assert.equal(await pc.eval(`JSON.parse(localStorage.getItem('rf2-unsent'))?.[${JSON.stringify(id)}]?.trip`), early, 'kept');
+  assert.equal(await kept(id), early, 'kept');
   await pc.eval('RF.account.refresh()');
   await reaches(id, early, 'sent once Your rides loaded');
+  await pc.eval('RF.account.account.key = null; RF.account.account.rides = null');
+  await toggle();
+  await phoneSaves(id, early);
+  const phoneCopy = (await api(phone, `/rides/${id}`)).trip;
+  await pc.eval('RF.account.refresh()');
+  await pc.waitFor('RF.account.rideId() === null', 5000);
+  assert.equal((await api(phone, `/rides/${id}`)).trip, phoneCopy, 'the phone’s change stays');
 
   // A change that failed, then the session runs out: it goes once you sign in again.
+  id = await saveNew();
   await offline();
   await toggle();
   const beforeExpiry = await packed();

@@ -141,6 +141,10 @@ async function start() {
     },
   });
   A.onAccountChanged(renderSoon);
+  // A save the account refused: the ride changed on another device since, and that change stays.
+  A.onChangedElsewhere(({ name, onScreen }) => toast(onScreen
+    ? `${name} was changed on another device, so this copy wasn’t saved there. It’s just a ride here now: Save it to keep it too.`
+    : `${name} was changed on another device, so a change made to it here wasn’t saved.`));
   if (A.signedIn()) A.refresh().catch(() => { /* offline: the rides list shows when the account answers */ });
   let lastZoom = mapView.zoom();
   mapView.on('move', () => {

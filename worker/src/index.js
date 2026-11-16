@@ -11,7 +11,7 @@
 //   PUT    /key        { keyId }                       → { keyId }             the account key's id, set once
 //   POST   /rides      { name, trip }                  → { id, updated }       both locked
 //   GET    /rides/:id                                  → { id, name, trip, updated }
-//   PUT    /rides/:id  { name?, trip? }                → { updated }
+//   PUT    /rides/:id  { name?, trip?, was? }          → { updated }           409: changed elsewhere (see was)
 //   DELETE /rides/:id                                  → {}
 //   PUT    /data       { data, at }                    → {}                    settings and road tags, locked
 //   POST   /links      { id, trip, owner? }            → { id }                anyone; owner (locked) when signed in
@@ -138,7 +138,10 @@ async function route(req, env) {
       const body = await readJson(req), updated = Date.now();
       const trip = body.trip == null ? owned.trip : checkLocked(body.trip, MAX_TRIP);
       const name = body.name == null ? owned.name : checkLocked(body.name, MAX_NAME);
-      await db.prepare('UPDATE rides SET name = ?, trip = ?, updated = ? WHERE id = ?').bind(name, trip, updated, id).run();
+      if (body.trip != null && body.was != null && !(await builtOn(owned.trip, body.was))) throw changedElsewhere();
+      // Only over the trip it was checked against: another save that got in between makes this one a 409 too.
+      const r = await db.prepare('UPDATE rides SET name = ?, trip = ?, updated = ? WHERE id = ? AND trip = ?').bind(name, trip, updated, id, owned.trip).run();
+      if (!r.meta.changes) throw changedElsewhere();
       return json({ updated });
     }
     if (m === 'DELETE') {
@@ -288,5 +291,16 @@ async function addressKey(req) {
 const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const bytes = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
 const text = s => new TextDecoder().decode(bytes(s));
+// was: the fingerprints (sha256) of the trips a change builds on, as the device sending it knows them: one, or two
+// when it can't tell whether its last save got there (none: it knows the ride changed elsewhere). The trip held
+// isn't one of them: the ride changed on another device since, and that change stays.
+async function builtOn(held, was) {
+  if (!Array.isArray(was) || was.length > 2 || !was.every(w => typeof w === 'string' && w.length <= 64)) {
+    throw new HttpError(400, 'That save didn’t say what it builds on.');
+  }
+  return was.includes(await sha256(held));
+}
+const changedElsewhere = () => new HttpError(409, 'This ride was changed on another device.');
+
 const sha256 = async s => b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
 const randomId = n => b64url(crypto.getRandomValues(new Uint8Array(n)));

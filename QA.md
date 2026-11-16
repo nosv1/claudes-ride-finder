@@ -185,7 +185,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - On a saved ride, DevTools → Network → Offline, add a stop: it says it couldn't reach your account. Reload with the
   network back on: the stop is there when the ride is opened on the other device. Add a stop and sign out at once:
   the stop is in the account (check from the other device). Offline on the PC, add a stop; then change the same
-  ride on the phone; bring the PC back online and reload: the phone's change stays.
+  ride on the phone; bring the PC back online and reload: the phone's change stays, and the PC says the ride was
+  changed on another device. Offline, add a stop, back online, rename the ride: the stop still gets there.
 - Delete a ride on the PC, then switch to the app on the phone (after 30 s or so): it's gone from Your rides there.
 - Sign out, then sign in again: everything's still there. Delete account (tap twice): you're signed out and the
   rides are gone from the other device too after it reopens.

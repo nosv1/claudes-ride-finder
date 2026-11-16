@@ -15,6 +15,9 @@ export const unb64 = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g
 const hash = async (label, bytes) => new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array([...enc.encode(label), ...bytes])));
 const aes = raw => crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
 
+// A locked value's fingerprint (sha256, base64url), as the account service makes it: tells copies apart.
+export const fingerprint = async locked => b64(await crypto.subtle.digest('SHA-256', enc.encode(locked)));
+
 export const newAccountKey = () => b64(crypto.getRandomValues(new Uint8Array(32)));
 export const keyId = async key => b64(await hash('rf-account-key-id', unb64(key))).slice(0, 16);
 
