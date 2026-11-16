@@ -65,7 +65,6 @@ export function loadSignals() {
 // Load every tile overlapping bounds [s, w, n, e]: its curvy roads and ramps, and with speed,
 // its roads kept only for their speed limit too (the bulk of the data, as "x_y.s").
 /** @param {number[]} bounds [south, west, north, east] @param {{ speed?: boolean }} [opts] */
-/** @param {number[]} bounds [south, west, north, east] @param {{ speed?: boolean }} [opts] */
 export function loadTiles([s, w, n, e], { speed = false } = {}) {
   const size = store.index.size;
   for (let x = Math.floor(w / size); x <= Math.floor(e / size); x++) {

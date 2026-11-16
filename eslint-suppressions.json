@@ -1,9 +1,4 @@
 {
-  "js/account.js": {
-    "complexity": {
-      "count": 1
-    }
-  },
   "js/elevation.js": {
     "no-shadow": {
       "count": 1

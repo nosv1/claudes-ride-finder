@@ -613,7 +613,10 @@ colored road), Add a stop here, Street View here.
   device that's locked (or has no key at all) has none selected. Your rides as the account sent them before a save,
   rename or delete here are asked for again (up to twice), so they don't undo it. Each ride remembers what it was last
   saved (or opened) as here, so it's never saved straight back as it is; a change still waiting to be saved goes as
-  soon as another ride is selected, and one that failed to save is sent again after an Undo back to it. Edits on the ride's own page (stops, Start from me,
+  soon as another ride is selected (or before signing out), and one that failed to save is sent again after an Undo
+  back to it. A ride whose state this device doesn't know (selected before a reload) is taken as saved as it is, so
+  an Undo back to it doesn't send this copy over another device's changes. A Save to your rides on its way doesn't
+  select the ride if planning made it a new one meanwhile (a loop picked, Start here). Edits on the ride's own page (stops, Start from me,
   options, 90+ only) and the map's Add to ride / Add a stop still go into it. **New ride** (was Clear all) starts an
   empty ride (Undo puts it back, saved ride and all); opening a shared link does too. The home list shows the latest 3 (and the empty ride page 5) under **Your rides**;
   the account page lists them all, each with delete (with Undo). Opening one replaces the ride on screen (Undo).

@@ -281,6 +281,40 @@ test('planning never changes a saved ride: it makes a new one; a ride is selecte
   await openOzark();
   await pc.eval(`RF.account.deleteRide(${JSON.stringify(other.id)})`);
   await pc.eval('delete navigator.geolocation.getCurrentPosition');
+  // Save to your rides on its way, then planning makes the ride on screen a new one (Start a ride here): the save
+  // doesn't select it, and what was planned isn't saved into it.
+  const startHere = async at => {
+    await pc.eval(`RF.mapView.emit('menu', ${JSON.stringify(at)}, { x: 700, y: 400 })`);
+    await pc.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Start a ride here/.test(b.textContent)).click()");
+  };
+  await newRide();
+  await startHere([38.95, -94.4]);
+  await pc.eval("RF.go('trip')");
+  await pc.waitFor("document.querySelector('#sheetBody .save-btn')");
+  await pc.eval(`window.held = [];
+    window.fetch = (u, o) => o && o.method === 'POST' && String(u).endsWith('/rides') ? new Promise(r => held.push(() => r(realFetch(u, o)))) : realFetch(u, o)`);
+  await pc.eval("document.querySelector('#sheetBody .save-btn').click()");
+  await pc.waitFor('held.length === 1');
+  await pc.eval('window.fetch = realFetch');
+  await startHere([38.9, -94.5]);
+  await pc.eval('held.splice(0).forEach(f => f())');
+  await pc.waitFor('RF.account.account.rides.length === 2');
+  await sleep(300);
+  assert.equal(await pc.eval('RF.account.rideId()'), null, 'the planned ride is a new one, not the ride just saved');
+  const planned = await pc.eval(`RF.account.account.rides.find(r => r.id !== ${JSON.stringify(id)}).id`);
+  const plannedBefore = (await api(pc, `/rides/${planned}`)).trip;
+  await sleep(2500);
+  assert.equal((await api(pc, `/rides/${planned}`)).trip, plannedBefore, 'nothing planned was saved into it');
+  await pc.eval(`RF.account.deleteRide(${JSON.stringify(planned)})`);
+  await openOzark();
+  // After a reload this device doesn't know how Ozark stands: New ride, then Undo, doesn't send its copy back
+  // (the check at the end: Ozark is still as it was).
+  await pc.goto(base);
+  await pc.waitFor(`RF.account.rideId() === ${JSON.stringify(id)} && RF.account.account.rides?.length === 1`, 30000);
+  await pc.eval("RF.go('trip')");
+  await newRide();
+  await undo();
+  assert.equal(await pc.eval('RF.account.rideId()'), id);
   await sleep(2500);
   assert.equal((await api(pc, `/rides/${id}`)).trip, before, 'the saved ride wasn’t touched');
 });

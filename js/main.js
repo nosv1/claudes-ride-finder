@@ -327,7 +327,16 @@ function leaveRide() {
 // saved ride if that's still yours to save to.
 function rideOnScreen() {
   const t = trip, id = A.rideId(), listed = !gen.running && gen.options.length ? gen : null;
-  return { empty: !t.items.length && !listed && !id, restore: () => { leaveRide(); trip = t; A.selectRide(id, { check: true }); if (listed) gen = listed; tripChanged(); } };
+  // A ride this device doesn't know how it stands (it was selected before a reload) is taken as saved as it is, as it
+  // is when the app starts: putting it back doesn't send this copy over changes made on another device.
+  const restore = () => {
+    leaveRide();
+    trip = t;
+    A.selectRide(id, { check: true, trip: id && !A.knowsRide(id) ? T.encodeTrip(t) : null });
+    if (listed) gen = listed;
+    tripChanged();
+  };
+  return { empty: !t.items.length && !listed && !id, restore };
 }
 
 // Ride t in place of the one on screen, as saved ride id (just opened, so saved as it is) or as no saved ride. msg:
@@ -565,7 +574,9 @@ const addStation = s => addPlace([s.lat, s.lon], `Gas: ${s.name}`, s.name);
 // happens right before the trip changes, so a planner that changes nothing (a Generate that stops early) leaves the
 // ride selected.
 const keptAsItWas = name => `New ride. ${name} stays in your rides as it was.`;
+let plannings = 0;  // each time planning starts a new ride: a Save to your rides on its way then doesn't select it
 function newRideFromSaved() {
+  plannings++;
   const name = A.selectedRide();
   if (!name) return;
   A.selectRide(null);
@@ -627,6 +638,7 @@ function locationError(e) {
 // making the ride much longer.
 // The flips are tried on a copy: the ride itself changes only at the end, so a ride changed or replaced meanwhile
 // (and put back with Undo) is never left with a road half flipped.
+let fixRuns = 0;
 async function fixDoubleBack() {
   const items = trip.items, work = { ...trip, items: items.map(it => ({ ...it, pts: [...it.pts] })) };
   const roads = work.items.map((it, i) => i).filter(i => work.items[i].type === 'road' && !work.items[i].oneway);
@@ -634,15 +646,15 @@ async function fixDoubleBack() {
   const flipped = [];
   let failed = false;
   cancelRoute();
-  const seq = routeSeq, still = onScreen();
+  const seq = routeSeq, run = ++fixRuns;
   for (const i of roads) {
     const it = work.items[i];
     it.pts.reverse();
     fixing = `Trying ${it.label} the other way…`;
     renderSoon();
     const r = await fetchRoute(T.routablePoints(work), +trip.pref);
-    if (seq !== routeSeq) {  // the ride changed meanwhile, or was replaced (then its page isn't showing this)
-      if (still()) fixing = '';
+    if (seq !== routeSeq) {  // the ride changed or was replaced meanwhile; a newer fix may be running
+      if (run === fixRuns) fixing = '';
       return renderSoon();
     }
     if (!r) failed = true;
@@ -1296,15 +1308,15 @@ function saveRow() {
   if (!id) {
     const busy = !!(savingNew && savingNew());
     return h('button.btn.wide.save-btn', { disabled: busy, onclick: async () => {
-      // The ride as it was when Save was tapped is saved. Still on screen when that's done, it's selected (and any change
-      // made meanwhile saves to it); if another ride replaced it, it's just in your rides, and the toast (with that
-      // ride's Undo) stays. A save that failed says so either way.
+      // The ride as it was when Save was tapped is saved. Still on screen when that's done, it's selected (and any edit
+      // made meanwhile saves to it); if another ride replaced it, or planning made it a new ride (a loop picked, Start
+      // here), it's just in your rides, and the toast (with that ride's Undo) stays. A failed save says so either way.
       if (savingNew && savingNew()) return;
-      const still = savingNew = onScreen(), packed = T.encodeTrip(trip);
+      const still = savingNew = onScreen(), packed = T.encodeTrip(trip), plans = plannings;
       renderSoon();
       try {
         const saved = await A.saveRide(P.tripName(trip).replace(/^Ride: /, ''), packed);
-        if (!still()) return;
+        if (!still() || plans !== plannings) return;  // replaced, or planned into a new ride meanwhile
         A.selectRide(saved, { trip: packed });
         saveTrip();
         toast('Saved to your rides. Changes save as you go.');
