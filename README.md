@@ -1,6 +1,6 @@
 # Ride Finder
 
-A map for finding and planning motorcycle rides on curvy, fast, hilly roads, starting with Arkansas, Kansas, Missouri, Oklahoma and Texas.
+A map for finding and planning motorcycle rides on curvy, fast, hilly roads, starting with Missouri and every state around it (Arkansas, Illinois, Iowa, Kansas, Kentucky, Nebraska, Oklahoma, Tennessee), plus Texas.
 Live at <https://nosv1.github.io/claudes-ride-finder/>. It works on phones and computers; install it (Add to Home
 Screen on a phone, the install button in the address bar in Chrome or Edge) to use it like an app.
 
@@ -30,7 +30,9 @@ Elevation comes from AWS Terrain Tiles (USGS), basemaps from Esri, routing from 
 
 ## Updating or adding states
 
-1. Download state `.osm.pbf` files from [Geofabrik](https://download.geofabrik.de/north-america/us.html) into `raw/`
+1. Download every state's `.osm.pbf` from [Geofabrik](https://download.geofabrik.de/north-america/us.html) into `raw/`: all the
+   states the app has, not just a new one, since the build rewrites `tiles/` from scratch. Each is at
+   `https://download.geofabrik.de/north-america/us/<state>/<state>-latest.osm.pbf` (a folder per state since November 2026).
 2. `pip install osmium numpy pillow`
 3. `python build_tiles.py` (downloads elevation tiles for curvy roads the first time)
 4. Commit the regenerated `tiles/` folder

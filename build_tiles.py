@@ -2,9 +2,9 @@
 
 Usage:  python build_tiles.py
 
-Uses every *.osm.pbf in raw/. Get more states from
-https://download.geofabrik.de/north-america/us.html (e.g. arkansas-latest.osm.pbf),
-put them in raw/, and re-run. Elevation tiles for curvy roads and the other rural roads (for roller
+Uses every *.osm.pbf in raw/: all the states at once (the tiles are rewritten from scratch). Get them from
+https://download.geofabrik.de/north-america/us/<state>/<state>-latest.osm.pbf (a folder per state since
+November 2026; e.g. .../us/arkansas/arkansas-latest.osm.pbf), put them in raw/, and re-run. Elevation tiles for curvy roads and the other rural roads (for roller
 coasters) are downloaded once into raw/terrain/ (several hundred MB per state).
 """
 import bisect

@@ -142,7 +142,9 @@ export async function fetchRoute(pts, useHighways) {
 }
 
 // Route numbers the router reports ("I 49 North", "US 50", "K-10", "MO Y", "FM 1431") → "I 49", "K 10"...
-const ROUTE_REF = /^(I|US|MO|K|KS|TX|SH|FM|RM|RR)[ -]?(\d+[A-Z]?|[A-Z]{1,2})\b/;
+// A prefix and a number (I 49, K-10, FM 1431, N 2: Nebraska), or Missouri's lettered routes (MO Y, MO AA). Letters only
+// after MO: "KY Lake Road" isn't K Y, and "IL 3" isn't I plus the letter L.
+const ROUTE_REF = /^(OK|AR|IL|KY|IA|TN|SR|NE|N|I|US|MO|K|KS|TX|SH|FM|RM|RR)[ -]?\d+[A-Z]?\b|^MO[ -]?[A-Z]{1,2}\b/;
 export function routeRefs(maneuver) {
   return [...new Set(maneuver.names.map(n => (n.match(ROUTE_REF) || [])[0]).filter(Boolean).map(s => s.replace('-', ' ')))];
 }

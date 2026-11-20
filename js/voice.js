@@ -59,7 +59,10 @@ if (player) player.addEventListener('ended', next);
 /** @type {[RegExp, string][]} */
 const SAY = [[/^MO\b/, 'Missouri'], [/^KS\b/, 'Kansas'], [/^TX\b/, 'Texas'], [/^US\b/, 'U.S.'], [/^I[- ](?=\d)/, 'Interstate '],
   [/^FM\b/, 'Farm to Market'], [/^RM\b/, 'Ranch to Market'], [/^CR\b/, 'County Road'],
-  [/^SH\b/, 'State Highway'], [/^OK\b/, 'Oklahoma'], [/^AR\b/, 'Arkansas']];
+  [/^SH\b/, 'State Highway'], [/^OK\b/, 'Oklahoma'], [/^AR\b/, 'Arkansas'],
+  // Missouri's other neighbors (2026-11-20). Nebraska's routes are "N 2": only with a number, so "N Main St" stays.
+  [/^IL\b/, 'Illinois'], [/^KY\b/, 'Kentucky'], [/^IA\b/, 'Iowa'], [/^TN\b/, 'Tennessee'], [/^SR\b/, 'State Route'],
+  [/^NE(?=[- ]?\d)/, 'Nebraska'], [/^N(?=[- ]?\d)/, 'Nebraska']];
 export function sayable(name) {
   let s = String(name).trim();
   for (const [re, w] of SAY) s = s.replace(re, w);

@@ -12,7 +12,7 @@ import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { bikeFor, rangeOf, leftIn, upgradeBikes, octaneOf } from '../../js/bikes.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky, lightAt } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
-import { fetchRoute, routerTrouble, resetRouters } from '../../js/routing.js';
+import { fetchRoute, routerTrouble, resetRouters, routeRefs } from '../../js/routing.js';
 
 const TILES = new URL('../../tiles/', import.meta.url);
 const haveTiles = existsSync(new URL('index.js', TILES));
@@ -715,6 +715,15 @@ async function routeWith({ fossgis, stadia, osrm }) {
   }
 }
 
+test('route numbers on the map: every state the app covers, lettered ones only where they exist', () => {
+  const refs = names => routeRefs({ names });
+  assert.deepEqual(refs(['MO Y', 'Old Highway']), ['MO Y']);
+  assert.deepEqual(refs(['K-10']), ['K 10']);
+  assert.deepEqual(['OK 51', 'AR 7', 'IL 3', 'KY 80', 'IA 92', 'TN 1', 'SR 52', 'N 2', 'NE 71'].map(n => refs([n])[0]),
+    ['OK 51', 'AR 7', 'IL 3', 'KY 80', 'IA 92', 'TN 1', 'SR 52', 'N 2', 'NE 71']);
+  assert.deepEqual(refs(['N Main Street', 'Illinois Avenue', 'KY Lake Road']), [], 'not route numbers');
+});
+
 test('a busy router gets a friendly message, and isn\'t asked again allowing U-turns', async () => {
   resetRouters();
   const busy = await routeWith({ fossgis: 503, stadia: 429, osrm: 429 });
@@ -911,6 +920,9 @@ test('Ride mode: a heads-up, then the call, each once, in words and in recorded 
   assert.equal(callout({ type: 12, names: ['MO Y'], text: 'Make a U-turn' }, 100, 10).name, null, 'no name on a U-turn');
   assert.deepEqual(['MO 150', 'I-70', 'US 50', 'FM 1431', 'SH 10', 'AR 7', 'Northeast Strother Road'].map(sayable),
     ['Missouri 150', 'Interstate 70', 'U.S. 50', 'Farm to Market 1431', 'State Highway 10', 'Arkansas 7', 'Northeast Strother Road']);
+  // Missouri's other neighbors; Nebraska's "N 2", but not a street that starts with N.
+  assert.deepEqual(['IL 3', 'KY 80', 'IA 92', 'TN 1', 'SR 52', 'N 2', 'NE 71', 'N Main Street'].map(sayable),
+    ['Illinois 3', 'Kentucky 80', 'Iowa 92', 'Tennessee 1', 'State Route 52', 'Nebraska 2', 'Nebraska 71', 'N Main Street']);
   assert.equal(callout(turn, 100, 20), null);
   assert.deepEqual(callout({ type: 26, exit: 2, text: 'Enter the roundabout' }, 100, 10).clips, ['roundabout', 'exit2']);
   assert.equal(callout({ type: 4, text: 'You have arrived.' }, 100, 10), null, 'the end of the ride says that');
