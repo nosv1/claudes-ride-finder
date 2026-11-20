@@ -9,7 +9,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.20.4';
+export const APP_VERSION = '2026.11.20.5';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
@@ -116,6 +116,7 @@ export const GEN = {
   extraUnder: 0.5, extraOver: 1.6,   // ways there (one way) must route to the fastest way plus 50–160% of the extra time
   extraPlan: 0.5,   // ways there are planned with this share of the extra on top of the estimated straight way (fun roads route slower than estimated)
   maxBack: 0.04,     // share of a loop ridden twice before it tries dropping a road
+  fitMargin: 0.1,    // a change to a loop is routed only if its estimate (scaled by how far off it ran) is within this of the time window
   hideBack: 0.2,     // loops riding more than this share twice are left out (if 3 others remain)
 };
 

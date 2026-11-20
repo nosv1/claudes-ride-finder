@@ -953,34 +953,36 @@ async function fitTime(w) {
 }
 
 // While the loop rides more than maxBack of itself twice (up to backTries rounds), the best of the ways to ride
-// less of it twice (backAttempts) that ranks higher and stays in the window.
+// less of it twice (backAttempts) that ranks higher and stays in the window. A spot to ride through instead is
+// tried only when another way home and dropping a road don't help: it rarely beats them (1 in 44 tries, 2026-11-20).
 async function fixDoublingBack(w) {
   for (let tries = 0; tries < GEN.backTries && ridesTwice(w.best); tries++) {
-    const better = await bestOf(w, backAttempts(w));
+    const ways = backAttempts(w);
+    const better = await bestOf(w, ways.first) || await bestOf(w, ways.detours);
     if (!better) break;
     w.items = better.list;
     w.best = better.other;
   }
 }
 
-// Ways to ride less of the loop twice: another way home (the best road near the stretch ridden twice, short ones too,
-// that fits the time left); a spot off to either side of that stretch to ride through instead, so the second pass is
-// on another road; and the loop without the generated road most to blame.
+// Ways to ride less of the loop twice. First: another way home (the best road near the stretch ridden twice, short
+// ones too, that fits the time left) and the loop without the generated road most to blame. Then (detours): a spot off
+// to either side of that stretch to ride through instead, so the second pass is on another road.
 function backAttempts(w) {
-  const { best, items } = w, twice = P.retrace(best.route.path), attempts = [];
+  const { best, items } = w, twice = P.retrace(best.route.path), first = [], detours = [];
   const hrs = best.route.seconds / 3600, scale = hrs / estHours(w, items), room = w.win.hi - hrs;
   for (const g of P.wayHomeRoads(w.opt.free, items, twice.lines)) {
     const more = withRoad(w, items, g);
-    if ((estHours(w, more) - estHours(w, items)) * scale <= room) { attempts.push(more); break; }
+    if ((estHours(w, more) - estHours(w, items)) * scale <= room) { first.push(more); break; }
   }
+  const blame = mostToBlame(items, twice.lines.flat());
+  if (blame) first.push(copyStops(items.filter(it => it !== blame)));
   for (const d of P.detours(twice)) {
     const list = copyStops(items);
     list.splice(P.stopIndexAt(best.route.path, items, d.m), 0, { type: 'point', label: w.end ? 'Another way' : 'Another way back', pts: [d.p], gen: true });
-    attempts.push(list);
+    detours.push(list);
   }
-  const blame = mostToBlame(items, twice.lines.flat());
-  if (blame) attempts.push(copyStops(items.filter(it => it !== blame)));
-  return attempts;
+  return { first, detours };
 }
 
 // The generated road most to blame for the spots ridden twice: the one they're on (like a lake road that dead-ends),
@@ -994,10 +996,19 @@ function mostToBlame(items, twice) {
   return added.map(it => ({ it, on: onIt(it), near: near(it) })).sort((a, b) => b.on - a.on || a.near - b.near)[0].it;
 }
 
+// Whether these stops are likely to route in the window: their estimate, scaled by how far off the estimate was for
+// the best routing so far, is within fitMargin of it. Routing one that isn't is a request spent on a loop that's then
+// left out (about a third of the tries, 2026-11-20).
+function likelyFits(w, list) {
+  const { best } = w, hrs = estHours(w, list) * best.route.seconds / 3600 / estHours(w, w.items);
+  return hrs >= w.win.lo * (1 - GEN.fitMargin) && hrs <= w.win.hi * (1 + GEN.fitMargin);
+}
+
 // Of these other stops, the one whose loop ranks highest, if that's higher than the best so far and in the window.
 async function bestOf(w, attempts) {
   let better = null;
   for (const list of attempts) {
+    if (!likelyFits(w, list)) continue;
     const other = rate(await routeOf(w, list));
     if (other && other.worth > (better || w.best).worth && inWindow(w, other)) better = { list, worth: other.worth, other };
   }
@@ -1020,6 +1031,7 @@ async function dropTrouble(w) {
     const dist = it => Math.min(...it.pts.map(p => km(p, spot)));
     const blame = added.reduce((a, b) => dist(b) < dist(a) ? b : a);
     const list = copyStops(w.items.filter(it => it !== blame));
+    if (!likelyFits(w, list)) break;
     const other = rate(await routeOf(w, list));
     if (!keeps(w, other)) break;
     w.items = list;
@@ -1036,6 +1048,7 @@ async function addOnTheWay(w) {
     if (!g) break;
     tried.add(g);
     const more = withRoad(w, items, g);
+    if (!likelyFits(w, more)) continue;
     const other = rate(await routeOf(w, more));
     if (keeps(w, other)) {
       w.items = more;

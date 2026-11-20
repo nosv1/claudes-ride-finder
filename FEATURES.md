@@ -491,13 +491,14 @@ colored road), Add a stop here, Street View here.
 - **Doubling back:** loops are ranked by fun² / miles × e^(−5 × share ridden twice) (10% twice keeps 61%, 20%
   37%, 40% 14%; it used to be 1 − 3 × share with a floor of 0.1, so past 30% every loop looked equally bad), where
   fun is the miles on curvy roads plus the miles on highway sweeps and fast ramps (straight interstate counts
-  nothing). A loop riding more than 4% twice tries each of these (up to 3 rounds), keeping the best:
-  - first tries **another way home**: the best-scoring road with an end or midpoint within 3 km of the stretch
+  nothing). A loop riding more than 4% twice tries these (up to 3 rounds), keeping the best:
+  - first **another way home**: the best-scoring road with an end or midpoint within 3 km of the stretch
     ridden twice, not mostly on it, and fitting the time left (estimate × how far the estimate ran off). Short
     roads count here (800 m+ of curves, not unclassified), though never as the main roads, which need 2 km;
-  - **another way back**: a spot to either side of the middle of the longest stretch ridden twice, square to it
-    and a third of its length out (2–10 km), put in the part of the loop where the second pass is;
-  - it without the generated road most to blame (the one the doubled-back miles are on, else the nearest);
+  - and it without the generated road most to blame (the one the doubled-back miles are on, else the nearest);
+  - only if neither helps, **another way back**: a spot to either side of the middle of the longest stretch ridden
+    twice, square to it and a third of its length out (2–10 km), put in the part of the loop where the second pass
+    is. It won 1 of 44 tries when it was always tried (2026-11-20), and the round it won, nothing else had;
   - keeping a change only if it ranks higher and stays in 80–120%. From Lee's Summit at 1.5 h on back roads, the
     out-and-back "MO TT" loop (48% twice) became Buckner Tarsney → MO TT → Litchford (12%). With another way back,
     from the same start the south loop went from 8.4 to 2.6 mi twice; at 6 h the five loops went from 91 to 76 mi.
@@ -508,6 +509,14 @@ colored road), Add a stop here, Street View here.
   the same loop), and the router's answers are kept per 10-point chunk, so a change to one stop of a long loop
   re-asks only for the chunks it changes. A 6 h run: 264 requests and 259 s before the chunk cache, 150 and 145 s
   after (209 s before any of this).
+- **Fewer requests** (2026-11-20; each is a credit on Stadia Maps and load on the free public server): a change to a
+  loop (another way home or back, a road dropped or picked up on the way) is routed only if its estimate, scaled by
+  how far off the estimate ran for the loop so far, is within 10% of the time window. About a third of the changes
+  tried used to route outside it and be thrown out; of those the estimate skips, none would have been kept. With
+  another way back tried last, seven Generates went from 532 requests to 412 (3 h from Lee's Summit 87 → 69, 3 h in
+  the Ozarks 79 → 44, 4 h from Columbia 119 → 90), with the same best loop each time. Of the 36 loops shown, 32 were
+  the same; of the other 4, two rank higher and two lower (by 2% and 8%). Chunks cut at the rides' own stops instead of
+  every 10 points, or one request a leg, would ask more, not less: the routes a Generate asks for share few chunks.
 - **Stoplights:** each one the route goes through keeps 97% of a loop's rank, and one where it turns left counts
   twice ("booking it down a highway, it's lame to get stopped by a stoplight"; double lefts off a highway are
   the worst). A light within 15 m of the route counts, one per intersection (nodes within 80 m along the route
