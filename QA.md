@@ -20,6 +20,12 @@ but not what it feels like to use. These checks are for that.
 - A tap on empty map closes the open card and nothing else.
 - Long-press (phone) and right-click (desktop) open the spot menu with Start / End / Add a stop / Street View.
 
+## Road surface
+
+- The Paved chip opens a menu: Any surface, Hide gravel and dirt (checked by default), Hide maybe-gravel too. With
+  the last, the dashed roads leave the map and the chip says Paved only; Generate builds no loop on them. Back to
+  Hide gravel and dirt, the dashed roads return. The menu fits on a phone.
+
 ## Search
 
 - ✱ Picking a result puts its name in the search box.

@@ -94,6 +94,24 @@ test('turning off a curve class hides those roads', async () => {
   await page.waitFor(`RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).some(f => f.properties.i === ${MO150})`, 10000);
 });
 
+test('Paved only hides the maybe-gravel roads (dashed), and Paved brings them back', async () => {
+  await showMo150();
+  const dashed = () => page.eval("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-dashed'] }).length");
+  const pick = label => page.eval(`(() => {
+    [...document.querySelectorAll('#chips .chip')].find(c => /^(Any surface|Paved|Paved only)$/.test(c.textContent)).click();
+    [...document.querySelectorAll('#menu .menu-item')].find(b => b.textContent.startsWith('${label}')).click();
+  })()`);
+  assert.ok(await dashed() > 0, 'roads with no surface recorded show around MO 150');
+  await pick('Hide maybe-gravel too');
+  await page.waitFor("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-dashed'] }).length === 0", 10000);
+  assert.equal(await rendered(MO150), true, 'a paved road stays');
+  assert.ok(await page.eval("[...document.querySelectorAll('#chips .chip')].some(c => c.textContent === 'Paved only')"));
+  assert.ok(await page.eval("document.querySelectorAll('.road-card').length") > 0, 'the list still has roads');
+  await pick('Hide gravel and dirt');
+  await page.waitFor("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-dashed'] }).length > 0", 10000);
+  assert.deepEqual(await page.eval('[RF.settings.hideUnpaved, RF.settings.hideUnsure]'), [true, false]);
+});
+
 test('the Highways road type shows the fast ramps at the Grandview Triangle and the I-435 bend in Lenexa', async () => {
   await page.eval("document.querySelector('.view-head .icon-btn') && document.querySelector('.view-head .icon-btn').click()");
   const roadType = async label => {
@@ -416,12 +434,15 @@ test('the ride page can generate loops through its stops', async () => {
   assert.match(await sheetText(), /Plan a ride[\s\S]*Must include/);
   assert.ok(await page.eval("[...document.querySelectorAll('#sheetBody button')].some(b => b.textContent === 'Stop')"), 'the button stops it');
   // Changing a filter stops it: the rides it was building are on roads the map no longer shows.
-  const paved = "[...document.querySelectorAll('#chips .chip')].find(c => c.textContent === 'Paved').click()";
-  await page.eval(paved);
+  const surface = label => page.eval(`(() => {
+    [...document.querySelectorAll('#chips .chip')].find(c => /^(Any surface|Paved|Paved only)$/.test(c.textContent)).click();
+    [...document.querySelectorAll('#menu .menu-item')].find(b => b.textContent.startsWith('${label}')).click();
+  })()`);
+  await surface('Hide maybe-gravel too');
   await sleep(300);
   assert.equal(await page.eval('RF.gen.running'), false);
   assert.match(await sheetText(), /Stopped: the filters changed/);
-  await page.eval(paved);
+  await surface('Hide gravel and dirt');
   await sleep(3000);  // what was in flight comes back to nothing
   assert.deepEqual([await page.eval('RF.gen.running'), await page.eval('RF.gen.options.length')], [false, 0]);
 });

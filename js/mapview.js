@@ -23,6 +23,7 @@ function roadFilter(f) {
   /** @type {any[]} */
   const all = ['all'];
   if (f.hideUnpaved) all.push(['!=', ['get', 'surf'], 1]);
+  if (f.hideUnsure) all.push(['!=', ['get', 'surf'], 2]);
   if (f.mode === 'speed') {
     all.push(['==', ['get', 'posted'], 1], ['!=', ['get', 'hwy'], 1], ['in', ['get', 'sbin'], ['literal', [...f.speedBins]]]);
     if (f.zoom < 11) all.push(['==', ['get', 'minor'], 0]);

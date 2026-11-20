@@ -176,7 +176,7 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
 ## 3. Find roads
 
 **Layout**
-- A floating search bar with filter chips under it: mode, speed floor (Best rides), hills, Paved, ⚠ Blind crests, Gas.
+- A floating search bar with filter chips under it: mode, speed floor (Best rides), hills, road surface (Paved), ⚠ Blind crests, Gas.
 - Chip menus close on a second tap of the chip, a tap anywhere else, Esc, or the map moving.
 - Pop-ups (toasts) last 2 s + 40 ms a letter, at most 5 s (at least 4.5 s with a button like Undo); a tap closes one.
 - **Phones:** a bottom sheet with peek, half and full heights. Drag its handle, or tap the handle to step through.
@@ -250,7 +250,10 @@ under the tag, and the Hills chip lists ft/mi.
 
 **Filters**
 - **Hills:** any / rolling+ / hilly+ / very hilly, in the curvy modes. Only applied when set above "any".
-- **Paved** (default on) hides roads recorded as gravel or dirt.
+- **Road surface** (the Paved chip, a menu since 2026-11-20): Any surface; **Hide gravel and dirt** (the default, chip
+  says Paved): roads recorded as gravel or dirt; **Hide maybe-gravel too** (chip says Paved only): also the roads with
+  no surface recorded, drawn dashed, many of them gravel in the Ozarks. Same everywhere a filter applies: the map, Best
+  roads in view, the generator, and why a road on the ride doesn't fit ("surface not recorded").
 
 **Best roads in view**
 - Named stretches in view, at most 8, ranked by Σ (score + 0.5 × sweep) × (1 + hill/30).

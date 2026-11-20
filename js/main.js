@@ -31,7 +31,7 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 // ---------- state ----------
 
 const settings = Object.assign({
-  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, showBlind: true, showFuel: false, rollers: false,
+  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, hideUnsure: false, showBlind: true, showFuel: false, rollers: false,
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
   basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1, places: [],
 }, load(SETTINGS_KEY));
@@ -216,8 +216,17 @@ function applySettings() {
   renderChips();
 }
 
+// The Paved chip's choices: gravel and dirt roads, and roads with no surface recorded (drawn dashed: in the Ozarks
+// many are gravel), shown or hidden. Hiding the maybe-gravel ones hides the known gravel too.
+const SURFACE_CHOICES = [
+  { label: 'Any surface', chip: 'Any surface', set: { hideUnpaved: false, hideUnsure: false } },
+  { label: 'Hide gravel and dirt', chip: 'Paved', set: { hideUnpaved: true, hideUnsure: false } },
+  { label: 'Hide maybe-gravel too (surface not recorded)', chip: 'Paved only', set: { hideUnpaved: true, hideUnsure: true } },
+];
+const surfaceOf = s => s.hideUnsure ? 2 : s.hideUnpaved ? 1 : 0;
+
 // Settings that change which roads a generated ride is built from.
-const ROAD_FILTERS = ['mode', 'roadType', 'minSpeed', 'minHills', 'hideUnpaved', 'classes', 'rampTiers'];
+const ROAD_FILTERS = ['mode', 'roadType', 'minSpeed', 'minHills', 'hideUnpaved', 'hideUnsure', 'classes', 'rampTiers'];
 
 function setSetting(patch) {
   if (gen.running && !gen.locating && ROAD_FILTERS.some(k => k in patch && JSON.stringify(patch[k]) !== JSON.stringify(settings[k]))) {
@@ -1992,7 +2001,7 @@ function filterWords() {
     if (s.mode !== 'curvy') out.push(`${s.minSpeed}+ mph`);
     if (s.minHills) out.push(`${HILLS[s.minHills].label}+`);
   }
-  if (s.hideUnpaved) out.push('Paved');
+  if (s.hideUnpaved) out.push(SURFACE_CHOICES[surfaceOf(s)].chip);
   return out.join(' · ');
 }
 
@@ -2004,6 +2013,8 @@ function missesBy(r) {
   if (r.cls >= 0 && !s.classes.includes(r.cls)) out.push(CURVE_CLASSES[r.cls].label.toLowerCase());
   if (s.minHills && r.hillLevel < s.minHills) out.push(r.hillLevel >= 0 ? HILLS[r.hillLevel].label.toLowerCase() : 'hills not measured');
   if (s.mode !== 'curvy' && r.speed < s.minSpeed) out.push(`${r.speed} mph`);
+  if (s.hideUnpaved && r.surface === 1) out.push('gravel or dirt');
+  if (s.hideUnsure && r.surface === 2) out.push('surface not recorded');
   return out.join(', ') || 'not shown';
 }
 
@@ -2506,7 +2517,8 @@ function renderChips() {
         label: v ? `${l} (${HILLS[v].ft}+ ft/mi)` : l, on: s.minHills === v, run: () => setSetting({ minHills: v }) }))] }));
   }
   chips.push(
-    chip('Paved', { on: s.hideUnpaved, title: 'Hide gravel and dirt roads', onclick: () => setSetting({ hideUnpaved: !s.hideUnpaved }) }),
+    chip(SURFACE_CHOICES[surfaceOf(s)].chip, { on: s.hideUnpaved, menuItems: [{ heading: 'Road surface' },
+      ...SURFACE_CHOICES.map((v, i) => ({ label: v.label, on: surfaceOf(s) === i, run: () => setSetting(v.set) }))] }),
     chip('⚠ Blind crests', { on: s.showBlind, title: 'Tight turns at the top of a rise', onclick: () => setSetting({ showBlind: !s.showBlind }) }),
     chip('Gas', { on: s.showFuel, title: 'Gas stations (green = 90+ octane)', onclick: () => setSetting({ showFuel: !s.showFuel }) }));
   $('#chips').replaceChildren(...chips);

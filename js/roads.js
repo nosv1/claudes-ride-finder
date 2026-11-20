@@ -82,12 +82,13 @@ export const curveMeters = r => r.curvy + r.sweep;
 export const isMinor = r => MINOR_TYPES.has(r.hw.replace('_link', ''));
 
 // Whether a road shows under the current filters (the map's layer filters mirror this).
-// f: { mode: 'ride'|'curvy'|'speed', roadType: 'all'|'back'|'highway', minSpeed, minHills, hideUnpaved, classes: Set,
+// f: { mode: 'ride'|'curvy'|'speed', roadType: 'all'|'back'|'highway', minSpeed, minHills, hideUnpaved, hideUnsure, classes: Set,
 //      speedBins: Set, rampTiers: Set, rollers, zoom }
 export function visible(r, f) {
   if (f.mode !== 'speed' && r.rampTier >= 0) return tiersFor(f.roadType, f.rampTiers).includes(r.rampTier);
   if (f.mode !== 'speed' && f.roadType === 'highway') return false;
   if (f.hideUnpaved && r.surface === 1) return false;
+  if (f.hideUnsure && r.surface === 2) return false;  // surface not recorded: maybe gravel
   if (f.mode === 'speed') {
     // Highway sweeps repeat highway pieces from the speed-limit tiles, so they'd draw twice.
     return limitOf(r) != null && !r.highway && f.speedBins.has(speedBin(limitOf(r))) && (!isMinor(r) || f.zoom >= 11);

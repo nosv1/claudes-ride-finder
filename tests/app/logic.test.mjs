@@ -75,6 +75,12 @@ test('curve classes, sweepers and the Best rides filter', () => {
   assert.ok(!visible(slow, FILTERS), 'under the speed floor');
   assert.ok(visible(slow, { ...FILTERS, mode: 'curvy' }), 'Curvy mode ignores speed');
   assert.ok(!visible(gravel, FILTERS));
+  // Surface not recorded (could be gravel): shown with Paved, hidden with Paved only, in every mode.
+  const unsure = row({ score: 1000, length: 1000, surface: 2 });
+  assert.ok(visible(unsure, FILTERS), 'Paved keeps a road with no surface recorded');
+  assert.ok(!visible(unsure, { ...FILTERS, hideUnsure: true }), 'Paved only hides it');
+  assert.ok(!visible(unsure, { ...FILTERS, mode: 'curvy', hideUnsure: true }));
+  assert.ok(visible(twisty, { ...FILTERS, hideUnsure: true }), 'a paved road stays');
   assert.equal(hillLevel(11), 0);
   assert.equal(hillLevel(22), 2);
 });
