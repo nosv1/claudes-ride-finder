@@ -34,17 +34,34 @@ export function weatherPoints(route, everyKm = WEATHER.everyKm, max = WEATHER.ma
   return pts;
 }
 
-// One request for all the points; each gets its hourly forecast (times in unix seconds).
+// One request for all the points; each gets its hourly forecast (times in unix seconds), with the sunrises and
+// sunsets of those days (none when the answer has no daily part).
 export async function fetchForecast(points) {
   const q = new URLSearchParams({
     latitude: points.map(x => x.p[0].toFixed(3)).join(','),
     longitude: points.map(x => x.p[1].toFixed(3)).join(','),
-    hourly: 'temperature_2m,precipitation_probability,wind_gusts_10m,weather_code',
+    hourly: 'temperature_2m,precipitation_probability,wind_gusts_10m,weather_code', daily: 'sunrise,sunset',
     temperature_unit: 'fahrenheit', wind_speed_unit: 'mph', timeformat: 'unixtime', forecast_days: String(WEATHER.days),
   });
   const res = await fetch(`${WEATHER.url}?${q}`);
   if (!res.ok) throw new Error(`Open-Meteo: HTTP ${res.status}`);
-  return [await res.json()].flat().map(d => d.hourly);
+  return [await res.json()].flat().map(d => {
+    const ok = d.daily && Array.isArray(d.daily.sunrise) && Array.isArray(d.daily.sunset);
+    return { ...d.hourly, sunrise: ok ? d.daily.sunrise : [], sunset: ok ? d.daily.sunset : [] };
+  });
+}
+
+// The light when you pass (when: unix seconds): dark (after sunset, before sunrise) with that sunset; dusk (within
+// duskMin before sunset) or dawn (within duskMin after sunrise), when the low sun is in your eyes and deer are out;
+// or null (daylight, or no sunrise and sunset known for then). sun: { sunrise, sunset } in unix seconds.
+export function lightAt(when, sun) {
+  const events = [...(sun.sunrise || []).map(t => ({ t, set: false })), ...(sun.sunset || []).map(t => ({ t, set: true }))]
+    .sort((a, b) => a.t - b.t);
+  const last = events.filter(e => e.t <= when).pop(), next = events.find(e => e.t > when), margin = WEATHER.duskMin * 60;
+  if (!last) return null;
+  if (last.set) return { light: 'dark', sunset: last.t };
+  if (next && next.set && next.t - when <= margin) return { light: 'dusk', sunset: next.t };
+  return when - last.t <= margin ? { light: 'dawn', sunrise: last.t } : null;
 }
 
 // Each point's forecast for the hour it's passed, leaving at `leave` (ms). `none` past the
@@ -52,11 +69,22 @@ export async function fetchForecast(points) {
 export function atPassing(points, hourly, leave) {
   return points.map((x, i) => {
     const hr = hourly[i], when = leave / 1000 + x.s, j = Math.round((when - hr.time[0]) / 3600);
-    const row = { ...x, when: when * 1000 };
+    const row = { ...x, when: when * 1000, sun: lightAt(when, hr) };
     if (j < 0 || j >= hr.time.length || hr.temperature_2m[j] == null) return { ...row, none: true };
     return { ...row, temp: hr.temperature_2m[j], rain: hr.precipitation_probability[j] ?? null,
       gust: hr.wind_gusts_10m[j], code: hr.weather_code[j] };
   });
+}
+
+// Riding in the dark, else near sunset or sunrise: one warning, at the first point it's so. `sunset` (unix seconds)
+// so the page can say when.
+function lightWarnings(rows) {
+  const dark = rows.find(r => r.sun && r.sun.light === 'dark');
+  if (dark) return [{ text: 'After dark', at: dark, sunset: dark.sun.sunset }];
+  const low = rows.find(r => r.sun);
+  if (!low) return [];
+  return [low.sun.light === 'dusk' ? { text: 'Near sunset, when deer are out', at: low, sunset: low.sun.sunset }
+    : { text: 'Near sunrise, when deer are out', at: low }];
 }
 
 // WMO weather codes, by the lowest code of each kind.
@@ -81,6 +109,7 @@ export function rideWeather(rows) {
   const cold = ok.reduce((a, b) => b.temp < a.temp ? b : a), hot = most('temp');
   if (cold.temp <= WEATHER.coldF) warnings.push({ text: `Cold: ${Math.round(cold.temp)}°F`, at: cold });
   if (hot.temp >= WEATHER.hotF) warnings.push({ text: `Hot: ${Math.round(hot.temp)}°F`, at: hot });
+  warnings.push(...lightWarnings(ok));
   const lo = Math.round(Math.min(...temps)), hi = Math.round(Math.max(...temps));
   const summary = `${lo === hi ? `${lo}°F` : `${lo}–${hi}°F`}, rain chance up to ${wet ? wet.rain : 0}%, gusts to ${gust ? Math.round(gust.gust) : 0} mph`;
   return { warnings, summary, partial: ok.length < rows.length };

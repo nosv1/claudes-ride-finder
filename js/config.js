@@ -9,7 +9,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.20.10';
+export const APP_VERSION = '2026.11.20.11';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
@@ -125,6 +125,7 @@ export const GEN = {
 export const WEATHER = {
   url: 'https://api.open-meteo.com/v1/forecast', days: 7, everyKm: 30, maxPoints: 12,
   rainPct: 40, likelyPct: 60, gustMph: 35, coldF: 45, hotF: 95,
+  duskMin: 30,   // riding this close to sunset (or after sunrise) is flagged: low sun, and deer are out
 };
 
 // 3D: hills drawn taller than life (they look flat from above), and a camera that can sit low.

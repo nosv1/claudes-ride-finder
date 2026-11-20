@@ -426,6 +426,10 @@ colored road), Add a stop here, Street View here.
   Valhalla's maneuver times, or from distance on the OSRM fallback (riding time only, no stops).
 - Warnings, each at its worst point with the mile and time: thunderstorms, rain ≥ 40% ("likely" from 60%),
   gusts ≥ 35 mph, ≤ 45°F, ≥ 95°F. Otherwise "Looks good:" with the temperature range, top rain chance and gusts.
+- **Sunset and deer** (2026-11-20): the same request brings each point's sunrise and sunset. Riding past sunset:
+  "After dark (sunset 5:00 PM) around mile 42, 5:20 PM", at the first point it's dark. Else within 30 min of sunset
+  or after sunrise: "Near sunset, when deer are out" (or sunrise): low sun in your eyes, and deer move at dusk and
+  dawn. Rows after dark show 🌙 for a clear sky. Not limited to wooded roads: the map data has no woods to go by.
 - A table per point: time, mile, sky, temperature, rain chance, gusts. Hover or tap a row (or a warning) to put a
   dot on the map there.
 - Fetched once per route, again after an hour (a minute after a failure); changing the leave time just reads

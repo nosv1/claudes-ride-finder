@@ -93,6 +93,9 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   on the map; tapping keeps them lit, tapping again turns them off. Check on the phone too.
 - "Try fixing" on a ride that doubles back either helps or says why not.
 - Fuel stops are planned within the tank range.
+- Weather: set Leaving so the ride runs past sunset: "After dark (sunset …)" at the first point after it, and 🌙 on
+  clear rows after dark. Leaving so it ends 15 min before sunset: "Near sunset, when deer are out". Midday: neither.
+  The sunset time matches a weather app's for that day.
 - Open in Google Maps opens it with the stops in order; GPX downloads; Share gives a link that reopens the same ride (also pasted into the address bar of the app already open),
   including a one-way ride's end.
 - Reloading the page keeps the ride and the settings.

@@ -10,7 +10,7 @@ import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, 
 import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn, sellsOctane, onePerRide } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { bikeFor, rangeOf, leftIn, upgradeBikes, octaneOf } from '../../js/bikes.js';
-import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
+import { timesAlong, weatherPoints, atPassing, rideWeather, sky, lightAt } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
 import { fetchRoute, routerTrouble, resetRouters } from '../../js/routing.js';
 
@@ -585,6 +585,20 @@ test('weather: points along the ride, timed by the router, read for the hour you
   assert.equal(sky(63)[1], 'Rain');
   assert.equal(sky(96)[1], 'Thunderstorms');
   assert.equal(sky(2)[1], 'Partly cloudy');
+
+  // Sunset 20 min after the point at 1 h: that one is near sunset (within 30 min), the one at 2 h is after dark.
+  const sunset = t0 + 2 * 3600 + 1200, withSun = { ...hourly, sunrise: [t0 - 10 * 3600, t0 + 14 * 3600], sunset: [sunset] };
+  const three = [0, 3600, 7200].map((s, k) => ({ p: [0, k], m: k * 30000, s }));
+  const lit = atPassing(three, [withSun, withSun, withSun], (t0 + 3600) * 1000);
+  assert.deepEqual(lit.map(r => r.sun && r.sun.light), [null, 'dusk', 'dark']);
+  const light = list => rideWeather(list).warnings.filter(w => /dark|deer/.test(w.text));  // this hour has storms too
+  assert.deepEqual(light(lit).map(w => [w.text, w.at.m, w.sunset]), [['After dark', 60000, sunset]]);
+  assert.deepEqual(light(lit.slice(0, 2)).map(w => [w.text, w.at.m]), [['Near sunset, when deer are out', 30000]]);
+  // Ten minutes after sunrise is dawn; the middle of the day, or a day with no sunrise and sunset known, is nothing.
+  assert.equal(lightAt(t0 + 14 * 3600 + 600, withSun).light, 'dawn');
+  assert.equal(lightAt(t0 + 3600, withSun), null);
+  assert.equal(lightAt(t0 + 3600, {}), null);
+  assert.deepEqual(light(atPassing(three, [hourly, hourly, hourly], (t0 + 3600) * 1000)), [], 'no sun times: no warning');
 });
 
 test('GPX has waypoints, a route and the track', () => {

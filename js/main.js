@@ -2240,7 +2240,7 @@ function weatherSection() {
       : !judged.summary ? h('p.muted.small', {}, 'That’s past the end of the forecast (about a week out).')
       : h('div', {},
           judged.warnings.length
-            ? judged.warnings.map(x => h('p.warn.small.wx-warn', dot(x.at), `⚠ ${x.text} around ${where(x.at)}`))
+            ? judged.warnings.map(x => h('p.warn.small.wx-warn', dot(x.at), `⚠ ${x.text}${x.sunset ? ` (sunset ${clock(x.sunset * 1000)})` : ''} around ${where(x.at)}`))
             : h('p.small.wx-ok', {}, `Looks good: ${judged.summary}.`),
           judged.warnings.length ? h('p.muted.small', {}, judged.summary[0].toUpperCase() + judged.summary.slice(1) + '.') : '',
           h('div.wx', {},
@@ -2249,7 +2249,7 @@ function weatherSection() {
               ? h('div.wx-row', dot(r), h('span', {}, clock(r.when)), h('span', {}, Math.round(r.m / 1609.34)), h('span.muted.wx-none', {}, 'past the forecast'))
               : h('div.wx-row', dot(r),
                   h('span', {}, clock(r.when)), h('span', {}, Math.round(r.m / 1609.34)),
-                  h('span', { title: W.sky(r.code)[1] }, W.sky(r.code)[2]),
+                  h('span', { title: W.sky(r.code)[1] }, r.sun && r.sun.light === 'dark' && r.code <= 2 ? '🌙' : W.sky(r.code)[2]),
                   h('b', {}, `${Math.round(r.temp)}°`),
                   h(`span${r.rain >= WEATHER.rainPct ? '.warn' : ''}`, {}, r.rain == null ? '–' : `${r.rain}%`),
                   h(`span${r.gust >= WEATHER.gustMph ? '.warn' : ''}`, {}, `${Math.round(r.gust)} mph`)))),

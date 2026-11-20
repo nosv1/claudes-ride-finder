@@ -483,15 +483,17 @@ test('one way: pick an end, and the planner finds fun ways there that finish at 
 });
 
 test('the ride page shows the weather along the route, for the time you leave', async () => {
-  // Open-Meteo stubbed: dry for the next day, then rain.
+  // Open-Meteo stubbed: dry for the next day, then rain. The sun rises 2–3 h before now and sets 14 h after that.
   await page.eval(`(() => {
     const real = window.fetch;
     window.fetch = (url, opts) => {
       if (!String(url).includes('open-meteo')) return real(url, opts);
       const n = new URL(url).searchParams.get('latitude').split(',').length, t0 = Math.floor(Date.now() / 3600000) * 3600 - 3600;
       const time = Array.from({ length: 168 }, (_, k) => t0 + k * 3600), wet = time.map(t => t > Date.now() / 1000 + 30 * 3600);
+      const rise = Array.from({ length: 7 }, (_, k) => t0 - 3600 + k * 86400);
       const one = { hourly: { time, temperature_2m: time.map(() => 71), precipitation_probability: wet.map(w => w ? 80 : 5),
-        wind_gusts_10m: time.map(() => 15), weather_code: wet.map(w => w ? 63 : 1) } };
+        wind_gusts_10m: time.map(() => 15), weather_code: wet.map(w => w ? 63 : 1) },
+        daily: { sunrise: rise, sunset: rise.map(t => t + 14 * 3600) } };
       return Promise.resolve(new Response(JSON.stringify(n > 1 ? Array(n).fill(one) : one)));
     };
   })()`);
@@ -508,6 +510,15 @@ test('the ride page shows the weather along the route, for the time you leave', 
   })()`);
   await page.waitFor("/Rain likely .80%. around mile 0/.test(document.getElementById('sheetBody').innerText)", 5000);
   assert.match(await sheetText(), /Now/);
+  // Leaving 11½ h from now: the ride (about 1 h) runs past sunset, 11–12 h from now.
+  await page.eval(`(() => {
+    const el = document.querySelector('#sheetBody input.leave'), d = new Date(Date.now() + 11.5 * 3600000);
+    el.value = new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    el.dispatchEvent(new Event('change'));
+  })()`);
+  await page.waitFor("/After dark/.test(document.getElementById('sheetBody').innerText)", 5000).catch(() => {});
+  assert.match(await sheetText(), /⚠ After dark \(sunset (\w+ )?\d+:\d\d\s[AP]M\) around mile \d+/);
+  assert.ok(await page.eval("[...document.querySelectorAll('#sheetBody .wx-row')].some(r => r.textContent.includes('🌙'))"), 'a moon on the rows after dark');
   // Leave the ride as the other tests expect it.
   await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => b.textContent === 'Now').click()");
 });
