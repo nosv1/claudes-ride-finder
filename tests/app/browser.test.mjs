@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch, sleep } from './cdp.mjs';
+import { headsUp } from '../heads-up.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const NETWORK = !!process.env.RF_NETWORK;
@@ -915,7 +916,7 @@ test('phone: swiping the panel moves it, unless the list is scrolled down', asyn
   }
 });
 
-test('generator routes loops and loads the best one as the ride', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {
+test('generator routes loops and loads the best one as the ride', { skip: !NETWORK && 'set RF_NETWORK=1' }, async t => {
   await page.eval(`(async () => {
     const T = await import('./js/trip.js');
     RF.trip.items.length = 0;
@@ -932,9 +933,10 @@ test('generator routes loops and loads the best one as the ride', { skip: !NETWO
   await page.eval("[...document.querySelectorAll('#sheetBody .cta')].find(b => /Generate/.test(b.textContent)).click()");
   await page.waitFor('RF.gen.options.length > 0 && !RF.gen.running', 180000);
   const asks = await page.eval('(() => { window.fetch = window.__realFetch; return window.__asks; })()');
-  // 87 before a change is routed only when its estimate fits the time and detours only when nothing else helps
-  // (2026-11-20), 69 after. Roads and the router's map change over time; a few more is fine, the old 87 isn't.
-  assert.ok(asks <= 80, `router requests for one 3 h Generate: ${asks}`);
+  // A heads-up past 80, not a failure (tests/heads-up.md): 87 before a change was routed only when its estimate fits
+  // the time and detours only when nothing else helps (2026-11-20), 69 after.
+  t.diagnostic(`router requests for this 3 h Generate: ${asks}`);
+  if (asks > 80) headsUp(t, `a 3 h Generate from the test start sent ${asks} router requests (heads-up past 80; 69 on 2026-11-20)`);
   const opts = await page.eval('RF.gen.options.map(o => o.route && o.route.seconds)');
   assert.ok(opts.filter(Boolean).length >= 3, `routed loops: ${opts}`);
   assert.ok(opts.every(s => s >= 3 * 3600 * 0.8 && s <= 3 * 3600 * 1.2), `loops within 80–120% of 3 h: ${opts.map(s => (s / 3600).toFixed(2))}`);

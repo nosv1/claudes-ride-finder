@@ -24,4 +24,8 @@ nothing touches the real one):
 | `node --test tests/worker.test.mjs` | The API: sign in, save, change and delete a ride, a change built on a copy that changed since is refused (a rename isn't a change), the account key's id is set once, accounts can't see each other's rides, signed-out calls and sign-out, settings and tags (locked text only), share links (ids never reused, open without signing in, only the owner takes one down), bad input and other sites refused, deleting an account takes everything, usage counts (only known events in what one note can hold, from the site; only with the usage key; a sign-in doesn't clear them) |
 | `node --test tests/app/account.test.mjs` | The app, a PC and a phone on one account: the sign-in page, saving a ride and its changes and name, and that the API holds them locked (no other key opens them); the phone is locked until it opens the PC's device link, then gets the ride, settings and tags and opens the ride; Share makes a short link the API can't read that opens signed out (and falls back to the long link with the service down); deleting the account signs both out |
 
+**Heads-ups** ([heads-up.md](heads-up.md)): not failures, things to keep an eye on. One that fires leaves the test
+passing, says `heads-up:` in its output, and adds a line to heads-up.md, so `git status` shows it. For now: the router
+requests one 3 h Generate sends (`RF_NETWORK=1`, past 80).
+
 `node tests/app/cdp.mjs <url> out.png [--mobile] [--wait "<js>"]` takes a screenshot once a condition holds.
