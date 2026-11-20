@@ -18,6 +18,8 @@
 //   GET    /links/:id                                  → { trip }
 //   DELETE /links/:id                                  → {}                    its owner only
 //   POST   /speak      { text, voice, format? }        → audio/mpeg (or wav)   anyone: Ride mode's natural voice
+//   POST   /usage      { <event>: n, ... }             → {}                    anyone, from the site: usage counts
+//   GET    /usage                                     → { today, days }       anyone: the counts, for the usage page
 //
 // A link's id is a hash of the code in the link, which the service never sees (the code also makes the key that
 // unlocks it). Signed-in calls send "Authorization: Bearer <token>"; the database keeps only a hash of the token, and
@@ -27,6 +29,10 @@
 // natural voice: Workers AI, Deepgram Aura-2, as claude-spells does it. Each clip is made once and kept, by voice and
 // text alone, so it's shared by everyone and can't be tied to who asked; nothing else about the request is kept. New
 // clips stop for the day at SPEAK_CHARS, inside Workers AI's free daily allowance (which claude-spells shares).
+//
+// /usage keeps how often things happen in the app, by day: opens, Generates, Ride mode, and which router answered.
+// Counts only, never who: nothing about the rider or the request is kept (the per-address limit uses the same daily
+// hash as the other limits). Kept USAGE_KEEP days.
 
 const SITE_ORIGINS = ['https://nosv1.github.io'];
 const LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;  // the tests, and trying the app on the PC
@@ -34,12 +40,15 @@ const LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;  // the tests
 const MAX_TRIP = 16 * 1024, MAX_NAME = 600, MAX_OWNER = 1024, MAX_DATA = 400 * 1024, MAX_RIDES = 300;
 const SESSION_DAYS = 365;
 // Per day: saves per account, new share links per address, sign-ins per address.
-const LIMITS = { save: 1000, link: 200, login: 50, speak: 400 };
+const LIMITS = { save: 1000, link: 200, login: 50, speak: 400, usage: 300 };
 const VOICES = ['pandora', 'draco', 'helena', 'thalia', 'apollo', 'orion', 'luna', 'asteria', 'athena', 'arcas', 'zeus'];
 const SPEAK_CHARS = 2000;  // a day; Aura-2 is 2,727 neurons per 1,000 characters, of 10,000 free a day per account
 const MAX_SPEAK = 120;
 const SPOKEN = /^[\p{L}\p{N} .,'’&!?:;()/-]+$/u;
 const DAY = 86400e3;
+// What /usage counts (js/usage.js sends them), how many of one a single note may add, and the days kept and shown.
+const USAGE_EVENTS = ['open', 'generate', 'ride', 'route-fossgis', 'route-stadia', 'route-osrm', 'route-none'];
+const USAGE_MAX = 1000, USAGE_KEEP = 90, USAGE_SHOW = 30;
 
 export default {
   async fetch(req, env) {
@@ -85,6 +94,8 @@ async function route(req, env) {
   }
   if (what === 'links' && !id && m === 'POST') return makeLink(req, env);
   if (what === 'speak' && !id && m === 'POST') return speak(req, env);
+  if (what === 'usage' && !id && m === 'POST') return addUsage(req, env);
+  if (what === 'usage' && !id && m === 'GET') return usage(db);
 
   const user = await signedIn(req, db);
   if (what === 'logout' && m === 'POST') {
@@ -206,6 +217,39 @@ async function speak(req, env) {
   return audio(data);
 }
 
+// ---------- usage ----------
+
+// A note from the app: { event: how many } since its last note. Only known events, whole numbers up to USAGE_MAX.
+// A copy of the app on a PC (the tests, trying a change) isn't real use: taken and dropped, except by a local API.
+async function addUsage(req, env) {
+  const db = env.DB, body = await readJson(req);
+  const adds = body && typeof body === 'object' && !Array.isArray(body) ? Object.entries(body) : null;
+  if (!adds || !adds.length || adds.length > USAGE_EVENTS.length
+    || !adds.every(([e, n]) => USAGE_EVENTS.includes(e) && Number.isInteger(n) && n > 0 && n <= USAGE_MAX)) {
+    throw new HttpError(400, 'That request didn’t make sense.');
+  }
+  if (LOCAL_ORIGIN.test(req.headers.get('Origin') || '') && env.TEST_LOGIN !== '1') return json({});
+  await limit(db, 'usage', await addressKey(req));
+  const day = Math.floor(Date.now() / DAY);
+  await db.batch(adds.map(([e, n]) => db.prepare('INSERT INTO counts (k, n, day) VALUES (?, ?, ?) ON CONFLICT (k) DO UPDATE SET n = n + excluded.n')
+    .bind(`use:${e}:${day}`, n, day)).concat(
+    db.prepare("DELETE FROM counts WHERE k LIKE 'use:%' AND day < ?").bind(day - USAGE_KEEP)));
+  return json({});
+}
+
+// The last USAGE_SHOW days of counts: { today, days: { <day number>: { <event>: n } } }, day numbers since 1970 (UTC).
+async function usage(db) {
+  const today = Math.floor(Date.now() / DAY), days = {};
+  const { results } = await db.prepare("SELECT k, n, day FROM counts WHERE k LIKE 'use:%' AND day > ?").bind(today - USAGE_SHOW).all();
+  for (const { k, n, day } of results) {
+    const event = k.split(':')[1];
+    if (USAGE_EVENTS.includes(event)) (days[day] ??= {})[event] = n;
+  }
+  const res = json({ today, days });
+  res.headers.set('Cache-Control', 'public, max-age=300');
+  return res;
+}
+
 // ---------- signing in ----------
 
 async function login(req, env) {
@@ -222,7 +266,7 @@ async function login(req, env) {
     db.prepare('INSERT OR IGNORE INTO users (id, created, data_at) VALUES (?, ?, 0)').bind(claims.sub, now),
     db.prepare('INSERT INTO sessions (hash, user_id, expires) VALUES (?, ?, ?)').bind(await sha256(token), claims.sub, now + SESSION_DAYS * DAY),
     db.prepare('DELETE FROM sessions WHERE expires < ?').bind(now),
-    db.prepare('DELETE FROM counts WHERE day < ?').bind(Math.floor(now / DAY) - 2),
+    db.prepare("DELETE FROM counts WHERE day < ? AND k NOT LIKE 'use:%'").bind(Math.floor(now / DAY) - 2),
   ]);
   return json({ token, user: { name: claims.name || '', email: claims.email || '', picture: claims.picture || '' } });
 }

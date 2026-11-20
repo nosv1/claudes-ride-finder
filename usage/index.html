@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161c">
+<title>Ride Finder usage</title>
+<meta name="description" content="How much Ride Finder gets used, by day: counts only, never who.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<style>
+  /* The app's colors (app.css), on a page that scrolls. */
+  :root { color-scheme: dark; --bg: #0f1115; --panel: #16181e; --raise: #20232b; --text: #eceef2; --muted: #9aa1ad;
+    --border: rgba(255, 255, 255, 0.10); --link: #74c0fc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+  a { color: var(--link); }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .lede, .note { color: var(--muted); margin: 0 0 20px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 24px; }
+  .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+  .tile .n { font-size: 30px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .tile .what { color: var(--muted); font-size: 13px; }
+  .tile .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  .wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { background: var(--raise); color: var(--muted); font-weight: 600; font-size: 13px; position: sticky; top: 0; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.zero { color: var(--muted); }
+  #status { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ride Finder usage</h1>
+  <p class="lede">The last 30 days, counted by the app. Counts only, never who: no accounts, places or addresses.
+    <a href="../">Back to the map</a></p>
+  <p id="status">Loading…</p>
+  <section id="tiles" class="tiles" hidden></section>
+  <section id="days" hidden>
+    <h2>By day</h2>
+    <div class="wrap"><table>
+      <thead><tr><th>Day (UTC)</th><th>Opens</th><th>Generates</th><th>Ride mode</th><th>Routes</th><th>Public</th><th>Stadia</th><th>OSRM</th><th>Failed</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </section>
+  <p class="note" style="margin-top:20px">Routes: the free public <a href="https://www.fossgis.de/">FOSSGIS</a>
+    server first, <a href="https://stadiamaps.com/">Stadia Maps</a>' free plan when it's busy, OSRM's demo server as a
+    last resort. Counts arrive when the app goes to the background, so today's fill in as people close it.</p>
+</main>
+<script type="module" src="../js/usage-page.js"></script>
+</body>
+</html>

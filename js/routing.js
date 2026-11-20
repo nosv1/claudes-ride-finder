@@ -2,6 +2,7 @@
 import { ROUTING } from './config.js';
 import { decodePolyline } from './geo.js';
 import { check } from './check.js';
+import { countUse } from './usage.js';
 
 // A busy server can answer with an HTML error page, so the status counts even when the body isn't JSON.
 async function fetchJson(url, ms) {
@@ -113,11 +114,12 @@ async function valhallaRoute(url, pts, useHighways) {
 export async function fetchRoute(pts, useHighways) {
   if (!check(Array.isArray(pts) && pts.length >= 2, 'a route has at least two points')) return null;
   let failed = null;
-  for (const { name, url } of ROUTING.valhallas) {
+  for (const { name, use, url } of ROUTING.valhallas) {
     if ((resting.get(url) ?? 0) > Date.now()) continue;
     try {
       const r = await valhallaRoute(url, pts, useHighways);
       resting.delete(url);
+      countUse(use);
       return r;
     } catch (e) {
       console.warn(`Valhalla (${name}) failed`, e);
@@ -127,11 +129,14 @@ export async function fetchRoute(pts, useHighways) {
     }
   }
   try {
-    return await osrm(pts);
+    const r = await osrm(pts);
+    countUse('route-osrm');
+    return r;
   } catch (e) {
     console.warn('OSRM failed too', e);
     // Valhalla is the one that matters (OSRM is only a stopgap). Every server resting counts as busy.
     trouble = failed ? kindOf(failed) : 'busy';
+    countUse('route-none');
     return null;
   }
 }

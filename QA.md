@@ -195,6 +195,13 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Sign out, then sign in again: everything's still there. Delete account (tap twice): you're signed out and the
   rides are gone from the other device too after it reopens.
 
+## Usage page
+
+- Open the app on the live site, use it (Generate once), switch away from the tab or app. Within a minute or so
+  (the page is cached up to 5 min), `usage/` shows today's opens and Generates up by that much, and routes split by
+  server. On a phone the table scrolls sideways inside its box, not the page.
+- About → Your data says what's counted and links to the usage page.
+
 ## Looks and layout
 
 - Nothing wraps awkwardly or gets cut off in the side panel (buttons, chips, card text), on desktop or phone.

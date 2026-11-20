@@ -34,6 +34,8 @@ Ideas that came up, roughly in order of how much they'd help.
   keeps the free plan's "non-commercial" (no ads, no paid tier: should be fine, but ask). Ruled out by the rider:
   paying, and hosting on his PC. Routing in the browser would need no server, but older phones and iPhone memory
   limits make it risky.
+- **Usage page, what's left** (shipped 2026-11-20): Stadia's credit total isn't on it (their account API is by
+  request only; the dashboard has it). Counting unique riders would need an id per device: left out on purpose.
 - **Rerouting while riding is only "Leave it"** (asks for a way back onto the ride). A full navigation app would
   reroute on its own; not decided whether that's the goal.
 - **Speed limits next** (Your limit and Edit in OpenStreetMap went in 2026-11-06, for NE Strother Rd, SW Scherer Rd and

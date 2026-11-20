@@ -575,6 +575,17 @@ colored road), Add a stop here, Street View here.
     riding or flying through).
 - **Persistence:** the ride saves to localStorage on every change. A ride saved by the original app is picked up once.
 
+**Usage page (2026-11-20; `usage/`, `js/usage.js`, `js/usage-page.js`, `/usage` in `worker/`)**
+- `nosv1.github.io/claudes-ride-finder/usage/`, public: the last 30 days' totals (app opens, Generates, Ride mode
+  starts, routes and which server answered: public, Stadia, OSRM, or none) and a table by day (UTC).
+- The app counts in memory and sends one note (`{ event: n }`, by `sendBeacon`, plain text so there's no preflight)
+  each time it goes to the background, so a Generate's many routes cost one request. Counts only, never who: no
+  account, place, or address is sent or kept. The About page says so and links to the page.
+- The API takes only the known events, whole numbers 1–1000 each, from the site (300 notes a day per address, by
+  the same daily hash as the other limits). Counts from a local copy of the app (tests, trying a change) are dropped
+  on the real API. Kept 90 days, in the `counts` table as `use:<event>:<day>` (sign-ins no longer clear those).
+- An open counts before the map loads, so a failed map load still shows up.
+
 **Accounts (optional; `js/account.js`, the API in `worker/`)**
 - **Sign in with Google** on the account page (home list: "Sign in to keep rides on every device"; ride page: "Sign
   in to keep this ride on every device"). Google's own button (Google Identity Services, popup). Without signing in

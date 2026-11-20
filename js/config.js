@@ -9,7 +9,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.20.1';
+export const APP_VERSION = '2026.11.20.2';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
@@ -90,8 +90,8 @@ export const ROUTING = {
   // Valhalla servers, tried in this order. FOSSGIS's free public one first; then Stadia Maps' free plan, which
   // allows the site by its address (no key in the page) and refuses, rather than bills, past its monthly credits.
   valhallas: [
-    { name: 'FOSSGIS', url: 'https://valhalla1.openstreetmap.de/route' },
-    { name: 'Stadia Maps', url: 'https://api.stadiamaps.com/route/v1' },
+    { name: 'FOSSGIS', use: 'route-fossgis', url: 'https://valhalla1.openstreetmap.de/route' },
+    { name: 'Stadia Maps', use: 'route-stadia', url: 'https://api.stadiamaps.com/route/v1' },
   ],
   restMs: 10 * 60 * 1000,  // a server that was busy or down is skipped this long
   osrm: 'https://router.project-osrm.org/route/v1/driving',

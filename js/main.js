@@ -16,9 +16,11 @@ import { newBikeId, complete, rangeOf, bikeFor, upgradeBikes, OCTANES, octaneOf 
 import { TAGS, allTags, tagOf, setTags, setSpeed, speedFixes, restoreTags, avoidedIds, weightOf, tagWords, tagsForMap, onTagsChanged,
   SPOT_KINDS, spotKind, spots, spotById, addSpot, setSpot, removeSpot, spotsForMap } from './tags.js';
 import * as A from './account.js';
+import { countUse, startUsage } from './usage.js';
 import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox, loadSignals } from './store.js';
 import { MapView } from './mapview.js';
 import { icon, h, elevationChart, Sheet, toast, menu, closeMenu } from './ui.js';
+startUsage();  // first, so an open counts even if the map can't load
 
 const HOME = [39.0997, -94.5786];
 const SETTINGS_KEY = 'rf2-settings', TRIP_KEY = 'rf2-trip', VOICE_KEY = 'rf2-voice';
@@ -699,6 +701,7 @@ function stopGenerating(status = 'Stopped.') {
 async function generate() {
   if (gen.running) return stopGenerating();
   const run = ++genRun;
+  countUse('generate');
   revealGen();
   try {
     await generateRun(run);
@@ -1256,7 +1259,7 @@ function aboutView() {
         credit('Weather', link('https://open-meteo.com/', 'Weather data by Open-Meteo.com'), ' (CC BY 4.0)'),
         credit('Map', link('https://maplibre.org/', 'MapLibre GL JS'), ', with fonts from ', link('https://openfreemap.org/', 'OpenFreeMap')))),
     h('div.section', {}, h('h3', {}, iconEl(icon.person), 'Your data'),
-      h('p.small', {}, 'No tracking. Without signing in, your rides, tags and settings are saved in this browser only. Some things do get sent out to work: your stops, to the route planner; what you type in search, to the place search; and spots along your ride, to the weather service. Your location is only used when you tap My location, or when you generate a ride without picking a start.'),
+      h('p.small', {}, 'No tracking. The app counts how often things happen (opens, Generates, Ride mode, which route server answered), never who, and shows the totals on the ', link('usage/', 'usage page'), '. Without signing in, your rides, tags and settings are saved in this browser only. Some things do get sent out to work: your stops, to the route planner; what you type in search, to the place search; and spots along your ride, to the weather service. Your location is only used when you tap My location, or when you generate a ride without picking a start.'),
       h('p.small', {}, 'If you sign in (optional), your saved rides, road tags and settings are kept in your account on Cloudflare, so they’re the same on every device. They’re locked on your own devices before they’re sent, with a key that stays on them, so nobody else can read them: not other riders, not Cloudflare, not whoever runs Ride Finder. The account keeps your Google account’s id, not your email or name. A short share link is locked the same way, and the key is in the link itself, so only people you give it to can open the ride. If the service doesn’t answer, Share makes a long link with the whole ride in it instead, kept nowhere. You can take a link down, or delete your account and everything in it, from ',
         h('button.link', { onclick: () => go('account') }, 'your account'), '.')),
     h('p.fineprint', {}, 'Ride Finder is open source: ', link('https://github.com/nosv1/claudes-ride-finder', 'github.com/nosv1/claudes-ride-finder'), '.'),
@@ -2060,6 +2063,7 @@ function startRide() {
   showTag(null);
   if (!navigator.geolocation) return toast('This browser can’t give your location, so it can’t guide you.', { label: 'Google Maps', run: openGoogle });
   const r = route;
+  countUse('ride');
   loadTilesAlong(r.path, { speed: true });  // speed limits for every road on it, and roads to tag
   ride = new Ride(mapView, {
     route: r, loop: trip.loop, roadAt, tagRoad: tagHere, crests: P.blindCrestsOn(r.path, store.roads),
