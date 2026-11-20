@@ -821,7 +821,7 @@ async function generateRun(run) {
   const progress = () => { gen.status = `Routing ${kind}: ${done} of ${options.length} done…`; renderSoon(); };
   const worker = async () => {
     while (next < options.length) {
-      await routeOption(options[next++], start, hours, end, live, win);
+      await routeOption(options[next++], { start, hours, end, live, win });
       live();
       done++;
       progress();
@@ -885,117 +885,163 @@ function rate(r) {
       * GEN.lightKeep ** (lights.length + lefts.length) };
 }
 
-// Route a loop for real. Under 80% of the time, fill it again aiming that much longer (the
-// estimate ran fast), up to twice; over 120%, drop its weakest road, up to twice. While it
-// then doubles back (up to backTries times), try each of: another way home, a road near the
-// stretch ridden twice (short ones too) if the time allows; a spot off to either side of that
-// stretch to ride through instead; and the loop without the generated road most to blame (the
-// one the doubled-back miles are on, like a lake road that dead-ends, or else the one nearest
-// them). The best is kept if the loop ranks higher and stays in 80–120%.
-// One way (with an `end`), the same, riding on to the end instead of home.
-async function routeOption(opt, start, hours, end = null, live = () => {}, win = { lo: hours * GEN.under, hi: hours * GEN.overrun }) {
-  let items = [start, ...opt.stops];
-  const e = end && end.pts[0], finish = list => end ? [...list, end] : list;
-  const copy = list => list.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
-  // With road g added where it fits best, marked as the generator's.
-  const withRoad = (list, g) => {
-    const t = { items: finish(copy(list)), loop: !end };
-    t.items[T.insertRoad(t, g)].gen = true;
-    return end ? t.items.slice(0, -1) : t.items;
-  };
-  const routeOf = list => {
-    live();  // stopped: no more requests for this run
-    P.orientStops(start.pts[0], list.slice(1), !end, e);
-    const pts = T.routablePoints({ ...trip, items: finish(list), loop: !end }), key = JSON.stringify([pts, trip.pref]);
-    if (!genRoutes.has(key)) genRoutes.set(key, fetchRoute(pts, +trip.pref));
-    return genRoutes.get(key);
-  };
-  let r = await routeOf(items);
+// Route a loop for real: fit it to the time, ride less of it twice, then polish it (turnarounds, roads it rides
+// right past). Each step keeps a change only if the loop ranks higher and stays in the time window (80–120% of the
+// time; one way, near the extra chosen). One way (with an end), the same, riding on to the end instead of home.
+// plan: the Generate run's { start, hours, end, live, win }.
+async function routeOption(opt, plan) {
+  const { start: origin, end = null, win } = plan;
+  if (!check(Array.isArray(opt.stops) && win.lo <= win.hi, 'a loop to route has stops and a time window')) return;
+  /** @type {LoopWork} */
+  const w = { opt, origin, end, win, hours: plan.hours, live: plan.live, at: origin.pts[0], e: end && end.pts[0],
+    items: [origin, ...opt.stops], best: null };
+  await fitTime(w);
+  await fixDoublingBack(w);
+  await dropTrouble(w);
+  await addOnTheWay(w);
+  const { best } = w;
+  Object.assign(opt, { items: finishOf(w, w.items), route: best && best.route }, best ? { curvy: best.curvy, highway: best.highway, blind: best.blind, back: best.back, turns: best.turns.length,
+    lights: best.lights.length, lefts: best.lefts.length, worth: best.worth } : {});
+}
+
+// One loop being routed (routeOption): the option, its start (origin, at its point `at`) and end (`e` its point; null
+// for a loop), the time window, the Generate run's hours and live check, the stops so far, and the best routing of
+// them, rated (rate).
+/** @typedef {{ opt: any, origin: any, end: any, win: { lo: number, hi: number }, hours: number, live: () => void, at: number[], e: number[] | null, items: any[], best: any }} LoopWork */
+
+const copyStops = list => list.map(it => ({ ...it, pts: it.pts.map(p => [...p]) }));
+const finishOf = (w, list) => w.end ? [...list, w.end] : list;
+const estHours = (w, list) => P.estimate(w.at, list.slice(1), w.e).hours;
+const inWindow = (w, rated) => rated.route.seconds >= w.win.lo * 3600 && rated.route.seconds <= w.win.hi * 3600;
+const ridesTwice = rated => rated && rated.back > GEN.maxBack * rated.route.meters;
+
+// The stops with road g added where it fits best, marked as the generator's.
+function withRoad(w, list, g) {
+  const t = { items: finishOf(w, copyStops(list)), loop: !w.end };
+  t.items[T.insertRoad(t, g)].gen = true;
+  return w.end ? t.items.slice(0, -1) : t.items;
+}
+
+// The route of these stops (each asked for once a Generate: loops heading different ways often come out the same).
+function routeOf(w, list) {
+  w.live();  // stopped: no more requests for this run
+  P.orientStops(w.at, list.slice(1), !w.end, w.e);
+  const pts = T.routablePoints({ ...trip, items: finishOf(w, list), loop: !w.end }), key = JSON.stringify([pts, trip.pref]);
+  if (!genRoutes.has(key)) genRoutes.set(key, fetchRoute(pts, +trip.pref));
+  return genRoutes.get(key);
+}
+
+// Under the time window, fill the loop again aiming that much longer (the estimate ran fast), up to twice; over it,
+// drop its weakest generated road, up to twice. The routing it ends with is the best so far.
+async function fitTime(w) {
+  const { opt, win } = w;
+  let r = await routeOf(w, w.items);
   for (let tries = 0; r && r.seconds < win.lo * 3600 && tries < 2; tries++) {
-    const estHours = P.estimate(start.pts[0], items.slice(1), e).hours;
-    const more = P.fillLoop(start.pts[0], opt.pool, opt.dir, hours * estHours / (r.seconds / 3600), opt.chosen, opt.maxRoads + 2, e);
+    const more = P.fillLoop(w.at, opt.pool, opt.dir, w.hours * estHours(w, w.items) / (r.seconds / 3600), opt.chosen, opt.maxRoads + 2, w.e);
     if (more.chosen.length === opt.chosen.length) break;  // nothing more fits this way
     opt.chosen = more.chosen;
-    items = [start, ...more.stops];
-    r = await routeOf(items);
+    w.items = [w.origin, ...more.stops];
+    r = await routeOf(w, w.items);
   }
   for (let tries = 0; r && r.seconds > win.hi * 3600 && tries < 2; tries++) {
-    const added = items.filter(it => it.gen);
+    const added = w.items.filter(it => it.gen);
     if (!added.length) break;  // only the rider's own stops left: keep them even if it runs long
-    items.splice(items.indexOf(added.reduce((a, b) => b.score < a.score ? b : a)), 1);
-    r = await routeOf(items);
+    w.items.splice(w.items.indexOf(added.reduce((a, b) => b.score < a.score ? b : a)), 1);
+    r = await routeOf(w, w.items);
   }
-  let best = rate(r);
-  for (let tries = 0; tries < GEN.backTries && best && best.back > GEN.maxBack * best.route.meters; tries++) {
-    const twice = P.retrace(best.route.path), lines = twice.lines, spots = lines.flat(), attempts = [];
-    // Another way home: the best road near the stretch ridden twice that fits the time left.
-    const estOf = list => P.estimate(start.pts[0], list.slice(1), e).hours;
-    const scale = best.route.seconds / 3600 / estOf(items), room = win.hi - best.route.seconds / 3600;
-    for (const g of P.wayHomeRoads(opt.free, items, lines)) {
-      const more = withRoad(items, g);
-      if ((estOf(more) - estOf(items)) * scale <= room) { attempts.push(more); break; }
-    }
-    // Or through a spot off to one side of it, so the second pass is on another road.
-    for (const d of P.detours(twice)) {
-      const list = copy(items);
-      list.splice(P.stopIndexAt(best.route.path, items, d.m), 0, { type: 'point', label: end ? 'Another way' : 'Another way back', pts: [d.p], gen: true });
-      attempts.push(list);
-    }
-    // Or without the generated road most to blame.
-    const added = items.filter(it => it.gen);
-    if (added.length && items.length > 2) {
-      const geoms = it => (it.ids || []).map(id => store.byId.get(id)).filter(Boolean).map(x => x.geom);
-      const onIt = it => spots.filter(q => geoms(it).some(g => g.some(p => km(p, q) < 0.15))).length;
-      const near = it => Math.min(...it.pts.flatMap(p => spots.map(q => km(p, q))));
-      const blame = added.map(it => ({ it, on: onIt(it), near: near(it) }))
-        .sort((a, b) => b.on - a.on || a.near - b.near)[0].it;
-      attempts.push(copy(items.filter(it => it !== blame)));
-    }
-    let better = null;
-    for (const list of attempts) {
-      const other = rate(await routeOf(list));
-      const hrs = other && other.route.seconds / 3600;
-      if (other && other.worth > (better || best).worth && hrs >= win.lo && hrs <= win.hi) better = { list, worth: other.worth, other };
-    }
+  w.best = rate(r);
+}
+
+// While the loop rides more than maxBack of itself twice (up to backTries rounds), the best of the ways to ride
+// less of it twice (backAttempts) that ranks higher and stays in the window.
+async function fixDoublingBack(w) {
+  for (let tries = 0; tries < GEN.backTries && ridesTwice(w.best); tries++) {
+    const better = await bestOf(w, backAttempts(w));
     if (!better) break;
-    items = better.list;
-    best = better.other;
+    w.items = better.list;
+    w.best = better.other;
   }
-  // From here on a change is kept only if the loop ranks higher, stays in 80–120%, and rides no more twice
-  // than it did (or maxBack of it), so a road picked up on the way doesn't undo the work above.
-  const keeps = other => { const hrs = other && other.route.seconds / 3600;
-    return other && other.worth > best.worth && hrs >= win.lo && hrs <= win.hi
-      && other.back <= Math.max(best.back, GEN.maxBack * other.route.meters); };
-  // Turnarounds and left turns at stoplights (up to 2 tries): without the generated road nearest the first
-  // of them. Usually a highway sweep: ridden away from home then back the other way, or left off the highway
-  // at the lights at its end.
+}
+
+// Ways to ride less of the loop twice: another way home (the best road near the stretch ridden twice, short ones too,
+// that fits the time left); a spot off to either side of that stretch to ride through instead, so the second pass is
+// on another road; and the loop without the generated road most to blame.
+function backAttempts(w) {
+  const { best, items } = w, twice = P.retrace(best.route.path), attempts = [];
+  const hrs = best.route.seconds / 3600, scale = hrs / estHours(w, items), room = w.win.hi - hrs;
+  for (const g of P.wayHomeRoads(w.opt.free, items, twice.lines)) {
+    const more = withRoad(w, items, g);
+    if ((estHours(w, more) - estHours(w, items)) * scale <= room) { attempts.push(more); break; }
+  }
+  for (const d of P.detours(twice)) {
+    const list = copyStops(items);
+    list.splice(P.stopIndexAt(best.route.path, items, d.m), 0, { type: 'point', label: w.end ? 'Another way' : 'Another way back', pts: [d.p], gen: true });
+    attempts.push(list);
+  }
+  const blame = mostToBlame(items, twice.lines.flat());
+  if (blame) attempts.push(copyStops(items.filter(it => it !== blame)));
+  return attempts;
+}
+
+// The generated road most to blame for the spots ridden twice: the one they're on (like a lake road that dead-ends),
+// or else the one nearest them. Null when there's none to drop.
+function mostToBlame(items, twice) {
+  const added = items.filter(it => it.gen);
+  if (!added.length || items.length <= 2) return null;
+  const geoms = it => (it.ids || []).map(id => store.byId.get(id)).filter(Boolean).map(x => x.geom);
+  const onIt = it => twice.filter(q => geoms(it).some(g => g.some(p => km(p, q) < 0.15))).length;
+  const near = it => Math.min(...it.pts.flatMap(p => twice.map(q => km(p, q))));
+  return added.map(it => ({ it, on: onIt(it), near: near(it) })).sort((a, b) => b.on - a.on || a.near - b.near)[0].it;
+}
+
+// Of these other stops, the one whose loop ranks highest, if that's higher than the best so far and in the window.
+async function bestOf(w, attempts) {
+  let better = null;
+  for (const list of attempts) {
+    const other = rate(await routeOf(w, list));
+    if (other && other.worth > (better || w.best).worth && inWindow(w, other)) better = { list, worth: other.worth, other };
+  }
+  return better;
+}
+
+// From here on a change is kept only if the loop ranks higher, stays in the window, and rides no more twice than it
+// did (or maxBack of it), so a road picked up on the way doesn't undo the work above.
+const keeps = (w, other) => !!other && other.worth > w.best.worth && inWindow(w, other)
+  && other.back <= Math.max(w.best.back, GEN.maxBack * other.route.meters);
+
+// Turnarounds and left turns at stoplights (up to 2 tries): without the generated road nearest the first of them.
+// Usually a highway sweep: ridden away from home then back the other way, or left off the highway at the lights at
+// its end.
+async function dropTrouble(w) {
   const trouble = b => [...b.turns, ...b.lefts.map(l => l.p)];
-  for (let tries = 0; tries < 2 && best && trouble(best).length; tries++) {
-    const at = trouble(best)[0], added = items.filter(it => it.gen);
-    if (!added.length || items.length <= 2) break;
-    const dist = it => Math.min(...it.pts.map(p => km(p, at)));
+  for (let tries = 0; tries < 2 && w.best && trouble(w.best).length; tries++) {
+    const spot = trouble(w.best)[0], added = w.items.filter(it => it.gen);
+    if (!added.length || w.items.length <= 2) break;
+    const dist = it => Math.min(...it.pts.map(p => km(p, spot)));
     const blame = added.reduce((a, b) => dist(b) < dist(a) ? b : a);
-    const list = copy(items.filter(it => it !== blame));
-    const other = rate(await routeOf(list));
-    if (!keeps(other)) break;
-    items = list;
-    best = other;
+    const list = copyStops(w.items.filter(it => it !== blame));
+    const other = rate(await routeOf(w, list));
+    if (!keeps(w, other)) break;
+    w.items = list;
+    w.best = other;
   }
-  // Roads it rides right past (up to 2 tries).
+}
+
+// Roads the loop rides right past (up to 2 tries): ridden, if that's kept.
+async function addOnTheWay(w) {
   const tried = new Set();
-  for (let tries = 0; tries < 2 && best; tries++) {
-    const g = P.onTheWay(opt.free, items, best.route.path).find(x => !tried.has(x));
+  for (let tries = 0; tries < 2 && w.best; tries++) {
+    const { best, items } = w;
+    const g = P.onTheWay(w.opt.free, items, best.route.path).find(x => !tried.has(x));
     if (!g) break;
     tried.add(g);
-    const more = withRoad(items, g);
-    const other = rate(await routeOf(more));
-    if (keeps(other)) {
-      items = more;
-      best = other;
+    const more = withRoad(w, items, g);
+    const other = rate(await routeOf(w, more));
+    if (keeps(w, other)) {
+      w.items = more;
+      w.best = other;
     }
   }
-  Object.assign(opt, { items: finish(items), route: best && best.route }, best ? { curvy: best.curvy, highway: best.highway, blind: best.blind, back: best.back, turns: best.turns.length,
-    lights: best.lights.length, lefts: best.lefts.length, worth: best.worth } : {});
 }
 
 function selectOption(i) {

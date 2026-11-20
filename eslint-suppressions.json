@@ -11,16 +11,13 @@
   },
   "js/main.js": {
     "complexity": {
-      "count": 5
+      "count": 4
     },
     "max-lines-per-function": {
-      "count": 3
-    },
-    "max-params": {
-      "count": 1
+      "count": 2
     },
     "no-shadow": {
-      "count": 8
+      "count": 6
     }
   },
   "js/mapview.js": {
