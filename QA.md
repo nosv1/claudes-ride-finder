@@ -48,6 +48,7 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   the map show what's ridden twice; check they're on the map where the card says.
 - ✱ Loops don't go out and back on the same highway to reach the curvy part.
 - Loops come in near the chosen time (80–120%), and the cards say how long.
+- No two cards are the same ride (the same miles and roads on the map), though they may list different roads.
 - There's a loop to each side of the start where there are good roads, and a note says which sides have none.
 - The status line keeps moving while it works; a 6 h run finishes in under about 3 minutes.
 - Tapping a card loads it; "Ride this loop →" (blue) opens the ride with the stops in order.

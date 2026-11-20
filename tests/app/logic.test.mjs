@@ -7,7 +7,7 @@ import { boundsOf, distance, decodePolyline, spotOnLine, headingOnPath, nearestI
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, rollersInView, hillLevel, roadNear, roadAlong, setMyMph, limitOf } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn, sellsOctane } from '../../js/plan.js';
+import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn, sellsOctane, onePerRide } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { bikeFor, rangeOf, leftIn, upgradeBikes, octaneOf } from '../../js/bikes.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
@@ -318,6 +318,19 @@ test('Google Maps export: a stop just past each turn, no stretch over 25 km with
   assert.ok(idx.some(i => i > 300 && i <= 303));
   for (let k = 1; k < idx.length; k++) assert.ok(distance(path[idx[k - 1]], path[idx[k]]) <= 25000);
   assert.equal(googleLinks(Array(25).fill([38, -94])).length, 3, '9 stops per link');
+});
+
+test('the generator shows each ride once: not the same roads twice, nor the same route with a road it rides anyway', () => {
+  const start = { type: 'point', label: 'Start', pts: [[0, 0]] }, road = (label, id) => ({ type: 'road', label, ids: [id], pts: [[0, 0]], gen: true });
+  const route = (meters, seconds) => ({ meters, seconds, path: [] });
+  const a = { items: [start, road('MO 176', 1), road('US 160', 2)], route: route(217141.3, 12283.8), worth: 84933 };
+  // The same route, listing two roads it rides anyway: 4.6 s longer for the stops (the Ozarks, 2026-11-20).
+  const b = { items: [start, road('MO F', 3), road('MO 176', 1), road('US 160', 2), road('MO 76', 4)], route: route(217141.3, 12279.2), worth: 84933.4 };
+  const c = { items: [start, road('US 160', 2), road('MO 176', 1)], route: route(220000, 12500), worth: 80000 };  // a's roads, the other way round
+  const d = { items: [start, road('MO H', 5)], route: route(90000, 9000), worth: 7000 };
+  const e = { items: [start, road('MO JJ', 7), road('AR 125', 8)], route: route(217100, 12290), worth: 61000 };  // as long, another ride
+  const unrouted = { items: [start, road('MO UU', 6)], route: null };
+  assert.deepEqual(onePerRide([b, a, c, d, e, unrouted]), [a, d, e, unrouted]);
 });
 
 test('generator builds loops that fit the time', () => {

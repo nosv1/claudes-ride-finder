@@ -850,9 +850,8 @@ async function generateRun(run) {
     if (!better.length) status = 'The fastest way is as good as it gets here: no fun roads near enough for that much extra time. Try more extra time, or loosen the filters.';
     shown = better;
   }
-  // The same loop can come out of two directions once fixed: keep one.
-  const sigs = new Set(), sig = o => o.items.slice(1).map(it => (it.ids || [it.label]).join(',')).sort().join('|');
-  shown = shown.filter(o => !o.route || !sigs.has(sig(o)) && sigs.add(sig(o)));
+  // The same ride can come out of two options: keep one.
+  shown = P.onePerRide(shown);
   // Leave out loops that ride a fifth of the way twice, when there are a couple without.
   const clean = shown.filter(o => !twice(o));
   if (clean.length >= 2) shown = clean;

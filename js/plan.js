@@ -4,6 +4,7 @@ import { FUEL, GEN, GOOGLE, DECISION_TURNS, CURVE_CLASSES, HILLS, HIGHWAYS, ROLL
 import { distance, km, bearing, relAngle, cumulative, nearestIndex, alongRoute, boundsOf, pad, intersects, center } from './geo.js';
 import { clusterRoads, summarize, hillLevel } from './roads.js';
 import { tripPoints, roadStop } from './trip.js';
+import { check } from './check.js';
 
 // ---------- along a route ----------
 
@@ -475,6 +476,24 @@ export function onTheWay(groups, items, path) {
   return groups.filter(g => !g.oneway && !g.ids.some(id => used.has(id))
       && (near(g.stop.pts[0]) || near(g.stop.pts[g.stop.pts.length - 1])) && !mostlyOn(g, spots))
     .sort((a, b) => b.score - a.score);
+}
+
+// One of each ride among the generator's routed options, in their order. Two options are the same ride when they take
+// the same roads (one loop fixed from two directions) or the same route (one lists a road it rides anyway: two loops
+// in the Ozarks, MO 176 to MO UU, 217,141 m both, one also through MO F and MO 76). The same route is the same length
+// and rank to within 0.1%; not the same time, which each stop adds a few seconds to (4.6 s there). Of those, the one
+// with fewer stops.
+export function onePerRide(options) {
+  if (!check(Array.isArray(options) && options.every(o => Array.isArray(o.items)), 'options to compare have stops')) return options;
+  const roadsOf = o => o.items.slice(1).map(it => (it.ids || [it.label]).join(',')).sort().join('|');
+  const close = (x, y) => Math.abs(x - y) <= 0.001 * Math.max(x, y);
+  const sameRoute = (a, b) => close(a.route.meters, b.route.meters) && close(a.worth, b.worth);
+  const same = (a, b) => roadsOf(a) === roadsOf(b) || sameRoute(a, b);
+  const kept = [];
+  for (const o of [...options].sort((a, b) => a.items.length - b.items.length)) {
+    if (!o.route || !kept.some(k => k.route && same(k, o))) kept.push(o);
+  }
+  return options.filter(o => kept.includes(o));
 }
 
 export { COMPASS, heading } from './geo.js';

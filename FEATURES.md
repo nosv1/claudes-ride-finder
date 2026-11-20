@@ -539,7 +539,10 @@ colored road), Add a stop here, Street View here.
   (up to 2 tries), keeping it if the loop ranks higher and stays in 80–120%. From Lee's Summit at 1.5 h, a loop up
   MO 7 rode straight past MO FF, a sweeper running the same way, which only has 950 m of curves (under the 2 km
   for main roads), so it was highlighted but never picked.
-- The same loop reached from two directions is shown once. Loops riding more than 20% twice are
+- **Each ride is shown once:** the same loop reached from two directions (the same roads), or the same route with a
+  road listed that it rides anyway (from the Ozarks at 3 h, two cards were the same 3.41 h loop, one also "through"
+  MO F and MO 76; fixed 2026-11-20). The same route means the same length and rank within 0.1%, not the same time:
+  each stop adds a few seconds (4.6 s there). Of two, the one with fewer stops stays. Loops riding more than 20% twice are
   left out when at least 2 others remain (it was 3). Measured on Oct-31 data: the top loop from south KC went from 29% to 13%,
   from the Lake of the Ozarks from 28% to 1%.
 - Option cards show time, miles, curvy miles and %, highway-sweep miles (from 200 m), blind crests, miles ridden twice, and the roads, with the
