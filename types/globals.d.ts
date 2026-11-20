@@ -11,6 +11,7 @@ interface Window {
   FUEL: any;
   SEARCH: any;
   SIGNALS: any;
+  BREAKS: any;
   addTile: (key: string, data: any) => void;
   // For the tests: the app's state, read and driven over the DevTools protocol.
   RF: any;

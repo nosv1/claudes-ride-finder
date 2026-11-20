@@ -54,6 +54,9 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   the map show what's ridden twice; check they're on the map where the card says.
 - ✱ Loops don't go out and back on the same highway to reach the curvy part.
 - Loops come in near the chosen time (80–120%), and the cards say how long.
+- Stop for a break, Food, 3 h: every card is "To <a place>" with "Break: … · mile N, … in" near the middle of the
+  ride; the places are local (no chain names), and the pin on the map is at the place. Walk around: parks, lookouts,
+  waterfalls, historic spots, never a gas station. Generate again: the old break isn't kept as a Must include.
 - No two cards are the same ride (the same miles and roads on the map), though they may list different roads.
 - There's a loop to each side of the start where there are good roads, and a note says which sides have none.
 - The status line keeps moving while it works; a 6 h run finishes in under about 3 minutes.

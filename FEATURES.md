@@ -1,7 +1,7 @@
 # Ride Finder: features and requirements
 
 Ride Finder helps a motorcyclist find and plan rides on curvy, fast, hilly roads, starting
-with Arkansas, Kansas, Missouri, Oklahoma and Texas. This document is the spec for what the app does today. It
+with Missouri and every state around it (Arkansas, Illinois, Iowa, Kansas, Kentucky, Nebraska, Oklahoma, Tennessee), plus Texas (the neighbors added 2026-11-20). This document is the spec for what the app does today. It
 lists what each feature must do, the numbers it relies on, and the lessons that shaped it,
 so a rewrite can keep the behavior without rediscovering them.
 
@@ -463,6 +463,18 @@ colored road), Add a stop here, Street View here.
 - Each card has the ride's **focus tags** (below). **Ride this loop →** is the blue button under the cards.
 - Ride time 1–12 h (10 and 12 added 2026-11-11 for all-day rides: from Lee's Summit, 10 h took ~2 min and 127 router
   requests, 12 h ~3 min and 154). The start is the first stop, or the rider's location.
+- **Stop for a break** (loops, 2026-11-20; the rider: "I just want to go somewhere… it's easier if I have a reason to
+  go and then stop too", rather than two hours with no break): No break, Food, Walk around, or Either. Each loop goes
+  out to a **break spot** about halfway (30–60% of the reach from the start as the crow flies), one in each of 8
+  directions, the spot with the most curvy-road score within 20 km of it; the generator builds its best loop through
+  it and the rider's own stops. The card is named for it ("To Wagon Works BBQ") with "Break: Wagon Works BBQ
+  (barbecue) · mile 48, 1 h 05 min in". The break is a stop of its own: never trimmed off like a generated road, and
+  not kept as the rider's stop when generating again. None near: it says so.
+  - **Break spots** (`tiles/breaks.js`, from the state files by `build_tiles.py` or `tools/add_breaks.py`; loaded the
+    first time it's needed): food that isn't a chain (restaurants, cafés, fast food and ice cream with a name and no
+    `brand` tag: "a chain is no fun"; regional chains OSM doesn't tag slip through), and places to walk around: named
+    parks and reserves of 10 ha (25 acres) or more, lookouts, waterfalls, and named historic spots (monuments, ruins,
+    forts, battlefields, mills…). **Not gas stations.** Missouri alone has about 5,200 (3,700 food).
 - **Must include:** the rider's own stops (roads, gas stops, pinned points).
   - Every loop goes through them.
   - Loops head their way: straight at them, or swinging 35° or 70° to either side.

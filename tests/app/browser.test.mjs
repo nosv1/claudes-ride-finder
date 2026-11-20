@@ -998,6 +998,41 @@ test('a loop built around a chosen road always goes through it', { skip: !NETWOR
   assert.ok(await page.eval("RF.trip.items.some(i => i.label === 'MO 150' && !i.gen)"));
 });
 
+test('Stop for a break: the plan page offers food or somewhere to walk, for loops only', async () => {
+  await page.eval("RF.settings.genShape = 'loop'; RF.go('plan')");
+  await sleep(200);
+  const choices = () => page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].map(b => b.textContent)");
+  assert.deepEqual(await choices(), ['No break', 'Food', 'Walk around', 'Either']);
+  await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'Food').click()");
+  await sleep(200);
+  assert.equal(await page.eval('RF.settings.genBreak'), 'food');
+  assert.match(await sheetText(), /Somewhere about halfway: local food \(no chains\)/);
+  await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'No break').click()");
+  await sleep(200);
+  assert.equal(await page.eval('RF.settings.genBreak'), 'none');
+});
+
+test('a loop with a break: each goes out to a break spot and the card says where and when', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {
+  await page.eval(`(async () => {
+    const T = await import('./js/trip.js');
+    RF.trip.items.length = 0;
+    T.setStart(RF.trip, [38.852, -94.343], 'Start');
+  })()`);
+  await page.eval("RF.settings.genShape = 'loop'; RF.settings.genHours = 3; RF.go('plan')");
+  await sleep(200);
+  await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'Either').click()");
+  await page.eval("[...document.querySelectorAll('#sheetBody .cta')].find(b => /Generate/.test(b.textContent)).click()");
+  await page.waitFor('RF.gen.options.length > 0 && !RF.gen.running', 180000);
+  const loops = await page.eval('RF.gen.options.filter(o => o.route).map(o => ({ name: o.brk && o.brk.name, breaks: o.items.filter(i => i.brk).length }))');
+  assert.ok(loops.length >= 2, `loops with a break: ${JSON.stringify(loops)}`);
+  loops.forEach(l => assert.ok(l.name && l.breaks === 1, JSON.stringify(l)));
+  assert.match(await sheetText(), /Break: .+ · mile \d+, .+ in/);
+  // The break isn't kept as the rider's own stop for the next Generate.
+  await page.waitFor('RF.trip.items.some(i => i.brk)', 10000);
+  assert.doesNotMatch(await page.eval("document.getElementById('sheetBody').innerText"), /Must include[\s\S]*Break:[\s\S]*Generate loops/);
+  await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'No break').click()");
+});
+
 // Last: nothing the pages did along the way failed a check (CODING.md, rule 5) or threw without being caught.
 test('no failed checks or uncaught errors on the page', () => {
   assert.deepEqual(page.logs.filter(l => /^Check failed|^EXCEPTION/.test(l)), []);

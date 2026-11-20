@@ -25,7 +25,8 @@ Ideas that came up, roughly in order of how much they'd help.
   since 2026-11-11: on a real ride the rider's iPhone kept the screen on the whole way (even in Low Power Mode) with
   little battery used, so screen-on Ride mode is fine for now.
 - **Bottlenecks to fix before going national** (measured 2026-11-01): the site's map files are 68 MB for
-  3 states (about 70% is the speed-limit layer), so the whole US would be near GitHub Pages' 1 GB limit,
+  3 states (about 70% is the speed-limit layer), so the whole US would be near GitHub Pages' 1 GB limit (10 states,
+  2026-11-20: 158 MB, 100 MB of it speed limits; the build took 38 min on the PC, most of it elevation downloads),
   and every rebuild adds to git history. Slim the speed-limit layer, then move tiles off git (e.g.
   Cloudflare R2).
 - **Routing at scale, $0** (2026-11-20: Stadia Maps' free plan now backs up the public server; see FEATURES.md,
@@ -121,9 +122,10 @@ Ideas that came up, roughly in order of how much they'd help.
 - **Generator avoids city traffic**: today loops through town only rank lower. Penalize
   connecting routes through built-up areas directly.
 - **Roller coasters, next**: blind crests on straight roads (a hilltop you can't see over, no turn needed).
-- **More states**: Arkansas (Eureka Springs, the Pig Trail), Oklahoma, Iowa, Nebraska. (Texas is in.)
-  Check each state's default speed limits in `estimate_mph`.
-  Download the `.osm.pbf` into `raw/` and rebuild.
+- **More states**: Missouri and all eight neighbors are in, plus Texas (2026-11-20). The five added that day (Iowa,
+  Illinois, Kentucky, Tennessee, Nebraska) use the general guess for roads with no posted limit (55, 45 on minor roads):
+  check each state's own defaults in `estimate_mph`, as Texas and Oklahoma have. Geofabrik moved each state into its
+  own folder (`.../us/<state>/<state>-latest.osm.pbf`). More: download every state's `.osm.pbf` into `raw/` and rebuild.
 - **Cameras layer: plate readers, speed and red-light cameras**: a map layer (off by default, like Gas) and a
   count on each ride, the way stoplights are counted. Plate readers (Flock Safety and others) are mapped in OSM as
   `man_made=surveillance` with `surveillance:type=ALPR` (plus `manufacturer`, `direction`), mostly by the DeFlock
@@ -134,6 +136,28 @@ Ideas that came up, roughly in order of how much they'd help.
 - **Roads you've ridden**: import GPX from a ride (or record one in Ride mode) and mark those roads, so
   the map shows what's new to you and the generator can prefer it.
 - **Adventures (make it a game)**: a reason to go ride, as "go see this, by these roads".
+  - **The rider's take (2026-11-20), first version in this order:** "I want to ride somewhere, make a loop out of it. I
+    don't know where. It's easier if I have a reason to go, and then stop too": loops have no natural break, and two
+    hours straight is a lot. (1) **Break spots** layer: food that isn't a chain (no OSM `brand` / `brand:wikidata`:
+    "a chain is no fun"; somewhere never been), and places to walk around (parks; lookouts, waterfalls, historic spots
+    too unless he says parks only). **Not gas stations.** Nodes and park areas from the state files, a separate tool
+    like `tools/add_signals.py`, no full rebuild. (2) **Generate with a break**: a break spot around halfway is the
+    loop's required stop (the Must include path), out on curvy roads and back on others; the card names the break and
+    when ("Break at Hermann, mile 48, 1 h 05 in"); places already visited rank lower. (3) **"I rode it"** on a ride:
+    marks its roads ridden (by road, with the date; never the trail or speeds, per Recording rides) and its break spot
+    visited. Then the map that fills in. **Decided 2026-11-20:** ridden roads stay on the device; syncing to the account
+    is opt-in ("for progression's sake you need to know where you've been"). Leaning no date at all (a list of roads
+    without dates says much less). Open, his to think through: proof of having been somewhere. Proof needs the record
+    he doesn't want (GPS, time, this phone), and "I rode it" from another device proves nothing. Only matters if
+    progress is shared or compared; for himself, the honor system is enough. **His approach (2026-11-20):** a ride done
+    with Ride it is GPS verified (the phone is tracking anyway); "I rode it" without it counts too, with an asterisk
+    when compared. Worry: a verified ride with a time is evidence if you "don't behave as you should". Proposed with it:
+    keep the verdict, not the evidence: Ride mode checks on the phone that you reached the spot or rode most of the
+    roads, and keeps only "verified" (no trail, times or speeds); shared, at most "verified, week of Nov 16", opt-in per
+    item. A web app's "verified" is "probably" (a phone's location and the browser's storage can be faked): fine for
+    friends and badges, not prizes; strong proof needs the native app.
+    **Approved by the rider (2026-11-20)**, with "I'm overthinking it: there's no motivation to fake something if there's
+    no proper reward" (badges and collectibles only). Build it with step (3), "I rode it".
   - **Destinations**: add places worth riding to from OSM in `build_tiles.py`, kept like `fuel.js`:
     viewpoints, waterfalls, peaks, historic sites, river crossings and ferries, old bridges, small-town diners
     and BBQ. Prefer ones off the beaten path, with good curvy roads nearby.

@@ -1,6 +1,6 @@
 // Ride planning on top of a routed trip: fuel stops, the loop generator, curvy miles and blind
 // crests along a route, and exports (Google Maps links, GPX). Pure: no DOM, no map library.
-import { FUEL, GEN, GOOGLE, DECISION_TURNS, CURVE_CLASSES, HILLS, HIGHWAYS, ROLLER } from './config.js';
+import { FUEL, GEN, GOOGLE, DECISION_TURNS, CURVE_CLASSES, HILLS, HIGHWAYS, ROLLER, WALK_KINDS } from './config.js';
 import { distance, km, bearing, relAngle, cumulative, nearestIndex, alongRoute, boundsOf, pad, intersects, center } from './geo.js';
 import { clusterRoads, summarize, hillLevel } from './roads.js';
 import { tripPoints, roadStop } from './trip.js';
@@ -476,6 +476,25 @@ export function onTheWay(groups, items, path) {
   return groups.filter(g => !g.oneway && !g.ids.some(id => used.has(id))
       && (near(g.stop.pts[0]) || near(g.stop.pts[g.stop.pts.length - 1])) && !mostlyOn(g, spots))
     .sort((a, b) => b.score - a.score);
+}
+
+// Break spots for loops with a stop about halfway: of the kind asked for ('food', 'walk' or 'any'), breakNear of the
+// reach (km) out from the start as the crow flies, ranked by the scores of the candidate roads (groups) within
+// breakRoadsKm of them (none around: left out), the best in each of breakSides directions, best first, at most `max`.
+export function pickBreaks(spots, { start, reach, groups, kind, max = GEN.maxOptions }) {
+  if (!check(Array.isArray(spots) && Array.isArray(groups) && reach > 0, 'break spots, roads and a reach to pick from')) return [];
+  const kinds = kind === 'food' ? ['food'] : kind === 'walk' ? WALK_KINDS : ['food', ...WALK_KINDS];
+  const [lo, hi] = GEN.breakNear, width = 360 / GEN.breakSides;
+  const out = (b, d) => kinds.includes(b.kind) && d >= lo * reach && d <= hi * reach;
+  const around = b => groups.reduce((sum, g) => km(b.at, g.center) < GEN.breakRoadsKm ? sum + g.score : sum, 0);
+  const ranked = spots.filter(b => out(b, km(start, b.at)))
+    .map(b => ({ ...b, value: around(b), side: Math.floor(((bearing(start, b.at) + width / 2) % 360) / width) }))
+    .filter(b => b.value > 0).sort((a, b) => b.value - a.value);
+  const picked = [];
+  for (const b of ranked) {
+    if (picked.length < max && !picked.some(p => p.side === b.side)) picked.push(b);
+  }
+  return picked;
 }
 
 // One of each ride among the generator's routed options, in their order. Two options are the same ride when they take

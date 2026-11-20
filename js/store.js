@@ -4,7 +4,7 @@ import { DATA_URL } from './config.js';
 import { decodeRow } from './roads.js';
 
 export const store = {
-  roads: [], byId: new Map(), version: 0, signals: null,
+  roads: [], byId: new Map(), version: 0, signals: null, breaks: null,
   index: null, available: new Set(), speedAvailable: new Set(), fuel: [], search: { places: [], roads: [] },
 };
 
@@ -60,6 +60,16 @@ export function loadSignals() {
     store.signals = out;
   }, () => { store.signals = []; });
   return signalsLoad;
+}
+
+// Break spots (tiles/breaks.js, ~3 MB: local food, parks, lookouts, waterfalls, historic spots), loaded the first time
+// a Generate wants a break. Without the file there are none, and Generate says it found none.
+let breaksLoad = null;
+export function loadBreaks() {
+  breaksLoad = breaksLoad || loadScript(DATA_URL + 'breaks.js').then(() => {
+    store.breaks = (window.BREAKS || []).map(([lat, lon, kind, name, detail]) => ({ at: [lat, lon], kind, name, detail }));
+  }, () => { store.breaks = []; });
+  return breaksLoad;
 }
 
 // Load every tile overlapping bounds [s, w, n, e]: its curvy roads and ramps, and with speed,

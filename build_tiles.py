@@ -836,6 +836,85 @@ class Lights(osmium.SimpleHandler):
             self.lights.append((n.location.lat, n.location.lon))
 
 
+# Break spots: somewhere to stop mid-ride (the generator's "ride somewhere"). Food that isn't a chain, and places to
+# walk around. Not gas stations (the rider: "a gas station does not count").
+BREAK_FOOD = {"restaurant", "cafe", "fast_food", "ice_cream"}
+BREAK_HISTORIC = {"monument", "ruins", "castle", "fort", "battlefield", "archaeological_site", "mill", "lighthouse"}
+BRAND_KEYS = ("brand", "brand:wikidata", "brand:wikipedia")  # chains carry these (the name-suggestion index)
+MIN_PARK_HA = 10  # thousands of named city lots are smaller; 10 ha is 25 acres
+
+
+def break_kind(tags):
+    """What kind of break spot these tags make, and the detail shown with it: ("food", cuisine), ("park", ""),
+    ("view", ""), ("falls", ""), ("history", kind), or None."""
+    name = tags.get("name")
+    if tags.get("amenity") in BREAK_FOOD:
+        if not name or any(k in tags for k in BRAND_KEYS):
+            return None
+        return "food", (tags.get("cuisine") or "").split(";")[0].replace("_", " ")
+    if tags.get("tourism") == "viewpoint":
+        return "view", ""
+    if tags.get("waterway") == "waterfall" or tags.get("natural") == "waterfall":
+        return "falls", ""
+    if tags.get("historic") in BREAK_HISTORIC and name:
+        return "history", tags.get("historic").replace("_", " ")
+    return None
+
+
+def ring_hectares(ring):
+    """A closed ring's area in hectares (shoelace on lat/lon scaled to metres at its latitude)."""
+    pts = [(nd.lon, nd.lat) for nd in ring]
+    if len(pts) < 3:
+        return 0
+    k = math.cos(math.radians(pts[0][1]))
+    twice = sum((a[0] * b[1] - b[0] * a[1]) for a, b in zip(pts, pts[1:] + pts[:1]))
+    return abs(twice) / 2 * 111320 ** 2 * k / 1e4
+
+
+class Breaks(osmium.SimpleHandler):
+    """Break spots: [lat, lon, kind, name, detail] (tools/add_breaks.py too). Points, and areas at their middle:
+    a park by its outer rings, at least MIN_PARK_HA."""
+    def __init__(self, spots):
+        super().__init__()
+        self.spots = spots
+
+    def node(self, n):
+        kind = break_kind(n.tags)
+        if kind:
+            self.spots.append((n.location.lat, n.location.lon, kind[0], n.tags.get("name", ""), kind[1]))
+
+    def area(self, a):
+        t = a.tags
+        park = t.get("leisure") in ("park", "nature_reserve") and t.get("name")
+        kind = ("park", "") if park else break_kind(t)
+        if not kind:
+            return
+        rings = list(a.outer_rings())
+        if not rings or park and sum(ring_hectares(r) for r in rings) < MIN_PARK_HA:
+            return
+        pts = [(nd.lat, nd.lon) for r in rings for nd in r]
+        lat = (min(p[0] for p in pts) + max(p[0] for p in pts)) / 2
+        lon = (min(p[1] for p in pts) + max(p[1] for p in pts)) / 2
+        self.spots.append((lat, lon, kind[0], t.get("name", ""), kind[1]))
+
+
+def write_breaks(spots):
+    """tiles/breaks.js: every break spot, one per name and kind within about 200 m (a cafe mapped as a point and as
+    its building). Loaded when the app needs them."""
+    seen, out = set(), []
+    for lat, lon, kind, name, detail in sorted(spots):
+        key = (kind, name, round(lat * 500), round(lon * 500))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append([round(lat, 5), round(lon, 5), kind, name, detail])
+    with open(os.path.join(OUT_DIR, "breaks.js"), "w", encoding="utf-8") as f:
+        f.write("window.BREAKS = ")
+        json.dump(out, f, separators=(",", ":"), ensure_ascii=False)
+        f.write(";\n")
+    return len(out)
+
+
 def write_signals(lights):
     """tiles/signals.js: every traffic light, delta-encoded like road coords, sorted so the deltas are small.
     The app loads it when it routes, to count the stoplights on a ride."""
@@ -930,6 +1009,11 @@ def main(args):
     print(f"Search index: {len(places):,} towns, {len(search['roads']):,} road stretches")
 
     print(f"Traffic lights: {write_signals(lights):,}")
+    spots = []
+    for path in paths:
+        print(f"Break spots in {path}...", flush=True)
+        Breaks(spots).apply_file(path, locations=True, idx="flex_mem")
+    print(f"Break spots: {write_breaks(spots):,}")
 
     with open(os.path.join(OUT_DIR, "fuel.js"), "w", encoding="utf-8") as f:
         f.write("window.FUEL = ")

@@ -1,6 +1,6 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, tiersFor, APP_VERSION } from './config.js';
-import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km } from './geo.js';
+import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, BREAK_KINDS, tiersFor, APP_VERSION } from './config.js';
+import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km, cumulative, nearestIndex } from './geo.js';
 import { visible, hillLevel, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong, setMyMph, limitOf } from './roads.js';
 import * as T from './trip.js';
 import * as P from './plan.js';
@@ -17,7 +17,7 @@ import { TAGS, allTags, tagOf, setTags, setSpeed, speedFixes, restoreTags, avoid
   SPOT_KINDS, spotKind, spots, spotById, addSpot, setSpot, removeSpot, spotsForMap } from './tags.js';
 import * as A from './account.js';
 import { countUse, startUsage } from './usage.js';
-import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox, loadSignals } from './store.js';
+import { store, initData, onRoadsChanged, loadTiles, loadTilesAlong, tilesSettled, loadingCount, coverageBox, loadSignals, loadBreaks } from './store.js';
 import { MapView } from './mapview.js';
 import { icon, h, elevationChart, Sheet, toast, menu, closeMenu } from './ui.js';
 startUsage();  // first, so an open counts even if the map can't load
@@ -33,7 +33,7 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 const settings = Object.assign({
   mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, hideUnsure: false, showBlind: true, showFuel: false, rollers: false,
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
-  basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1, places: [],
+  basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1, genBreak: 'none', places: [],
 }, load(SETTINGS_KEY));
 upgradeBikes(settings);   // one picked bike (before the list) becomes your first, default bike
 // Settings saved before the highway tiers existed list only the ramp tiers: show the new ones too.
@@ -818,10 +818,10 @@ async function generateRun(run) {
   const groups = P.candidateGroups(store.roads, s, reach, worthy, e);
   for (const g of groups) g.score *= weightOf(g.ids);
   /** @type {any[]} */
-  const options = P.buildOptions(groups, s, planHours, required, e);
+  const options = await genOptions({ groups, s, e, hours: planHours, required, reach });
+  live();
   if (!options.length) {
-    gen = genState(oneWay ? `No good roads close enough to the way there for ${extraLabel(settings.genExtra)}. Try more extra time, or loosen the filters.`
-      : 'No good roads within reach. Try a longer ride, or loosen the filters.', { next: oneWay ? nextExtra() : null });
+    gen = noOptions(oneWay);
     return renderSoon();
   }
   options.forEach(o => { o.oneWay = oneWay; });
@@ -865,11 +865,8 @@ async function generateRun(run) {
   const clean = shown.filter(o => !twice(o));
   if (clean.length >= 2) shown = clean;
   // Say which ways have nothing, so an all-north list doesn't look like a bug.
-  const sides = ['north', 'east', 'south', 'west'], has = new Set(shown.filter(o => o.route).map(o => Math.floor(((o.dir + 45) % 360) / 90)));
-  const none = sides.filter((_, q) => !has.has(q));
-  if (!oneWay && !required.length && shown.length && none.length && none.length < 4) {
-    status = `${status ? status + ' ' : ''}No loops to the ${none.join(none.length > 2 ? ', ' : ' or ').replace(/, (\w+)$/, ', or $1')}: not enough good roads that way with your filters.`;
-  }
+  const empty = emptySides(shown, oneWay || required.length > 0 || settings.genBreak !== 'none');
+  if (empty) status = status ? `${status} ${empty}` : empty;
   // Best first; one way, the fastest way last, to compare with ("+14 min" on each of the others).
   const list = fastest ? shown : shown.length ? shown : options;
   list.sort((a, b) => worth(b) - worth(a));
@@ -877,6 +874,47 @@ async function generateRun(run) {
   gen = genState(status, { options: fastest ? [...list, fastest] : list, next: fastest && !list.length ? nextExtra() : null });
   if (gen.options[0].route) selectOption(0);
   else renderSoon();
+}
+
+// "No loops to the south or west: …" when some sides of the start have no loop shown. Not when the loops head where
+// they must (quiet: one way, the rider's stops, a break spot).
+function emptySides(shown, quiet) {
+  const sides = ['north', 'east', 'south', 'west'], has = new Set(shown.filter(o => o.route).map(o => Math.floor(((o.dir + 45) % 360) / 90)));
+  const none = sides.filter((_, q) => !has.has(q));
+  if (quiet || !shown.length || !none.length || none.length === 4) return '';
+  return `No loops to the ${none.join(none.length > 2 ? ', ' : ' or ').replace(/, (\w+)$/, ', or $1')}: not enough good roads that way with your filters.`;
+}
+
+// The options to route: loops (or ways there) through the rider's stops, or, for a loop with a break, one through each
+// break spot pickBreaks finds about halfway (the best the generator builds through it and the rider's stops).
+async function genOptions({ groups, s, e, hours, required, reach }) {
+  if (e || settings.genBreak === 'none') return P.buildOptions(groups, s, hours, required, e);
+  await loadBreaks();
+  return P.pickBreaks(store.breaks || [], { start: s, reach, groups, kind: settings.genBreak }).flatMap(b => {
+    const brk = { kind: b.kind, name: b.name || BREAK_KINDS[b.kind], detail: b.detail };
+    const stop = { type: 'point', label: `Break: ${brk.name}`, pts: [b.at], brk };
+    const best = P.buildOptions(groups, s, hours, [...required, stop])[0];
+    return best ? [{ ...best, brk }] : [];
+  });
+}
+
+// What Generate says when it has nothing to route.
+function noOptions(oneWay) {
+  if (oneWay) {
+    return genState(`No good roads close enough to the way there for ${extraLabel(settings.genExtra)}. Try more extra time, or loosen the filters.`,
+      { next: nextExtra() });
+  }
+  return genState(settings.genBreak === 'none' ? 'No good roads within reach. Try a longer ride, or loosen the filters.'
+    : 'No break spots about halfway out with good roads around them. Try another ride time or kind of break, or loosen the filters.');
+}
+
+// Where a routed loop's break comes: its stop, and the miles (m) and riding time (s) from the start to the route's
+// nearest point to it. Null without a break.
+function breakAt(o) {
+  const stop = o.items.find(it => it.brk);
+  if (!stop || !o.route) return null;
+  const i = nearestIndex(o.route.path, stop.pts[0]);
+  return { stop, m: cumulative(o.route.path)[i], s: W.timesAlong(o.route)[i] };
 }
 
 // How good a routed loop is: miles on curvy roads plus highway sweeps and fast ramps, scaled by the
@@ -1848,6 +1886,7 @@ function planView() {
       placeButtons(p => setEndAt(p.at, `End: ${p.name}`))) : '',
     mustInclude(),
     oneWay ? extraTime() : rideTime(),
+    breakChoice(oneWay),
     h('button.cta', { onclick: generate }, iconEl(icon.route), gen.running ? 'Stop' : oneWay ? 'Find fun ways there' : 'Generate loops'),
     gen.status ? h('p.muted.gen-status', {}, gen.status,
       !gen.running && gen.next ? h('button.btn.small.try-next', { onclick: () => { setSetting({ genExtra: gen.next }); void generate(); } }, `Try ${extraLabel(gen.next)}`) : '') : '',
@@ -1861,6 +1900,14 @@ const rideTime = (label = 'Ride time') => h('div.field', {}, h('label', {}, labe
   h('div.seg', {}, [1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12].map(t => h(`button${settings.genHours === t ? '.on' : ''}`,
     { onclick: () => setSetting({ genHours: t }) }, t === 1.5 ? '1½ h' : `${t} h`))));
 
+// Loops: a stop about halfway, somewhere to eat or walk around (BACKLOG.md, Adventures).
+const BREAK_CHOICES = { none: 'No break', food: 'Food', walk: 'Walk around', any: 'Either' };
+const breakChoice = oneWay => oneWay ? '' : h('div.field', {}, h('label', {}, 'Stop for a break'),
+  h('div.seg.break', {}, Object.entries(BREAK_CHOICES).map(([k, l]) => h(`button${settings.genBreak === k ? '.on' : ''}`,
+    { onclick: () => setSetting({ genBreak: k }) }, l))),
+  settings.genBreak === 'none' ? ''
+    : h('p.muted.small', {}, 'Somewhere about halfway: local food (no chains), or a park, lookout, waterfall or historic spot.'));
+
 // One way: how much longer than the straight way there to spend on fun roads.
 const extraLabel = t => t < 1 ? `+${Math.round(t * 60)} min` : t === 1.5 ? '+1½ h' : `+${t} h`;
 const extraTime = (label = 'Extra time for fun roads') => h('div.field', {}, h('label', {}, label),
@@ -1869,7 +1916,7 @@ const extraTime = (label = 'Extra time for fun roads') => h('div.field', {}, h('
   h('p.muted.small', {}, 'On top of the fastest way there, which is listed too, to compare.'));
 
 // The rider's own stops: every generated loop goes through them.
-const ownStops = () => trip.items.filter((it, i) => !(i === 0 && T.startOf(trip)) && !it.gen && !it.end);
+const ownStops = () => trip.items.filter((it, i) => !(i === 0 && T.startOf(trip)) && !it.gen && !it.brk && !it.end);
 
 function mustInclude() {
   const own = ownStops();
@@ -1886,6 +1933,7 @@ function mustInclude() {
 // "Northeast", or one way: "North side", "Near the straight way", "Best roads, any side", "Fastest way".
 function optionName(o) {
   if (o.way === 'fastest') return 'Fastest way';
+  if (o.brk) return `To ${o.brk.name}`;
   const compass = P.heading(o.dir)[0].toUpperCase() + P.heading(o.dir).slice(1);
   return o.way === 'near' ? 'Near the straight way' : o.way === 'any' ? 'Best roads, any side' : o.way ? `${compass} side` : compass;
 }
@@ -1911,7 +1959,17 @@ function optionCard(o, i) {
     o.lights ? ` · 🚦 ${o.lights}${o.lefts ? ` (${o.lefts} left)` : ''}` : ''),
   (o.focus ??= P.rideFocus(P.rideMix(o.route.path, store.roads))).length
     ? h('div.focus', {}, o.focus.map(f => h('span.tag.sm', { style: `--c:${f.color}` }, f.label))) : '',
-  h('div.muted.small', {}, o.items.slice(1).filter(it => !it.end).flatMap((it, k) => [k ? ', ' : '', it.gen ? it.label : h('b.own', {}, it.label)])));
+  breakLine(o),
+  h('div.muted.small', {}, o.items.slice(1).filter(it => !it.end && !it.brk).flatMap((it, k) => [k ? ', ' : '', it.gen ? it.label : h('b.own', {}, it.label)])));
+}
+
+// "Break: Wagon Works BBQ (barbecue) · mile 48, 1 h 05 min in", on a card with a break.
+function breakLine(o) {
+  const at = breakAt(o);
+  if (!at) return '';
+  const { name, detail, kind } = at.stop.brk, what = detail || (name === BREAK_KINDS[kind] ? '' : BREAK_KINDS[kind].toLowerCase());
+  return h('div.small.break-line', {}, h('b', {}, `Break: ${name}`), what ? ` (${what})` : '',
+    ` · mile ${Math.round(at.m / 1609.34)}, ${fmtDuration(at.s)} in`);
 }
 
 function tripView() {

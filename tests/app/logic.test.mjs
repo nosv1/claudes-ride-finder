@@ -7,7 +7,7 @@ import { boundsOf, distance, decodePolyline, spotOnLine, headingOnPath, nearestI
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, rollersInView, hillLevel, roadNear, roadAlong, setMyMph, limitOf } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn, sellsOctane, onePerRide } from '../../js/plan.js';
+import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn, sellsOctane, onePerRide, pickBreaks } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { bikeFor, rangeOf, leftIn, upgradeBikes, octaneOf } from '../../js/bikes.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky, lightAt } from '../../js/weather.js';
@@ -324,6 +324,24 @@ test('Google Maps export: a stop just past each turn, no stretch over 25 km with
   assert.ok(idx.some(i => i > 300 && i <= 303));
   for (let k = 1; k < idx.length; k++) assert.ok(distance(path[idx[k - 1]], path[idx[k]]) <= 25000);
   assert.equal(googleLinks(Array(25).fill([38, -94])).length, 3, '9 stops per link');
+});
+
+test('a break about halfway: the kind asked for, a good way out, with curvy roads around it, one each way', () => {
+  const start = [38.5, -94], reach = 100;  // km: spots 30-60 km out count
+  const north = d => [38.5 + d / 111.2, -94], eastBy = d => [38.5, -94 + d / (111.2 * Math.cos(38.5 * Math.PI / 180))];
+  const spot = (name, kind, at) => ({ name, kind, at, detail: '' });
+  const spots = [
+    spot('Wagon Works BBQ', 'food', north(45)), spot('Grand Bluffs', 'park', north(52)),  // the park has no roads near
+    spot('Old Mill', 'history', eastBy(40)), spot('Too Close Cafe', 'food', eastBy(10)),
+    spot('Too Far Lookout', 'view', north(-80)), spot('Lonely Falls', 'falls', [38.5, -94.55]),
+    spot('Second BBQ', 'food', north(40)),  // north again, fewer roads around: the north spot is the BBQ above
+  ];
+  const groups = [{ center: north(30), score: 100 }, { center: eastBy(42), score: 50 }, { center: north(22), score: 20 }];  // the last: within 20 km of the second BBQ only
+  const names = kind => pickBreaks(spots, { start, reach, groups, kind }).map(b => b.name);
+  assert.deepEqual(names('food'), ['Second BBQ']);
+  assert.deepEqual(names('walk'), ['Old Mill']);
+  assert.deepEqual(names('any'), ['Second BBQ', 'Old Mill']);
+  assert.deepEqual(pickBreaks([], { start, reach, groups, kind: 'any' }), []);
 });
 
 test('the generator shows each ride once: not the same roads twice, nor the same route with a road it rides anyway', () => {
