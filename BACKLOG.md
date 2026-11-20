@@ -29,8 +29,10 @@ Ideas that came up, roughly in order of how much they'd help.
   and every rebuild adds to git history. Slim the speed-limit layer, then move tiles off git (e.g.
   Cloudflare R2).
 - **Routing at scale, $0** (2026-11-20: Stadia Maps' free plan now backs up the public server; see FEATURES.md,
-  Routing). Still open: cut the 40–150 requests a Generate sends (fewer credits, less load on FOSSGIS); a rider's
-  own free Stadia key, pasted in Settings, for anyone who rides a lot; and asking Stadia whether a donate button
+  Routing). Requests per Generate cut by about a quarter 2026-11-20 (532 → 412 over seven test Generates; FEATURES.md,
+  Fewer requests). Still open there: one option in six ends up the same loop as another and is polished anyway (stop
+  once it matches one already done); a round of fixes where nothing helps costs 3–4 routes (seen 4 times in a 1.5 h
+  run). Also open: a rider's own free Stadia key, pasted in Settings, for anyone who rides a lot; and asking Stadia whether a donate button
   keeps the free plan's "non-commercial" (no ads, no paid tier: should be fine, but ask). Ruled out by the rider:
   paying, and hosting on his PC. Routing in the browser would need no server, but older phones and iPhone memory
   limits make it risky.
