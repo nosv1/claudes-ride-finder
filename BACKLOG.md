@@ -131,8 +131,6 @@ Ideas that came up, roughly in order of how much they'd help.
   `highway=traffic_signals` + `enforcement=traffic_signals`. All nodes, so `tools/add_signals.py`'s nodes-only pass can
   collect them too, into their own file. Show which way a camera faces when mapped. Coverage is whatever volunteers
   have mapped, so say so ("mapped cameras", not "all cameras").
-- **Sunset and deer hour**: warn when a ride ends after dark (Open-Meteo has sunset), and flag dusk on
-  wooded back roads, when deer are out. Shown with the weather.
 - **Roads you've ridden**: import GPX from a ride (or record one in Ride mode) and mark those roads, so
   the map shows what's new to you and the generator can prefer it.
 - **Adventures (make it a game)**: a reason to go ride, as "go see this, by these roads".
