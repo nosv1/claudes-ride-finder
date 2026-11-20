@@ -151,24 +151,27 @@ test('the voice refuses what it can’t say, unknown voices, and other sites, be
   assert.equal((await call('POST', '/speak', { body: { text: 'onto Missouri D.', voice: 'helena' }, origin: 'https://evil.example' })).status, 403);
 });
 
-test('usage: the app adds counts by day, anyone can read them, and only known events in sane amounts get in', async () => {
-  const start = (await call('GET', '/usage', { origin: null })).body;
+test('usage: the app adds counts by day, only the owner can read them, and only known events in sane amounts get in', async () => {
+  const read = key => fetch(API + '/usage', { headers: { Origin: ORIGIN, ...(key ? { Authorization: 'Bearer ' + key } : {}) } })
+    .then(async r => ({ status: r.status, body: await r.json() }));
+  assert.equal((await read(null)).status, 401);
+  assert.equal((await read('test-usage-ke')).status, 401);
+  const start = (await read('test-usage-key')).body;
   assert.ok(Number.isInteger(start.today));
   const was = start.days[start.today] || {};
   assert.equal((await call('POST', '/usage', { body: { open: 1, 'route-stadia': 40 } })).status, 200);
-  assert.equal((await call('POST', '/usage', { body: { open: 2, generate: 1 } })).status, 200);
-  // Refused: unknown events, fractions, zero or negative, too many at once, a list, other sites.
-  for (const body of [{ visits: 1 }, { open: 1.5 }, { open: 0 }, { open: -3 }, { open: 1001 }, ['open'], {}]) {
+  assert.equal((await call('POST', '/usage', { body: { open: 1, generate: 2 } })).status, 200);
+  // Refused: unknown events, fractions, zero or negative, more than a note can hold, a list, nothing, other sites.
+  for (const body of [{ visits: 1 }, { open: 0.5 }, { generate: 0 }, { ride: -3 }, { open: 2 }, { generate: 51 }, { 'route-none': 1001 }, ['open'], {}]) {
     assert.equal((await call('POST', '/usage', { body })).status, 400, JSON.stringify(body));
   }
   assert.equal((await call('POST', '/usage', { body: { open: 1 }, origin: 'https://evil.example' })).status, 403);
-  const later = await call('GET', '/usage', { origin: null });
-  const now = later.body.days[later.body.today];
-  assert.equal(now.open, (was.open || 0) + 3);
+  const later = (await read('test-usage-key')).body, now = later.days[later.today];
+  assert.equal(now.open, (was.open || 0) + 2);
   assert.equal(now['route-stadia'], (was['route-stadia'] || 0) + 40);
-  assert.equal(now.generate, (was.generate || 0) + 1);
+  assert.equal(now.generate, (was.generate || 0) + 2);
   assert.equal(now.visits, undefined);
   // A sign-in clears old limit counts; usage stays.
   await signIn('usage-rider');
-  assert.equal((await call('GET', '/usage', { origin: null })).body.days[later.body.today].open, now.open);
+  assert.equal((await read('test-usage-key')).body.days[later.today].open, now.open);
 });

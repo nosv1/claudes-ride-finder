@@ -197,10 +197,12 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 
 ## Usage page
 
-- Open the app on the live site, use it (Generate once), switch away from the tab or app. Within a minute or so
-  (the page is cached up to 5 min), `usage/` shows today's opens and Generates up by that much, and routes split by
+- `usage/` with no key (a private window): says it's private and shows no numbers. With a wrong `#key=`: says
+  the key didn't work.
+- Open the app on the live site, use it (Generate once), switch away from the tab or app. `usage/#key=<yours>`
+  then shows today's opens and Generates up by that much, and routes split by
   server. On a phone the table scrolls sideways inside its box, not the page.
-- About → Your data says what's counted and links to the usage page.
+- About → Your data says what's counted, with no link to the private page.
 
 ## Looks and layout
 

@@ -576,12 +576,16 @@ colored road), Add a stop here, Street View here.
 - **Persistence:** the ride saves to localStorage on every change. A ride saved by the original app is picked up once.
 
 **Usage page (2026-11-20; `usage/`, `js/usage.js`, `js/usage-page.js`, `/usage` in `worker/`)**
-- `nosv1.github.io/claudes-ride-finder/usage/`, public: the last 30 days' totals (app opens, Generates, Ride mode
+- `nosv1.github.io/claudes-ride-finder/usage/`, **the owner only** (public counts invite people to push them up): the
+  API returns them only with `USAGE_KEY`, a Worker secret (`npx wrangler@4 secret put USAGE_KEY` in `worker/`). Open
+  `usage/#key=<it>` once per device; the page keeps it in that browser and takes it out of the address bar. Without
+  it the page says it's private. Not indexed by search engines. The last 30 days' totals (app opens, Generates, Ride mode
   starts, routes and which server answered: public, Stadia, OSRM, or none) and a table by day (UTC).
 - The app counts in memory and sends one note (`{ event: n }`, by `sendBeacon`, plain text so there's no preflight)
   each time it goes to the background, so a Generate's many routes cost one request. Counts only, never who: no
-  account, place, or address is sent or kept. The About page says so and links to the page.
-- The API takes only the known events, whole numbers 1–1000 each, from the site (300 notes a day per address, by
+  account, place, or address is sent or kept. The About page says what's counted.
+- The API takes only the known events, in whole numbers up to what one note can hold (1 open, 50 Generates, 20 Ride
+  modes, 1,000 routes of each kind), from the site (100 notes a day per address, by
   the same daily hash as the other limits). Counts from a local copy of the app (tests, trying a change) are dropped
   on the real API. Kept 90 days, in the `counts` table as `use:<event>:<day>` (sign-ins no longer clear those).
 - An open counts before the map loads, so a failed map load still shows up.

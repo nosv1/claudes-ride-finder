@@ -19,7 +19,7 @@
 //   DELETE /links/:id                                  → {}                    its owner only
 //   POST   /speak      { text, voice, format? }        → audio/mpeg (or wav)   anyone: Ride mode's natural voice
 //   POST   /usage      { <event>: n, ... }             → {}                    anyone, from the site: usage counts
-//   GET    /usage                                     → { today, days }       anyone: the counts, for the usage page
+//   GET    /usage      (Bearer USAGE_KEY)             → { today, days }       the owner only: the counts, for usage/
 //
 // A link's id is a hash of the code in the link, which the service never sees (the code also makes the key that
 // unlocks it). Signed-in calls send "Authorization: Bearer <token>"; the database keeps only a hash of the token, and
@@ -32,7 +32,8 @@
 //
 // /usage keeps how often things happen in the app, by day: opens, Generates, Ride mode, and which router answered.
 // Counts only, never who: nothing about the rider or the request is kept (the per-address limit uses the same daily
-// hash as the other limits). Kept USAGE_KEEP days.
+// hash as the other limits). Kept USAGE_KEEP days. Reading them takes USAGE_KEY, a Worker secret only the owner has
+// (npx wrangler@4 secret put USAGE_KEY): counts anyone can see are counts someone wants to push up.
 
 const SITE_ORIGINS = ['https://nosv1.github.io'];
 const LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;  // the tests, and trying the app on the PC
@@ -40,15 +41,16 @@ const LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;  // the tests
 const MAX_TRIP = 16 * 1024, MAX_NAME = 600, MAX_OWNER = 1024, MAX_DATA = 400 * 1024, MAX_RIDES = 300;
 const SESSION_DAYS = 365;
 // Per day: saves per account, new share links per address, sign-ins per address.
-const LIMITS = { save: 1000, link: 200, login: 50, speak: 400, usage: 300 };
+const LIMITS = { save: 1000, link: 200, login: 50, speak: 400, usage: 100 };
 const VOICES = ['pandora', 'draco', 'helena', 'thalia', 'apollo', 'orion', 'luna', 'asteria', 'athena', 'arcas', 'zeus'];
 const SPEAK_CHARS = 2000;  // a day; Aura-2 is 2,727 neurons per 1,000 characters, of 10,000 free a day per account
 const MAX_SPEAK = 120;
 const SPOKEN = /^[\p{L}\p{N} .,'’&!?:;()/-]+$/u;
 const DAY = 86400e3;
-// What /usage counts (js/usage.js sends them), how many of one a single note may add, and the days kept and shown.
-const USAGE_EVENTS = ['open', 'generate', 'ride', 'route-fossgis', 'route-stadia', 'route-osrm', 'route-none'];
-const USAGE_MAX = 1000, USAGE_KEEP = 90, USAGE_SHOW = 30;
+// What /usage counts (js/usage.js sends them), the most of each one note may add (an app sends a note each time it's
+// hidden, and opens once), and the days kept and shown.
+const USAGE_MAX = { open: 1, generate: 50, ride: 20, 'route-fossgis': 1000, 'route-stadia': 1000, 'route-osrm': 1000, 'route-none': 1000 };
+const USAGE_EVENTS = Object.keys(USAGE_MAX), USAGE_KEEP = 90, USAGE_SHOW = 30;
 
 export default {
   async fetch(req, env) {
@@ -95,7 +97,7 @@ async function route(req, env) {
   if (what === 'links' && !id && m === 'POST') return makeLink(req, env);
   if (what === 'speak' && !id && m === 'POST') return speak(req, env);
   if (what === 'usage' && !id && m === 'POST') return addUsage(req, env);
-  if (what === 'usage' && !id && m === 'GET') return usage(db);
+  if (what === 'usage' && !id && m === 'GET') return usage(req, env);
 
   const user = await signedIn(req, db);
   if (what === 'logout' && m === 'POST') {
@@ -219,13 +221,13 @@ async function speak(req, env) {
 
 // ---------- usage ----------
 
-// A note from the app: { event: how many } since its last note. Only known events, whole numbers up to USAGE_MAX.
+// A note from the app: { event: how many } since its last note. Only known events, whole numbers up to their USAGE_MAX.
 // A copy of the app on a PC (the tests, trying a change) isn't real use: taken and dropped, except by a local API.
 async function addUsage(req, env) {
   const db = env.DB, body = await readJson(req);
   const adds = body && typeof body === 'object' && !Array.isArray(body) ? Object.entries(body) : null;
   if (!adds || !adds.length || adds.length > USAGE_EVENTS.length
-    || !adds.every(([e, n]) => USAGE_EVENTS.includes(e) && Number.isInteger(n) && n > 0 && n <= USAGE_MAX)) {
+    || !adds.every(([e, n]) => USAGE_EVENTS.includes(e) && Number.isInteger(n) && n > 0 && n <= USAGE_MAX[e])) {
     throw new HttpError(400, 'That request didn’t make sense.');
   }
   if (LOCAL_ORIGIN.test(req.headers.get('Origin') || '') && env.TEST_LOGIN !== '1') return json({});
@@ -238,16 +240,18 @@ async function addUsage(req, env) {
 }
 
 // The last USAGE_SHOW days of counts: { today, days: { <day number>: { <event>: n } } }, day numbers since 1970 (UTC).
-async function usage(db) {
-  const today = Math.floor(Date.now() / DAY), days = {};
+// The owner only: compared as hashes, so the time taken says nothing about how much of the key was right.
+async function usage(req, env) {
+  if (!env.USAGE_KEY) throw new HttpError(503, 'The usage page isn’t set up yet.');
+  const given = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
+  if (!given || await sha256(given) !== await sha256(env.USAGE_KEY)) throw new HttpError(401, 'That usage key didn’t work.');
+  const db = env.DB, today = Math.floor(Date.now() / DAY), days = {};
   const { results } = await db.prepare("SELECT k, n, day FROM counts WHERE k LIKE 'use:%' AND day > ?").bind(today - USAGE_SHOW).all();
   for (const { k, n, day } of results) {
     const event = k.split(':')[1];
     if (USAGE_EVENTS.includes(event)) (days[day] ??= {})[event] = n;
   }
-  const res = json({ today, days });
-  res.headers.set('Cache-Control', 'public, max-age=300');
-  return res;
+  return json({ today, days });
 }
 
 // ---------- signing in ----------
