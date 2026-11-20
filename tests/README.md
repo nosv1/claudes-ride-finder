@@ -14,7 +14,7 @@ Before every commit, also `npm run check`: lint with zero warnings and the type 
 | Command | What it checks |
 |---|---|
 | `node --test tests/app/logic.test.mjs` | The logic modules against the real data: curve classes, filters, stretches, trips (where an added road goes, which end), loop orientation, doubled-back miles, share links (including the original app's), fuel plan, Google stops, the generator (with and without must-include roads), GPX, search, what a busy router says (and that it isn't asked twice), roller coasters (off unless turned on, never in Best roads) |
-| `node --test tests/app/browser.test.mjs` | The app in headless Edge/Chrome over the DevTools protocol: roads draw, MO-150 is a sweeper, tapping a road, legend filters and the key's explanations, search, dragging stops (real mouse and touch input), Add road, share links, phone layout, zoomed out (no roads drawn, the states with roads shaded). `RF_NETWORK=1` adds the generator and loops around a chosen road |
+| `node --test tests/app/browser.test.mjs` | The app in headless Edge/Chrome over the DevTools protocol: roads draw, MO-150 is a sweeper, tapping a road, legend filters and the key's explanations, search, dragging stops (real mouse and touch input), Add road, share links, phone layout, zoomed out (no roads drawn, the states with roads shaded, hovering lights nothing). `RF_NETWORK=1` adds the generator and loops around a chosen road |
 
 **Accounts** (`worker/`, `js/account.js`; both start a local copy of the API with `wrangler dev`, made-up accounts,
 nothing touches the real one):

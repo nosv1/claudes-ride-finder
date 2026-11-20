@@ -283,7 +283,8 @@ screen pixels (20–400 m). The tag goes after 5 s. (It used to be a toast at th
   - Street View faces the way the planned route travels there, when the route uses this road (within 40 m).
     Otherwise it faces the way the road is drawn in OSM: the direction of travel on a ramp, but arbitrary on a
     two-way road (it looked backwards half the time), so two-way roads get a ⇄ button for the other way.
-- Hovering a road on the map (desktop) outlines its whole stretch.
+- Hovering a road on the map (desktop) outlines its whole stretch, from zoom 9: zoomed out the roads are too close
+  together to point at, and it lit one after another and lagged. The map looks at most once a frame as the mouse moves.
 
 **Long-press the map** (right-click on desktop): Start a ride here, **Ride <road> end to end** (when the spot is on a
 colored road), Add a stop here, Street View here.

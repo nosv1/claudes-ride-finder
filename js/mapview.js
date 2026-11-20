@@ -525,11 +525,17 @@ export class MapView {
     });
 
     if (matchMedia('(hover: hover)').matches) {
-      let last = null;
-      map.on('mousemove', e => {
-        const id = roadAt(e.point, 5);
-        map.getCanvas().style.cursor = id != null || map.queryRenderedFeatures(box(e.point, 6), { layers: ['fuel', 'route-fuel', 'spots'] }).length ? 'pointer' : '';
+      // At most one look per frame (mousemove comes faster than the map draws), and roads only from MAP_ZOOM.hover.
+      let last = null, pt = null;
+      const look = () => {
+        const id = map.getZoom() >= MAP_ZOOM.hover ? roadAt(pt, 5) : null;
+        map.getCanvas().style.cursor = id != null || map.queryRenderedFeatures(box(pt, 6), { layers: ['fuel', 'route-fuel', 'spots'] }).length ? 'pointer' : '';
         if (id !== last) { last = id; this.emit('hover', id); }
+        pt = null;
+      };
+      map.on('mousemove', e => {
+        if (!pt) requestAnimationFrame(look);
+        pt = e.point;
       });
     }
 

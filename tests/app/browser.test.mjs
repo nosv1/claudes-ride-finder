@@ -65,6 +65,27 @@ test('MO-150 east of Lee\'s Summit shows as a sweeper', async () => {
   assert.deepEqual(r, { cls: 0, speed: 55 });
 });
 
+test('hovering a road lights it up, but not zoomed out, where roads are too close together to point at', async () => {
+  await showMo150();
+  const lit = `JSON.stringify(RF.mapView.map.getFilter('highlight')).includes(${MO150})`;
+  // A mouse move over the road's third point, or (off) 80 px from it.
+  const hover = (off = 0) => page.eval(`(() => {
+    const m = RF.mapView.map, r = RF.store.byId.get(${MO150}), p = m.project([r.geom[2][1], r.geom[2][0]]), c = m.getCanvas().getBoundingClientRect();
+    m.getCanvasContainer().dispatchEvent(new MouseEvent('mousemove', { clientX: c.left + p.x + ${off}, clientY: c.top + p.y + ${off}, bubbles: true }));
+  })()`);
+  await hover();
+  await page.waitFor(lit, 3000);
+  await hover(80);
+  await page.waitFor(`!${lit}`, 3000);
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.33, 38.835], zoom: 8 })");
+  await sleep(300);
+  await hover();
+  await sleep(300);
+  assert.ok(await page.eval("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).length > 0"), 'roads are drawn there');
+  assert.equal(await page.eval("JSON.stringify(RF.mapView.map.getFilter('highlight'))"), '["in",["get","i"],["literal",[]]]',
+    'zoomed out, hovering lights nothing');
+});
+
 test('tapping a road opens its card at that spot, and Add to ride adds it', async () => {
   await showMo150();
   await page.eval(`(() => { const r = RF.store.byId.get(${MO150}); RF.mapView.emit('road', r.id, r.geom[2]); })()`);
