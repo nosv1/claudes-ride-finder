@@ -347,9 +347,13 @@ colored road), Add a stop here, Street View here.
 - **No U-turns at stops** (Valhalla `break_through`; the start and finish stay `break`), so a route doesn't ride
   back down a road it just finished. If Valhalla answers with no route that way (a dead end; HTTP 400), it's asked
   again allowing them. Not when it's busy (429, 502–504, or no answer in 30 s): that would double the load.
+- **Two Valhalla servers** (2026-11-20): FOSSGIS's free public one first, then Stadia Maps' free plan when it's busy
+  or down. Stadia allows the site by its address (no key in the page) and refuses, rather than bills, past its
+  200,000 credits a month. A server that was busy or down is skipped for 10 minutes, so a Generate's requests don't
+  each wait on it. A 400 (no route) goes straight to OSRM: the other server would say the same.
 - Falls back to OSRM (fastest only, with a note shown) if Valhalla fails. OSRM can't avoid motorways.
-- **When neither answers**, the message says why, judged by Valhalla's failure: offline ("Planning a route needs
-  signal"), busy ("The free route server is busy right now… Give it a minute"), or just unreachable. The same
+- **When none answers**, the message says why, judged by Valhalla's failure: offline ("Planning a route needs
+  signal"), busy ("The free route servers are busy right now… Give it a minute"), or just unreachable. The same
   message shows for a ride, for the generator (when no loop at all could be routed) and for Try fixing.
 - Arrows along the route line show the direction of travel (zoom 10+).
 

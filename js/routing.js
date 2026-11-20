@@ -1,6 +1,7 @@
-// Routing: Valhalla's motorcycle profile, falling back to OSRM's plain fastest route.
+// Routing: Valhalla's motorcycle profile (the public server, then Stadia Maps), falling back to OSRM's plain fastest route.
 import { ROUTING } from './config.js';
 import { decodePolyline } from './geo.js';
+import { check } from './check.js';
 
 // A busy server can answer with an HTML error page, so the status counts even when the body isn't JSON.
 async function fetchJson(url, ms) {
@@ -23,7 +24,7 @@ const kindOf = e => globalThis.navigator?.onLine === false ? 'offline' : e.name 
 // What to tell the rider when no route came back.
 export function routerTrouble() {
   if (trouble === 'offline') return 'You’re offline. Planning a route needs signal; the map and roads you’ve looked at still work.';
-  if (trouble === 'busy') return 'The free route server is busy right now (it’s shared by everyone who uses it). Give it a minute and try again.';
+  if (trouble === 'busy') return 'The free route servers are busy right now (they’re shared by everyone who uses them). Give it a minute and try again.';
   return 'Couldn’t reach the routing servers. Try again in a minute.';
 }
 
@@ -41,7 +42,7 @@ async function cachedJson(url, ms) {
 // The public server takes 10 locations per request, so longer trips go in overlapping chunks.
 // useHighways: 1 fastest … 0 back roads only. Unless uTurns, the route may not turn around at a
 // stop (Valhalla's break_through), so it doesn't ride back down a road it just finished.
-async function valhalla(pts, useHighways, uTurns) {
+async function valhalla(url, pts, useHighways, uTurns) {
   const result = { path: [], meters: 0, seconds: 0, maneuvers: [] };
   for (let i = 0; i < pts.length - 1; i += ROUTING.valhallaMax - 1) {
     const chunk = pts.slice(i, i + ROUTING.valhallaMax);
@@ -61,7 +62,7 @@ async function valhalla(pts, useHighways, uTurns) {
       costing_options: { motorcycle: { use_highways: useHighways, use_trails: 0 } },
       units: 'miles',
     };
-    const data = await cachedJson(`${ROUTING.valhalla}?json=${encodeURIComponent(JSON.stringify(req))}`, 30000);
+    const data = await cachedJson(`${url}?json=${encodeURIComponent(JSON.stringify(req))}`, 30000);
     for (const leg of data.trip.legs) {
       const offset = result.path.length;
       for (const m of leg.maneuvers) {
@@ -88,26 +89,50 @@ async function osrm(pts) {
   return { path: r.geometry.coordinates.map(([lon, lat]) => [lat, lon]), meters: r.distance, seconds: r.duration, fallback: true };
 }
 
-// Null if neither router answers. If Valhalla answers but finds no route without turning around
-// at a stop (a dead end, say: it says so with a 400), it's asked again allowing that. Not when it's
-// busy: asking again would only add to the load.
-export async function fetchRoute(pts, useHighways) {
+// Valhalla servers that were busy or down lately: server url → when to ask it again. One entry a server at most.
+const resting = new Map();
+
+// Forget which servers were busy or down (for the tests).
+export function resetRouters() {
+  resting.clear();
+}
+
+// One Valhalla server's route. If it finds none without turning around at a stop (a dead end, say: it says so with a
+// 400), it's asked again allowing that. Not when it's busy: asking again would only add to the load.
+async function valhallaRoute(url, pts, useHighways) {
   try {
-    try {
-      return await valhalla(pts, useHighways, false);
-    } catch (e) {
-      if (e.status !== 400) throw e;
-      return await valhalla(pts, useHighways, true);
-    }
+    return await valhalla(url, pts, useHighways, false);
   } catch (e) {
-    console.warn('Valhalla failed, trying OSRM', e);
+    if (e.status !== 400) throw e;
+    return await valhalla(url, pts, useHighways, true);
+  }
+}
+
+// Null if no router answers. Each Valhalla server in turn, skipping one that was busy or down in the last restMs, then
+// OSRM. A server that finds no route (400) isn't the trouble, and the next would say the same: straight to OSRM.
+export async function fetchRoute(pts, useHighways) {
+  if (!check(Array.isArray(pts) && pts.length >= 2, 'a route has at least two points')) return null;
+  let failed = null;
+  for (const { name, url } of ROUTING.valhallas) {
+    if ((resting.get(url) ?? 0) > Date.now()) continue;
     try {
-      return await osrm(pts);
-    } catch (e2) {
-      console.warn(e2);
-      trouble = kindOf(e);  // Valhalla is the one that matters: OSRM is only a stopgap
-      return null;
+      const r = await valhallaRoute(url, pts, useHighways);
+      resting.delete(url);
+      return r;
+    } catch (e) {
+      console.warn(`Valhalla (${name}) failed`, e);
+      failed ??= e;
+      if (e.status === 400) break;
+      resting.set(url, Date.now() + ROUTING.restMs);
     }
+  }
+  try {
+    return await osrm(pts);
+  } catch (e) {
+    console.warn('OSRM failed too', e);
+    // Valhalla is the one that matters (OSRM is only a stopgap). Every server resting counts as busy.
+    trouble = failed ? kindOf(failed) : 'busy';
+    return null;
   }
 }
 

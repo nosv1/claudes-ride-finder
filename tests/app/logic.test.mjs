@@ -12,7 +12,7 @@ import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { bikeFor, rangeOf, leftIn, upgradeBikes, octaneOf } from '../../js/bikes.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky } from '../../js/weather.js';
 import { flight, turn, nextTurn, gradeAt, turnOnto, turnArrow } from '../../js/fly.js';
-import { fetchRoute, routerTrouble } from '../../js/routing.js';
+import { fetchRoute, routerTrouble, resetRouters } from '../../js/routing.js';
 
 const TILES = new URL('../../tiles/', import.meta.url);
 const haveTiles = existsSync(new URL('index.js', TILES));
@@ -660,13 +660,16 @@ test('fly-through: the turn tag names the road turned onto, with an arrow the ri
   assert.equal(turnArrow(22), '↑');
 });
 
-// The routers stubbed: Valhalla answers with status `valhalla` (an HTML error page, as a busy server sends), OSRM with `osrm`.
-async function routeWith(valhalla, osrm) {
-  const asked = { valhalla: 0, osrm: 0 }, real = globalThis.fetch, warn = console.warn;
+// The routers stubbed: each answers with the status given (an HTML error page, as a busy server sends; 200 is a real
+// route). Counts the requests each one gets.
+const ROUTE_OK = { trip: { legs: [{ maneuvers: [], shape: '' }], summary: { length: 1, time: 60 } } };
+async function routeWith({ fossgis, stadia, osrm }) {
+  const asked = { fossgis: 0, stadia: 0, osrm: 0 }, real = globalThis.fetch, warn = console.warn;
   globalThis.fetch = async url => {
-    const which = String(url).includes('osrm') ? 'osrm' : 'valhalla';
+    const u = String(url), which = u.includes('osrm') ? 'osrm' : u.includes('stadiamaps') ? 'stadia' : 'fossgis';
     asked[which]++;
-    return new Response('<html>error</html>', { status: which === 'osrm' ? osrm : valhalla });
+    const status = { fossgis, stadia, osrm }[which];
+    return status === 200 ? Response.json(ROUTE_OK) : new Response('<html>error</html>', { status });
   };
   console.warn = () => {};
   try {
@@ -680,17 +683,33 @@ async function routeWith(valhalla, osrm) {
 }
 
 test('a busy router gets a friendly message, and isn\'t asked again allowing U-turns', async () => {
-  const busy = await routeWith(503, 429);
+  resetRouters();
+  const busy = await routeWith({ fossgis: 503, stadia: 429, osrm: 429 });
   assert.equal(busy.r, null);
-  assert.equal(busy.asked.valhalla, 1);
+  assert.deepEqual(busy.asked, { fossgis: 1, stadia: 1, osrm: 1 });
   assert.match(routerTrouble(), /busy right now/);
-  const tooMany = await routeWith(429, 429);
-  assert.equal(tooMany.asked.valhalla, 1);
+  // Both Valhalla servers are resting now: only OSRM is asked, and it's still "busy".
+  const resting = await routeWith({ fossgis: 200, stadia: 200, osrm: 429 });
+  assert.deepEqual(resting.asked, { fossgis: 0, stadia: 0, osrm: 1 });
   assert.match(routerTrouble(), /busy right now/);
-  // No route without a U-turn (Valhalla says 400): asked again allowing one. Any other failure is just a failure.
-  const noRoute = await routeWith(400, 500);
-  assert.equal(noRoute.asked.valhalla, 2);
+  // No route without a U-turn (Valhalla says 400): asked again allowing one, then OSRM. Stadia would say the same.
+  resetRouters();
+  const noRoute = await routeWith({ fossgis: 400, stadia: 200, osrm: 500 });
+  assert.deepEqual(noRoute.asked, { fossgis: 2, stadia: 0, osrm: 1 });
   assert.match(routerTrouble(), /Couldn’t reach the routing servers/);
+  resetRouters();
+});
+
+test('the public router busy: Stadia Maps answers, and is asked first until the public one has rested', async () => {
+  resetRouters();
+  const first = await routeWith({ fossgis: 429, stadia: 200, osrm: 500 });
+  assert.ok(first.r && !first.r.fallback, 'a Valhalla route, not OSRM\'s');
+  assert.deepEqual(first.asked, { fossgis: 1, stadia: 1, osrm: 0 });
+  const next = await routeWith({ fossgis: 200, stadia: 200, osrm: 500 });
+  assert.deepEqual(next.asked, { fossgis: 0, stadia: 1, osrm: 0 });
+  resetRouters();
+  const rested = await routeWith({ fossgis: 200, stadia: 200, osrm: 500 });
+  assert.deepEqual(rested.asked, { fossgis: 1, stadia: 0, osrm: 0 });
 });
 
 test('roller coasters: straight hilly back roads, shown only when asked for, and never in Best rides', () => {

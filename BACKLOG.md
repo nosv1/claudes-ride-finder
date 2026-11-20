@@ -28,15 +28,14 @@ Ideas that came up, roughly in order of how much they'd help.
   3 states (about 70% is the speed-limit layer), so the whole US would be near GitHub Pages' 1 GB limit,
   and every rebuild adds to git history. Slim the speed-limit layer, then move tiles off git (e.g.
   Cloudflare R2).
-- **Our own router, once other people use the site**: routing runs on the free public Valhalla server
-  (FOSSGIS), which has no key and no published limit, only fair use. One Generate sends about 40 requests
-  for 1½ h and about 150 for 6 h (checked 2026-11-03). It already slows each request down when two are sent at
-  once, so a handful of riders generating at once could get the site throttled or blocked. The OSRM demo
-  fallback is 1 request a second and not meant for apps. Options: run Valhalla ourselves (Docker, built
-  from the same `.osm.pbf` files in `raw/`, on the PC or a small cloud server), or a hosted Valhalla with
-  a free tier (Stadia Maps; check its current limits and price). Either way, keep the motorcycle costing
-  and point `valhalla` in `js/config.js` at it. Photon search and Open-Meteo weather are fine for a group
-  of riders as they are.
+- **Routing at scale, $0** (2026-11-20: Stadia Maps' free plan now backs up the public server; see FEATURES.md,
+  Routing). Still open: cut the 40–150 requests a Generate sends (fewer credits, less load on FOSSGIS); a rider's
+  own free Stadia key, pasted in Settings, for anyone who rides a lot; and asking Stadia whether a donate button
+  keeps the free plan's "non-commercial" (no ads, no paid tier: should be fine, but ask). Ruled out by the rider:
+  paying, and hosting on his PC. Routing in the browser would need no server, but older phones and iPhone memory
+  limits make it risky.
+- **Rerouting while riding is only "Leave it"** (asks for a way back onto the ride). A full navigation app would
+  reroute on its own; not decided whether that's the goal.
 - **Speed limits next** (Your limit and Edit in OpenStreetMap went in 2026-11-06, for NE Strother Rd, SW Scherer Rd and
   Raytown Rd near Lee's Summit, all missing from Best rides at 45+):
   - (Done 2026-11-06: the better town guess, an edge-of-town 45 when few streets meet a road; FEATURES.md.)

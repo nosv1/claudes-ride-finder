@@ -157,8 +157,10 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - iPhone Safari: "Install app" shows how (Share → Add to Home Screen).
 - Paste the site's link into a text or Discord: the card shows the title, the line under it and the roads image.
   (Previews are cached, so a changed image can take a while to show.)
-- With the router down or busy (DevTools → Network → block `valhalla1.openstreetmap.de` and `router.project-osrm.org`),
-  a ride says why it couldn't route, and so does Generate.
+- On the live site, block only `valhalla1.openstreetmap.de` (DevTools → Network): a ride still routes, through
+  `api.stadiamaps.com`, with no OSRM note. Stadia allows only the site's address, so a local copy can't check this.
+- With the routers down or busy (block `valhalla1.openstreetmap.de`, `api.stadiamaps.com` and
+  `router.project-osrm.org`), a ride says why it couldn't route, and so does Generate.
 
 ## Accounts
 

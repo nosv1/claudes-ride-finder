@@ -1251,7 +1251,7 @@ function aboutView() {
         credit('Road data', '© ', link('https://www.openstreetmap.org/copyright', 'OpenStreetMap contributors'), ', under the Open Database License'),
         credit('Basemap and imagery', '© Esri and its data providers'),
         credit('Elevation and 3D terrain', link('https://registry.opendata.aws/terrain-tiles/', 'AWS Terrain Tiles'), ', from USGS and other public sources'),
-        credit('Routing', link('https://valhalla.github.io/valhalla/', 'Valhalla'), ' on the free ', link('https://www.fossgis.de/', 'FOSSGIS'), ' server, with ', link('https://project-osrm.org/', 'OSRM'), '’s demo server as a backup'),
+        credit('Routing', link('https://valhalla.github.io/valhalla/', 'Valhalla'), ' on the free ', link('https://www.fossgis.de/', 'FOSSGIS'), ' server, then ', link('https://stadiamaps.com/', 'Stadia Maps'), ' when it’s busy, with ', link('https://project-osrm.org/', 'OSRM'), '’s demo server as a last resort'),
         credit('Place search', link('https://photon.komoot.io/', 'Photon'), ' by Komoot'),
         credit('Weather', link('https://open-meteo.com/', 'Weather data by Open-Meteo.com'), ' (CC BY 4.0)'),
         credit('Map', link('https://maplibre.org/', 'MapLibre GL JS'), ', with fonts from ', link('https://openfreemap.org/', 'OpenFreeMap')))),
