@@ -30,9 +30,9 @@ Ideas that came up, roughly in order of how much they'd help.
   Cloudflare R2).
 - **Routing at scale, $0** (2026-11-20: Stadia Maps' free plan now backs up the public server; see FEATURES.md,
   Routing). Requests per Generate cut by about a quarter 2026-11-20 (532 → 412 over seven test Generates; FEATURES.md,
-  Fewer requests). Still open there: one option in six ends up the same loop as another and is polished anyway (stop
-  once it matches one already done); a round of fixes where nothing helps costs 3–4 routes (seen 4 times in a 1.5 h
-  run). Also open: a rider's own free Stadia key, pasted in Settings, for anyone who rides a lot; and asking Stadia whether a donate button
+  Fewer requests). Checked and not worth doing: stopping an option that turns into the same loop as another (after
+  the first fit every option works from the same roads, so its routes are already asked for: no requests saved).
+  Still open there: a round of fixes where nothing helps costs 3–4 routes (seen 4 times in a 1.5 h run). Also open: a rider's own free Stadia key, pasted in Settings, for anyone who rides a lot; and asking Stadia whether a donate button
   keeps the free plan's "non-commercial" (no ads, no paid tier: should be fine, but ask). Ruled out by the rider:
   paying, and hosting on his PC. Routing in the browser would need no server, but older phones and iPhone memory
   limits make it risky.
@@ -50,11 +50,8 @@ Ideas that came up, roughly in order of how much they'd help.
     given Your limit without switching to All curvy roads.
   - OSM fixes by the rider reach the app after Geofabrik's next daily extract and a rebuild (fresh `.osm.pbf` in
     `raw/`, `python build_tiles.py`, bump, commit `tiles/`). A posted `maxspeed` replaces the guess.
-- **Natural voice: put the road names live** (Helena and Apollo, Aura-2, are recorded and the default since
-  2026-11-06; the app asks for road names already). Needs the accounts Worker deployed with `/speak` (it was blocked
-  as a production deploy, so the rider runs it or OKs it): `cd worker`, then
-  `npx wrangler@4 d1 execute ride-finder --remote --command "CREATE TABLE IF NOT EXISTS clips (voice TEXT NOT NULL, format TEXT NOT NULL, text TEXT NOT NULL, audio BLOB NOT NULL, made INTEGER NOT NULL, PRIMARY KEY (voice, format, text));"`
-  and `npx wrangler@4 deploy`. Until then the names are just left out. More voices: add them to `make_voice.py` and
+- **Natural voice: road names are live** (2026-11-20: the Worker with `/speak` is deployed and the `clips` table is
+  there; a test phrase came back 200). Still to hear on a real ride: names spoken in Helena or Apollo. More voices: add them to `make_voice.py` and
   `python tools/make_voice.py <id>` (~730 characters of the day's free allowance each; Thalia was next).
 - **Ride mode next** (Ride mode is in, 2026-11-04; gas in the bar and "get gas at the next station" went in 2026-11-11,
   with the mini-map and spots): maybe noticing a stop at a station and asking "Filled up?", the ridden track
@@ -121,8 +118,6 @@ Ideas that came up, roughly in order of how much they'd help.
     overlay, and ~2,500 other requests a day covers expected traffic, by routing the highway parts with the
     leave time and comparing against the empty-road time. Google (~$10 per 1,000 after 5,000 a month) and HERE
     cost more; Mapbox traffic is quote-only. KC Scout has the I-435 sensors but no public feed found.
-- **Hide maybe-gravel roads**: an option to hide county roads whose surface isn't recorded
-  (drawn dashed today). Many are gravel in the Ozarks.
 - **Generator avoids city traffic**: today loops through town only rank lower. Penalize
   connecting routes through built-up areas directly.
 - **Roller coasters, next**: blind crests on straight roads (a hilltop you can't see over, no turn needed).
