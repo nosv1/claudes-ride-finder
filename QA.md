@@ -222,6 +222,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Nothing wraps awkwardly or gets cut off in the side panel (buttons, chips, card text), on desktop or phone.
 - Satellite and dark map both readable; route, icons and tags visible on both.
 - 3D tilt works and flat returns to north-up.
+- Zoom out on the phone: the roads fade away rather than leaving loaded patches, and the states with roads are shaded
+  blue (others just have a gray border). Zoom back in: the shading fades and the roads come back.
 
 ## Data
 

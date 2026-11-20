@@ -430,3 +430,33 @@ class TestBuiltData(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestStateOutlines(unittest.TestCase):
+    """map/states.json (tools/make_states.py): the map shades the states with roads by matching names."""
+
+    def test_simplify_keeps_the_ends_and_the_corners_that_matter(self):
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import make_states as ms
+        line = [(0, 0), (1, 0.0001), (2, 0), (2, 1), (3, 1)]
+        self.assertEqual(ms.simplify(line, 0.003), [(0, 0), (2, 0), (2, 1), (3, 1)])
+
+    def test_outer_rings_counterclockwise_holes_kept_small_islands_dropped(self):
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import make_states as ms
+        outer = [(0, 0), (0, 1), (1, 1), (1, 0), (0, 0)]                      # clockwise, as shapefiles store it
+        hole = [(0.2, 0.2), (0.8, 0.2), (0.8, 0.8), (0.2, 0.8), (0.2, 0.2)]   # counterclockwise
+        islet = [(5, 5), (5, 5.01), (5.01, 5.01), (5.01, 5), (5, 5)]
+        polys = ms.polygons_of([outer, hole, islet])
+        self.assertEqual(len(polys), 1, "the islet is dropped")
+        self.assertEqual(len(polys[0]), 2, "the hole stays with its outer ring")
+        self.assertGreater(ms.signed_area(polys[0][0]), 0, "GeoJSON outer rings run counterclockwise")
+        self.assertLess(ms.signed_area(polys[0][1]), 0)
+
+    @unittest.skipUnless(os.path.exists(os.path.join(TILES, "index.js")), "no built tiles; run build_tiles.py")
+    def test_every_region_with_roads_has_an_outline(self):
+        index = TestBuiltData.load(os.path.join(TILES, "index.js"), "{", "}")
+        states = json.load(open(os.path.join(ROOT, "map", "states.json"), encoding="utf-8"))
+        ids = {f["properties"]["id"] for f in states["features"]}
+        self.assertEqual(len(ids), 49, "the lower 48 and DC")
+        self.assertEqual(set(index["regions"]) - ids, set(), "a region the map can't shade: check its name")

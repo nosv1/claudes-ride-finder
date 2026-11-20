@@ -147,7 +147,13 @@ test('zoomed far out it loads no more roads, and speed-only roads only in Speed 
   await page.eval("void RF.mapView.map.jumpTo({ center: [-97, 33], zoom: 4.5 })");  // all of Texas and more
   await sleep(1500);
   assert.equal((await files()).length, before.length, 'nothing loaded zoomed out');
-  assert.match(await sheetText(), /Zoom in to see roads/);
+  assert.match(await sheetText(), /Zoom in to see roads. They're in the shaded states/);
+  // Zoomed out: the loaded roads have faded away, and the states with roads are shaded (and only those).
+  const shaded = "[...new Set(RF.mapView.map.queryRenderedFeatures({ layers: ['states-covered'] }).map(f => f.properties.id))].sort().join()";
+  await page.waitFor(`${shaded}.includes('texas')`, 10000);
+  assert.equal(await page.eval(shaded), 'arkansas,illinois,iowa,kansas,kentucky,missouri,nebraska,oklahoma,tennessee,texas', 'the states with roads are shaded, not their neighbors');
+  assert.ok(await page.eval("RF.mapView.map.queryRenderedFeatures({ layers: ['states-line'] }).some(f => f.properties.id === 'new-mexico')"), 'every state has a border');
+  assert.equal(await page.eval("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid', 'roads-dashed'] }).length"), 0, 'no roads drawn zoomed out');
   await page.eval("void RF.mapView.map.jumpTo({ center: [-94.33, 38.835], zoom: 10 })");
   await page.eval("document.querySelector('#chips .chip').click()");
   await page.eval("[...document.querySelectorAll('#menu .menu-item')].find(b => /Speed limits/.test(b.textContent)).click()");

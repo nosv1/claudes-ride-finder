@@ -26,7 +26,8 @@ for the tests, and [BACKLOG.md](BACKLOG.md) for what's next.
 Road data comes from [OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL). Most rural roads have no
 posted limit in OSM, so those are estimated: 55 mph for state routes, 45 for county roads, 30 in town (Texas: 70 on
 numbered highways, 60 elsewhere). Weather comes from Open-Meteo.
-Elevation comes from AWS Terrain Tiles (USGS), basemaps from Esri, routing from FOSSGIS Valhalla.
+Elevation comes from AWS Terrain Tiles (USGS), basemaps from Esri, routing from FOSSGIS Valhalla, state outlines
+from the US Census Bureau (`tools/make_states.py` writes `map/states.json`; the map shades the states in `tiles/index.js`).
 
 ## Updating or adding states
 

@@ -1,5 +1,5 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, BREAK_KINDS, tiersFor, APP_VERSION } from './config.js';
+import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, BREAK_KINDS, MAP_ZOOM, tiersFor, APP_VERSION } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km, cumulative, nearestIndex } from './geo.js';
 import { visible, hillLevel, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong, setMyMph, limitOf } from './roads.js';
 import * as T from './trip.js';
@@ -100,6 +100,7 @@ async function start() {
   renderChips();
   await initData();
   store.fuel.forEach((s, k) => { s.k = k; });
+  void mapView.ready.then(() => mapView.setCoverage(store.index.regions || []));  // ready never fails
   // Road tiles start loading now; the map may still be fetching its basemap and terrain.
   onRoadsChanged(async () => {
     await mapView.ready;
@@ -201,7 +202,7 @@ async function applyUpdate() {
 
 // Roads for what's on screen. None when zoomed out past where the list says "Zoom in": that
 // loaded whole states and crashed phones. Speed-only roads just in Speed limits mode, from zoom 9.
-const LOAD_ZOOM = 7, SPEED_ZOOM = 9;
+const LOAD_ZOOM = MAP_ZOOM.load, SPEED_ZOOM = 9;
 function loadView() {
   const z = mapView.zoom();
   if (z < LOAD_ZOOM) return;
@@ -1300,7 +1301,7 @@ function homeView() {
       ? h('p.muted', {}, mapView.zoom() < SPEED_ZOOM ? 'Zoom in to see speed limits.' : 'From OpenStreetMap. County roads and side streets appear as you zoom in.')
       : groups.length
         ? h('div.cards', {}, groups.map(roadCard))
-        : h('p.empty', {}, !store.roads.length || mapView.zoom() < LOAD_ZOOM ? 'Zoom in to see roads.'
+        : h('p.empty', {}, !store.roads.length || mapView.zoom() < LOAD_ZOOM ? "Zoom in to see roads. They're in the shaded states."
           : highwaysOnly() ? 'No fast ramps or highway sweeps here. Try a big interchange, like where I-435 meets I-470.' : 'Nothing matches here. Pan around or loosen the filters.'),
     rollerList(),
     yourRides(3),
@@ -1362,6 +1363,7 @@ function aboutView() {
         credit('Routing', link('https://valhalla.github.io/valhalla/', 'Valhalla'), ' on the free ', link('https://www.fossgis.de/', 'FOSSGIS'), ' server, then ', link('https://stadiamaps.com/', 'Stadia Maps'), ' when it’s busy, with ', link('https://project-osrm.org/', 'OSRM'), '’s demo server as a last resort'),
         credit('Place search', link('https://photon.komoot.io/', 'Photon'), ' by Komoot'),
         credit('Weather', link('https://open-meteo.com/', 'Weather data by Open-Meteo.com'), ' (CC BY 4.0)'),
+        credit('State outlines', link('https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html', 'US Census Bureau'), ' cartographic boundaries'),
         credit('Map', link('https://maplibre.org/', 'MapLibre GL JS'), ', with fonts from ', link('https://openfreemap.org/', 'OpenFreeMap')))),
     h('div.section', {}, h('h3', {}, iconEl(icon.person), 'Your data'),
       h('p.small', {}, 'No tracking. The app counts how often things happen (opens, Generates, Ride mode, which route server answered), never who. Without signing in, your rides, tags and settings are saved in this browser only. Some things do get sent out to work: your stops, to the route planner; what you type in search, to the place search; and spots along your ride, to the weather service. Your location is only used when you tap My location, or when you generate a ride without picking a start.'),

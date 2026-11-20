@@ -11,7 +11,7 @@ const SHELL = [
   './js/search.js', './js/routing.js', './js/elevation.js', './js/store.js', './js/mapview.js', './js/ui.js',
   './js/weather.js', './js/fly.js', './js/nav.js', './js/ride.js', './js/voice.js', './js/tags.js', './js/account.js', './js/seal.js', './js/bikes.js',
   './js/check.js', './js/usage.js',
-  './tiles/index.js', './tiles/fuel.js', './tiles/search.js', './favicon.svg',
+  './tiles/index.js', './tiles/fuel.js', './tiles/search.js', './map/states.json', './favicon.svg',
   'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.0/maplibre-gl.js',
   'https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/5.6.0/maplibre-gl.css',
 ];

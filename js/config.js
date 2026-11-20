@@ -2,6 +2,12 @@
 
 export const DATA_URL = 'tiles/';
 
+// Road tiles load from zoom 7 (zoomed out further they loaded whole states and crashed phones). The roads fade out
+// over the zoom level above that, so zoomed out you see the shaded states with roads (map/states.json), not a
+// patchwork of whatever loaded. The shading fades as you zoom in to where the roads show.
+export const MAP_ZOOM = { load: 7, roadsFull: 7.5, roadsGone: 6.5, shadeGone: 8.5 };
+export const STATES_URL = 'map/states.json';
+
 // Accounts (optional sign-in): the API in worker/, and the site's Google sign-in client. The tests point the app at a
 // local copy of the API with localStorage 'rf2-api'.
 export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } catch (e) { return null; } })()
@@ -9,7 +15,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.20.14';
+export const APP_VERSION = '2026.11.20.15';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.

@@ -1,9 +1,10 @@
 // The map: MapLibre with Esri raster basemaps, hillshade and 3D terrain from AWS Terrain Tiles,
 // and GeoJSON sources for roads, the route, gas stations and blind crests. Everything here
 // works in [lat, lon]; MapLibre's [lon, lat] stays inside this file.
-import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN, HIGHWAYS, ROLLER, tiersFor } from './config.js';
+import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN, HIGHWAYS, ROLLER, MAP_ZOOM, STATES_URL, tiersFor } from './config.js';
 import { TAGS } from './tags.js';
 import { speedBin, isMinor, limitOf } from './roads.js';
+import { check } from './check.js';
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/';
 const raster = (service, maxzoom, attribution) => ({
@@ -17,6 +18,8 @@ const fc = features => ({ type: 'FeatureCollection', features });
 
 const ROAD_LAYERS = ['roads-solid', 'roads-dashed'];
 const zoomWidth = base => ['interpolate', ['linear'], ['zoom'], 7, ['*', base, 0.45], 12, base, 16, ['*', base, 2.2]];
+const roadsFade = ['interpolate', ['linear'], ['zoom'], MAP_ZOOM.roadsGone, 0, MAP_ZOOM.roadsFull, 1];
+const COVERED = '#4dabf7';
 
 // Mirrors roads.visible() as a MapLibre filter.
 function roadFilter(f) {
@@ -115,6 +118,7 @@ export class MapView {
           detour: { type: 'geojson', data: EMPTY },
           tags: { type: 'geojson', data: EMPTY },
           spots: { type: 'geojson', data: EMPTY },
+          states: { type: 'geojson', data: STATES_URL, attribution: 'States: US Census Bureau' },
         },
         // Only seen when tilted: a hazy horizon instead of black.
         sky: { 'sky-color': '#3d5a80', 'horizon-color': '#9db4c8', 'fog-color': '#6f8296',
@@ -125,6 +129,12 @@ export class MapView {
           { id: 'hillshade', type: 'hillshade', source: 'dem', paint: {
             'hillshade-exaggeration': 0.45, 'hillshade-shadow-color': 'rgba(0,0,0,0.55)',
             'hillshade-highlight-color': 'rgba(255,255,255,0.22)', 'hillshade-accent-color': 'rgba(0,0,0,0.3)' } },
+          // The states with roads, shaded until you're zoomed in to where the roads show; every state's border.
+          { id: 'states-covered', type: 'fill', source: 'states', filter: ['in', ['get', 'id'], ['literal', []]], paint: {
+            'fill-color': COVERED, 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.3, MAP_ZOOM.roadsGone, 0.2, MAP_ZOOM.shadeGone, 0] } },
+          { id: 'states-line', type: 'line', source: 'states', layout: { 'line-join': 'round' }, paint: {
+            'line-color': '#ced4da', 'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.55, 10, 0.35],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.8, 8, 1.5] } },
           { id: 'route-casing', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' },
             paint: { 'line-color': '#0b1d33', 'line-opacity': 0.75, 'line-width': zoomWidth(13) } },
           { id: 'route', type: 'line', source: 'route', layout: { 'line-join': 'round', 'line-cap': 'round' },
@@ -145,8 +155,8 @@ export class MapView {
           // Parts of the route lit up from the ride's summary (a tag, the bar, a road in the list).
           { id: 'focus', type: 'line', source: 'focus', layout: { 'line-join': 'round', 'line-cap': 'round' },
             paint: { 'line-color': '#ffffff', 'line-opacity': 0.9, 'line-width': zoomWidth(14), 'line-blur': 1 } },
-          { id: 'roads-solid', type: 'line', source: 'roads', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: {} },
-          { id: 'roads-dashed', type: 'line', source: 'roads', layout: { 'line-join': 'round' }, paint: { 'line-dasharray': [2, 1.5] } },
+          { id: 'roads-solid', type: 'line', source: 'roads', minzoom: MAP_ZOOM.roadsGone, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-opacity': roadsFade } },
+          { id: 'roads-dashed', type: 'line', source: 'roads', minzoom: MAP_ZOOM.roadsGone, layout: { 'line-join': 'round' }, paint: { 'line-dasharray': [2, 1.5], 'line-opacity': roadsFade } },
           // Roads you've tagged (tags.js): dots over the road in the tag's color, and its name along it up close.
           { id: 'tags', type: 'line', source: 'tags', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: {
             'line-color': ['match', ['get', 'k'], ...TAGS.flatMap(t => [t.k, t.color]), '#fff'],
@@ -296,6 +306,14 @@ export class MapView {
     for (const [id, show] of [['dark', !sat], ['darkLabels', !sat], ['sat', sat], ['satLabels', sat]]) {
       this.map.setLayoutProperty(id, 'visibility', show ? 'visible' : 'none');
     }
+  }
+  // The states with roads (tiles/index.js regions, named as Geofabrik does: "new-york"): shaded, with a brighter border.
+  /** @param {string[]} regions */
+  setCoverage(regions) {
+    if (!check(Array.isArray(regions) && regions.every(r => typeof r === 'string'), 'setCoverage: regions must be names')) return;
+    const covered = ['in', ['get', 'id'], ['literal', regions]];
+    this.map.setFilter('states-covered', covered);
+    this.map.setPaintProperty('states-line', 'line-color', ['case', covered, COVERED, '#ced4da']);
   }
   showHillshade(on) { this.map.setLayoutProperty('hillshade', 'visibility', on ? 'visible' : 'none'); }
 

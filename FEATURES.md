@@ -196,6 +196,12 @@ MapLibre GL (WebGL). Everything outside `js/mapview.js` works in [lat, lon].
   Below that nothing new loads and the list says "Zoom in to see roads": zoomed out over Texas the app used to load
   every tile, both kinds (~67 MB), and phones crashed.
 - Speed-only roads (`x_y.s`, 47 MB) load only in Speed limits mode, from zoom 9 ("Zoom in to see speed limits").
+- Zoomed out, the roads fade away (from zoom 7.5, gone below 6.5) instead of leaving a patchwork of whatever loaded,
+  and the states with roads are shaded blue with a blue border; every other state has a gray border. The list says
+  "Zoom in to see roads. They're in the shaded states." The shading fades out by zoom 8.5, where the roads show; the
+  borders stay. Outlines: `map/states.json` (lower 48 and DC, US Census 1:5M, simplified to ~300 m, 135 KB
+  compressed, kept offline), made by `tools/make_states.py`. Which states are shaded comes from the regions in
+  `tiles/index.js`, so a new state is shaded once it's built, with nothing else to change.
 - Measured on a phone-size page: KC, Austin, Dallas and the Hill Country at zoom 9, then zoom 4 over Texas: ~110 MB
   of JS heap, nothing loaded at zoom 4.
 
