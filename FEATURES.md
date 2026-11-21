@@ -500,6 +500,8 @@ colored road), Add a stop here, Street View here.
   The ride's break (from a picked loop) isn't one, so the next Generate picks its own, but it's offered under Must
   include with **Include** (2026-11-20: the rider wanted loops back to a break he'd been sent to): kept, every loop goes
   there, no second break is added, and the cards are named for it. Kept stays kept when saved or shared.
+- **Your places** are buttons under Must include (all of them but the start, the end and ones already in): one tap
+  and every loop goes through it.
 - **Plan a loop through here**, on a searched place's card: the place as a stop, then Plan a ride (as Plan a loop with
   this road does for a road).
   - Every loop goes through them.

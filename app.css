@@ -243,6 +243,7 @@ p .lights:hover, p .lit { color: var(--text); text-decoration: underline; text-u
 .save-place .start-row { padding: 4px 4px 4px 4px; margin-top: 8px; }
 .save-place .start-row input { flex: 1; min-width: 0; }
 .my-places { margin-top: 6px; flex-wrap: wrap; }
+.save-place-btn { width: 100%; margin-top: 8px; }
 .own { color: var(--text); }
 .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 6px; }
 .seg.extra-time { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }

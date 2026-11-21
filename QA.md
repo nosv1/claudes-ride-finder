@@ -65,6 +65,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Pick a loop with a break and Save to your rides: it's saved as "To <the place>", and the ride page says so too.
 - Then Plan a ride: the break is offered under Must include; Include it and Generate: every loop is "To <the place>".
   Tap a Must include row: the map goes to it. Search a place, Plan a loop through here: it's in Must include.
+- Plan a ride with a few saved places: each but the start is a button under Must include; tap one and it's in.
+- A place's card: Save place has a gap above it, like the buttons above.
 - No two cards are the same ride (the same miles and roads on the map), though they may list different roads.
 - There's a loop to each side of the start where there are good roads, and a note says which sides have none.
 - The status line keeps moving while it works; a 6 h run finishes in under about 3 minutes.

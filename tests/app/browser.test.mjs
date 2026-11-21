@@ -1115,6 +1115,29 @@ test('a loop with a break: each goes out to a break spot and the card says where
   await page.waitFor("[...document.querySelectorAll('#sheetBody .stops .break-links a')].map(a => a.textContent).join() === 'Google Maps,Street View,Skip this place'", 5000);
 });
 
+test('your places are one tap into Must include, and Save place sits clear of the buttons above it', async () => {
+  const saved = await page.eval('JSON.stringify({ items: RF.trip.items, places: RF.settings.places })');
+  await page.eval(`(async () => {
+    const T = await import('./js/trip.js');
+    RF.settings.places = [{ name: 'Home', at: [38.852, -94.343] }, { name: 'Work', at: [39.0, -94.5] }, { name: 'Highgrove and Raytown', at: [38.95, -94.45] }];
+    RF.trip.items.length = 0;
+    T.setStart(RF.trip, [38.852, -94.343], 'Start: Home');
+    RF.go('plan');
+  })()`);
+  const offered = () => page.eval("[...document.querySelectorAll('#sheetBody .include-places button')].map(b => b.textContent)");
+  await page.waitFor("document.querySelector('#sheetBody .include-places')", 5000);
+  assert.deepEqual(await offered(), ['Work', 'Highgrove and Raytown'], 'not Home: that is the start');
+  await page.eval("[...document.querySelectorAll('#sheetBody .include-places button')].find(b => b.textContent === 'Work').click()");
+  await page.waitFor("[...document.querySelectorAll('#sheetBody .start-row.must:not(.offer)')].some(r => /^Work/.test(r.innerText))", 5000);
+  assert.deepEqual(await offered(), ['Highgrove and Raytown'], 'Work is in now');
+  // A place's card: Save place has room above it, under Street View and Directions.
+  await page.eval("RF.go('place', { label: 'Wagon Works BBQ', sub: 'Lone Jack', at: [38.87, -94.17] })");
+  await page.waitFor("document.querySelector('#sheetBody .save-place-btn')", 5000);
+  const gap = await page.eval("document.querySelector('#sheetBody .save-place-btn').getBoundingClientRect().top - document.querySelector('#sheetBody .actions').getBoundingClientRect().bottom");
+  assert.ok(gap >= 8, `gap above Save place: ${gap}px`);
+  await page.eval(`(() => { const s = ${saved}; RF.settings.places = s.places; RF.trip.items.splice(0, RF.trip.items.length, ...s.items); RF.go('home'); })()`);
+});
+
 test('a kept break: every loop goes there, with no second break', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {
   await page.eval(`(async () => {
     const T = await import('./js/trip.js');

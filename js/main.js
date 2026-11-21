@@ -1870,7 +1870,7 @@ function savePlaceBox(p) {
     return h('div.saved-place', {}, iconEl(placeIcon(mine.name)), h('span.grow', {}, `Saved as ${mine.name}`),
       h('button.btn.small', { onclick: () => forgetPlace(mine) }, iconEl(icon.trash), 'Remove'));
   }
-  if (!naming) return h('button.btn.wide', { onclick: () => { naming = true; renderSoon(); } }, iconEl(icon.home), 'Save place');
+  if (!naming) return h('button.btn.wide.save-place-btn', { onclick: () => { naming = true; renderSoon(); } }, iconEl(icon.home), 'Save place');
   const taken = new Set(myPlaces().map(x => x.name.toLowerCase()));
   const other = h('input', { type: 'text', placeholder: 'Or a name, like “Mom’s”', maxlength: 40, 'aria-label': 'Name for this place',
     onkeydown: e => { if (e.key === 'Enter') savePlace(e.target.value, p.at); } });
@@ -1946,13 +1946,22 @@ const breakToKeep = it => h('div.start-row.must.offer', {}, iconEl(icon.pin),
   h('span.grow.must-name', { onclick: () => mapView.fit(boundsOf(it.pts), 14) }, it.label, h('span.muted.small', {}, ' · this ride\u2019s break')),
   h('button.btn.small', { onclick: () => { newRideFromSaved(); it.keep = true; tripChanged(); renderSoon(); } }, iconEl(icon.plus), 'Include'));
 
+// Your places, one tap each into Must include: not the start, the end, or one that's in already.
+function placesToInclude() {
+  const taken = trip.items.map(it => it.pts[0]);
+  const left = myPlaces().filter(p => !taken.some(at => km(at, p.at) < SAME_PLACE_KM));
+  return left.length ? h('div.btn-row.my-places.include-places', {}, left.map(p => h('button.btn', { title: `Loops go through ${p.name}`,
+    onclick: () => { newRideFromSaved(); addPlace(p.at, p.name); } }, iconEl(icon.plus), p.name))) : '';
+}
+
 function mustInclude() {
   const own = ownStops(), offer = trip.items.filter(it => it.brk && !it.keep);
   return h('div.field', {}, h('label', {}, 'Must include'),
     own.length ? h('div', {}, own.map(mustRow)) : '',
     offer.map(breakToKeep),
+    placesToInclude(),
     h('p.muted.small', {}, own.length ? 'Loops will go through these and fill the rest of your time with the best roads nearby. Tap one to see it.'
-      : 'Nothing yet. Tap a road on the map and choose \u201cPlan a loop with this road\u201d, or search a place and choose \u201cPlan a loop through here\u201d.'));
+      : 'Nothing yet. Tap one of your places above, tap a road on the map and choose \u201cPlan a loop with this road\u201d, or search a place and choose \u201cPlan a loop through here\u201d.'));
 }
 
 // "Northeast", or one way: "North side", "Near the straight way", "Best roads, any side", "Fastest way".
