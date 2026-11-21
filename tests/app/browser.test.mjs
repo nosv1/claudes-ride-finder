@@ -77,13 +77,19 @@ test('hovering a road lights it up, but not zoomed out, where roads are too clos
   await page.waitFor(lit, 3000);
   await hover(80);
   await page.waitFor(`!${lit}`, 3000);
-  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.33, 38.835], zoom: 8 })");
+  // Two zoom levels out (zoom 7 and up, where the roads load) hovering still works.
+  const nothing = '["in",["get","i"],["literal",[]]]', highlight = "JSON.stringify(RF.mapView.map.getFilter('highlight'))";
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.33, 38.835], zoom: 7.2 })");
+  await sleep(300);
+  await hover();
+  await page.waitFor(`${highlight} !== '${nothing}'`, 3000);
+  // Further out, with the roads fading away, it doesn't.
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.33, 38.835], zoom: 6.7 })");
   await sleep(300);
   await hover();
   await sleep(300);
   assert.ok(await page.eval("RF.mapView.map.queryRenderedFeatures({ layers: ['roads-solid'] }).length > 0"), 'roads are drawn there');
-  assert.equal(await page.eval("JSON.stringify(RF.mapView.map.getFilter('highlight'))"), '["in",["get","i"],["literal",[]]]',
-    'zoomed out, hovering lights nothing');
+  assert.equal(await page.eval(highlight), nothing, 'zoomed out, hovering lights nothing');
 });
 
 test('tapping a road opens its card at that spot, and Add to ride adds it', async () => {
@@ -1030,6 +1036,8 @@ test('Stop for a break: the plan page offers food or somewhere to walk, for loop
   await sleep(200);
   const choices = () => page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].map(b => b.textContent)");
   assert.deepEqual(await choices(), ['No break', 'Food', 'Walk around', 'Either']);
+  // Every choice's label fits inside its button, here and in the plan page's other choices ("Walk around" didn't).
+  assert.deepEqual(await page.eval("[...document.querySelectorAll('#sheetBody .seg button')].filter(b => b.scrollWidth > b.clientWidth).map(b => b.textContent)"), []);
   await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'Food').click()");
   await sleep(200);
   assert.equal(await page.eval('RF.settings.genBreak'), 'food');

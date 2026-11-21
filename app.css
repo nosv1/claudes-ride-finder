@@ -244,6 +244,8 @@ p .lights:hover, p .lit { color: var(--text); text-decoration: underline; text-u
 .own { color: var(--text); }
 .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 6px; }
 .seg.extra-time { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }
+.seg.break { display: flex; flex-wrap: wrap; }   /* labels of different lengths: each as wide as it needs, sharing what's left */
+.seg.break button { flex: 1 1 auto; padding: 0 8px; }
 .seg button { min-height: 38px; padding: 0 10px; white-space: nowrap; border-radius: 10px; border: 1px solid var(--border); background: var(--raise); }
 .seg button.on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
 .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }

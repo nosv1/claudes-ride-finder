@@ -224,7 +224,7 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - 3D tilt works and flat returns to north-up.
 - Zoom out on the phone: the roads fade away rather than leaving loaded patches, and the states with roads are shaded
   blue (others just have a gray border). Zoom back in: the shading fades and the roads come back.
-- On a desktop, hovering roads zoomed in lights each one up without lag; zoomed out past zoom 9, nothing lights up.
+- On a desktop, hovering roads zoomed in lights each one up without lag; zoomed out past zoom 7 (roads fading), nothing lights up.
 
 ## Data
 
