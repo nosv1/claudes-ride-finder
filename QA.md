@@ -67,6 +67,9 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   Tap a Must include row: the map goes to it. Search a place, Plan a loop through here: it's in Must include.
 - Plan a ride with a few saved places: each but the start is a button under Must include; tap one and it's in.
 - A place's card: Save place has a gap above it, like the buttons above.
+- Food & sights on: dots around the Ozarks from zoom 9, names up close, colors by kind. Tap a diner: its card has
+  Google Maps, Street View, Skip. Plan a loop through here: Start stays "Not set yet", the diner is in Must include,
+  Generate: loops "To <the diner>". Skip one: its dot goes.
 - No two cards are the same ride (the same miles and roads on the map), though they may list different roads.
 - There's a loop to each side of the start where there are good roads, and a note says which sides have none.
 - The status line keeps moving while it works; a 6 h run finishes in under about 3 minutes.

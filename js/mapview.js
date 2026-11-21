@@ -1,7 +1,7 @@
 // The map: MapLibre with Esri raster basemaps, hillshade and 3D terrain from AWS Terrain Tiles,
 // and GeoJSON sources for roads, the route, gas stations and blind crests. Everything here
 // works in [lat, lon]; MapLibre's [lon, lat] stays inside this file.
-import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN, HIGHWAYS, ROLLER, MAP_ZOOM, STATES_URL, tiersFor } from './config.js';
+import { CURVE_CLASSES, SPEED_BINS, FUEL_STATUS, SHIELD_TYPES, DEM_URL, RAMP_TIERS, TERRAIN, HIGHWAYS, ROLLER, MAP_ZOOM, STATES_URL, BREAK_COLORS, tiersFor } from './config.js';
 import { TAGS } from './tags.js';
 import { speedBin, isMinor, limitOf } from './roads.js';
 import { check } from './check.js';
@@ -119,6 +119,7 @@ export class MapView {
           tags: { type: 'geojson', data: EMPTY },
           spots: { type: 'geojson', data: EMPTY },
           states: { type: 'geojson', data: STATES_URL, attribution: 'States: US Census Bureau' },
+          breaks: { type: 'geojson', data: EMPTY },
         },
         // Only seen when tilted: a hazy horizon instead of black.
         sky: { 'sky-color': '#3d5a80', 'horizon-color': '#9db4c8', 'fog-color': '#6f8296',
@@ -196,6 +197,13 @@ export class MapView {
             'text-allow-overlap': false }, paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#111', 'text-halo-width': 1.6 } },
           { id: 'blind', type: 'symbol', source: 'blind', minzoom: 11, layout: {
             'icon-image': 'blind', 'icon-size': 0.85, 'icon-allow-overlap': true, 'icon-pitch-alignment': 'viewport' } },
+          // Break spots (Food & sights): a dot in the kind's color from zoom 9, named from zoom 12.
+          { id: 'breaks', type: 'circle', source: 'breaks', minzoom: 9, layout: { visibility: 'none' }, paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3, 14, 6.5], 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.2,
+            'circle-color': ['match', ['get', 'kind'], ...Object.entries(BREAK_COLORS).flat(), '#adb5bd'] } },
+          { id: 'breaks-label', type: 'symbol', source: 'breaks', minzoom: 12, layout: { visibility: 'none',
+            'text-field': ['get', 'name'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-offset': [0, -1.2], 'text-optional': true },
+            paint: { 'text-color': ['match', ['get', 'kind'], ...Object.entries(BREAK_COLORS).flat(), '#adb5bd'], 'text-halo-color': '#111', 'text-halo-width': 1.6 } },
           { id: 'fuel', type: 'circle', source: 'fuel', minzoom: 9, layout: { visibility: 'none' }, paint: {
             'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3.5, 14, 7], 'circle-stroke-color': '#111', 'circle-stroke-width': 1.5,
             'circle-color': ['match', ['get', 'status'], 2, FUEL_STATUS[2].color, 1, FUEL_STATUS[1].color, -1, FUEL_STATUS['-1'].color, FUEL_STATUS[0].color] } },
@@ -294,6 +302,15 @@ export class MapView {
     this.map.getSource('fuel').setData(fc(stations.map((s, k) => point([s.lat, s.lon], { k, status: s.status }))));
   }
   showStations(on) { this.map.setLayoutProperty('fuel', 'visibility', on ? 'visible' : 'none'); }
+
+  // Break spots: [{ k, at, kind, name }], k their place in store.breaks (a tap says which).
+  setBreaks(list) {
+    if (!check(Array.isArray(list), 'setBreaks: a list')) return;
+    this.map.getSource('breaks').setData(fc(list.map(b => point(b.at, { k: b.k, kind: b.kind, name: b.name }))));
+  }
+  showBreaks(on) {
+    for (const id of ['breaks', 'breaks-label']) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+  }
   setRouteStations(list) {
     this.map.getSource('routeFuel').setData(fc(list.map(({ k, status, pick }) => {
       const s = this.stationsRef[k];
@@ -519,6 +536,8 @@ export class MapView {
       if (spot.length) return this.emit('spot', spot[0].properties.id, [e.lngLat.lat, e.lngLat.lng]);
       const fuel = map.queryRenderedFeatures(box(e.point, 8), { layers: ['route-fuel', 'fuel'] });
       if (fuel.length) return this.emit('station', fuel[0].properties.k);
+      const brk = map.queryRenderedFeatures(box(e.point, 8), { layers: ['breaks'] });
+      if (brk.length) return this.emit('breakSpot', brk[0].properties.k);
       const id = roadAt(e.point, 10);
       if (id != null) return this.emit('road', id, [e.lngLat.lat, e.lngLat.lng]);
       this.emit('empty', [e.lngLat.lat, e.lngLat.lng]);
@@ -529,7 +548,7 @@ export class MapView {
       let last = null, pt = null;
       const look = () => {
         const id = map.getZoom() >= MAP_ZOOM.hover ? roadAt(pt, 5) : null;
-        map.getCanvas().style.cursor = id != null || map.queryRenderedFeatures(box(pt, 6), { layers: ['fuel', 'route-fuel', 'spots'] }).length ? 'pointer' : '';
+        map.getCanvas().style.cursor = id != null || map.queryRenderedFeatures(box(pt, 6), { layers: ['fuel', 'route-fuel', 'spots', 'breaks'] }).length ? 'pointer' : '';
         if (id !== last) { last = id; this.emit('hover', id); }
         pt = null;
       };

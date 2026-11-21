@@ -51,7 +51,7 @@ async function showMo150() {
 
 test('loads roads, draws them, and lists the best ones', async () => {
   assert.ok(await page.eval('RF.store.roads.length') > 1000);
-  assert.equal(await page.eval("document.querySelectorAll('#chips .chip').length"), 7);
+  assert.equal(await page.eval("document.querySelectorAll('#chips .chip').length"), 8);  // with Gas and Food & sights
   // The curve classes, plus Highways & ramps with All roads, and Roller coasters.
   assert.equal(await page.eval("document.querySelectorAll('.legend-chip:not(.key-btn)').length"), 7);
   assert.match(await page.eval("[...document.querySelectorAll('.legend-chip')].map(c => c.textContent).join('|')"), /Roller coasters/);
@@ -1136,6 +1136,32 @@ test('your places are one tap into Must include, and Save place sits clear of th
   const gap = await page.eval("document.querySelector('#sheetBody .save-place-btn').getBoundingClientRect().top - document.querySelector('#sheetBody .actions').getBoundingClientRect().bottom");
   assert.ok(gap >= 8, `gap above Save place: ${gap}px`);
   await page.eval(`(() => { const s = ${saved}; RF.settings.places = s.places; RF.trip.items.splice(0, RF.trip.items.length, ...s.items); RF.go('home'); })()`);
+});
+
+test('Food & sights shows the break spots on the map; tap one for its card, plan a loop through it, or skip it', async () => {
+  const saved = await page.eval('JSON.stringify(RF.trip.items)');
+  await page.eval('RF.trip.items.length = 0');  // an empty ride: the place mustn't become its start
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-94.199, 39.137], zoom: 14 })");
+  await page.eval("[...document.querySelectorAll('#chips .chip')].find(c => /Food & sights/.test(c.textContent)).click()");
+  const near = "RF.mapView.map.queryRenderedFeatures({ layers: ['breaks'] }).map(f => f.properties.name)";
+  await page.waitFor(`${near}.includes('Rookies Bar & Grill')`, 20000);
+  const k = await page.eval("RF.store.breaks.findIndex(b => b.name === 'Rookies Bar & Grill' && Math.abs(b.at[0] - 39.1377) < 0.001)");
+  assert.ok(k >= 0);
+  await page.eval(`RF.mapView.emit('breakSpot', ${k})`);
+  await page.waitFor("/Rookies Bar & Grill/.test(document.getElementById('sheetBody').innerText) && document.querySelector('#sheetBody .break-links')", 5000);
+  assert.match(await sheetText(), /Bar[\s\S]*Google Maps · Street View · Skip this place/);
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Plan a loop through here/.test(b.textContent)).click()");
+  await page.waitFor("[...document.querySelectorAll('#sheetBody .start-row.must:not(.offer)')].some(r => /Break: Rookies Bar & Grill/.test(r.innerText))", 5000);
+  assert.ok(await page.eval("RF.trip.items.some(it => it.keep && it.brk && it.brk.name === 'Rookies Bar & Grill')"), 'in as a kept break');
+  assert.match(await sheetText(), /Start\s+Not set yet/, 'a place to go through is never the start');
+  // Skipped from its card, it's off the map.
+  await page.eval(`RF.mapView.emit('breakSpot', ${k})`);
+  await page.waitFor("document.querySelector('#sheetBody .skip-break')", 5000);
+  await page.eval("document.querySelector('#sheetBody .skip-break').click()");
+  await page.waitFor(`!${near}.includes('Rookies Bar & Grill')`, 5000);
+  await page.eval(`RF.settings.skipBreaks = []; RF.trip.items.splice(0, RF.trip.items.length, ...${saved}); RF.go('home')`);
+  await page.eval("[...document.querySelectorAll('#chips .chip')].find(c => /Food & sights/.test(c.textContent)).click()");
+  assert.equal(await page.eval('RF.settings.showBreaks'), false);
 });
 
 test('a kept break: every loop goes there, with no second break', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {

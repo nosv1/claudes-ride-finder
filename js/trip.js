@@ -137,7 +137,7 @@ export function setStart(trip, at, label) {
 
 export const startOf = trip => {
   const first = trip.items[0];
-  return first && first.type === 'point' && !first.end ? first : null;
+  return first && first.type === 'point' && !first.end && !first.keep ? first : null;
 };
 
 // Where a one-way ride finishes: its last stop, a pinned point marked `end` (which can come before
@@ -183,13 +183,14 @@ export function indexAlongRoute(trip, p, path) {
 const ROAD = 1, GEN = 2, ONEWAY = 4, START = 8, END = 16;
 // A break stop's kind, in the flags from 32 up: (its place here + 1) × 32. New kinds go on the end. Readers from before
 // breaks ignore those bits and see a stop.
-// KEEP (256, above the kinds): a break the rider chose to keep, so the next Generate goes there too.
+// KEEP (256, above the kinds): a place the rider wants every loop to go through (a break kept, or Plan a loop through
+// here). It's never the ride's start, even first in the list.
 const BREAK_CODES = ['food', 'park', 'view', 'falls', 'history', 'bar'], BREAK_BIT = 32, KEEP = 256;
-const breakFlag = it => it.brk && BREAK_CODES.includes(it.brk.kind) ? (BREAK_CODES.indexOf(it.brk.kind) + 1) * BREAK_BIT + (it.keep ? KEEP : 0) : 0;
+const breakFlag = it => it.brk && BREAK_CODES.includes(it.brk.kind) ? (BREAK_CODES.indexOf(it.brk.kind) + 1) * BREAK_BIT : 0;
 // The break a stop was, back from its flags and its label ("Break: Wagon Works BBQ"); the detail isn't kept.
 const breakOf = (f, label) => {
   const kind = BREAK_CODES[Math.floor((f % KEEP) / BREAK_BIT) - 1];
-  return kind ? { brk: { kind, name: label.replace(/^Break: /, ''), detail: '' }, ...(f >= KEEP ? { keep: true } : {}) } : {};
+  return kind ? { brk: { kind, name: label.replace(/^Break: /, ''), detail: '' } } : {};
 };
 
 export function encodeTrip(trip) {
@@ -204,7 +205,7 @@ export function encodeTrip(trip) {
   uint(trip.items.length);
   let lat0 = 0, lon0 = 0, id0 = 0;
   for (const it of trip.items) {
-    uint(((it.type === 'road' ? ROAD : 0) | (it.gen ? GEN : 0) | (it.oneway ? ONEWAY : 0) | (it.start ? START : 0) | (it.end ? END : 0)) + breakFlag(it));
+    uint(((it.type === 'road' ? ROAD : 0) | (it.gen ? GEN : 0) | (it.oneway ? ONEWAY : 0) | (it.start ? START : 0) | (it.end ? END : 0)) + breakFlag(it) + (it.keep ? KEEP : 0));
     text(it.label);
     uint(Math.round(it.curvy || 0));
     uint(it.pts.length);
@@ -240,7 +241,8 @@ function decodePackedTrip(bin) {
     }
     for (let k = uint(); k > 0; k--) ids.push(id0 += int());
     items.push({ type: f & ROAD ? 'road' : 'point', label, curvy, pts, ...(ids.length ? { ids } : {}), ...(f & GEN ? { gen: true } : {}),
-      ...(f & ONEWAY ? { oneway: true } : {}), ...(f & START ? { start: true } : {}), ...(f & END ? { end: true } : {}), ...breakOf(f, label) });
+      ...(f & ONEWAY ? { oneway: true } : {}), ...(f & START ? { start: true } : {}), ...(f & END ? { end: true } : {}), ...breakOf(f, label),
+      ...(f >= KEEP ? { keep: true } : {}) });
   }
   return { loop: !!(flags & 1), pref, range, need90: !!(flags & 2), items };
 }

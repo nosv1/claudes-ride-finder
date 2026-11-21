@@ -372,6 +372,12 @@ test('a bar is a break only where there is no other food that way, and a saved r
   const kept = decodeTrip(encodeTrip(trip)).items[1];
   assert.deepEqual([kept.keep, kept.brk.kind, kept.brk.name], [true, 'bar', 'Rookies Bar & Grill']);
   assert.equal(back.items[1].keep, undefined, 'not kept until the rider says so');
+  // A place to go through (Plan a loop through here) is never the start, even first in an empty ride, and stays so.
+  const through = { items: [{ type: 'point', label: 'Wagon Works BBQ', pts: [[38.87, -94.17]], keep: true }], loop: true, pref: '0.5', range: 120 };
+  assert.equal(startOf(through), null);
+  assert.equal(startOf(decodeTrip(encodeTrip(through))), null);
+  setStart(through, [38.85, -94.34], 'Start: Home');
+  assert.deepEqual(through.items.map(it => it.label), ['Start: Home', 'Wagon Works BBQ']);
 });
 
 test('the generator shows each ride once: not the same roads twice, nor the same route with a road it rides anyway', () => {

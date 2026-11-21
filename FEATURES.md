@@ -503,7 +503,14 @@ colored road), Add a stop here, Street View here.
 - **Your places** are buttons under Must include (all of them but the start, the end and ones already in): one tap
   and every loop goes through it.
 - **Plan a loop through here**, on a searched place's card: the place as a stop, then Plan a ride (as Plan a loop with
-  this road does for a road).
+  this road does for a road). It's never taken for the ride's start, even in an empty ride (a ride's first point is
+  its start otherwise): set one, or Generate starts from your location.
+- **Food & sights** (chip, next to Gas; the rider: "if we know all these destinations, then I should be able to see
+  them on the map without having to generate a ride"): every break spot as a dot from zoom 9, named from zoom 12,
+  colored by kind (food orange, bars gray, parks green, lookouts purple, waterfalls blue, historic spots tan). The
+  3 MB file loads the first time it's turned on; skipped places aren't shown. Tap one: its card, with Google Maps,
+  Street View and Skip this place, Plan a loop through here (in as a kept break, so loops are named for it), Add to
+  ride, Start here, End here.
   - Every loop goes through them.
   - Loops head their way: straight at them, or swinging 35° or 70° to either side.
   - Without any, all 12 directions are tried.

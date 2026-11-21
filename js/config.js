@@ -16,7 +16,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.20.22';
+export const APP_VERSION = '2026.11.20.23';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
@@ -110,6 +110,8 @@ export const ROUTING = {
 // Food is never a chain; gas stations aren't break spots.
 export const BREAK_KINDS = { food: 'Food', bar: 'Bar', park: 'Park', view: 'Lookout', falls: 'Waterfall', history: 'Historic site' };
 export const WALK_KINDS = ['park', 'view', 'falls', 'history'];
+// Break spots on the map (the Food & sights chip): a dot each, white-rimmed (gas stations are dark-rimmed).
+export const BREAK_COLORS = { food: '#ff922b', bar: '#868e96', park: '#20c997', view: '#cc5de8', falls: '#4dabf7', history: '#d4a373' };
 
 export const GEN = {
   roadKmh: 60, linkKmh: 80, roadFactor: 1.3, maxRoads: 4, maxRoadsCap: 9, spread: 60, maxOptions: 6,

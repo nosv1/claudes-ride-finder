@@ -31,7 +31,7 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 // ---------- state ----------
 
 const settings = Object.assign({
-  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, hideUnsure: false, showBlind: true, showFuel: false, rollers: false,
+  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, hideUnsure: false, showBlind: true, showFuel: false, showBreaks: false, rollers: false,
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
   basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1, genBreak: 'none', skipBreaks: [], places: [],
 }, load(SETTINGS_KEY));
@@ -158,6 +158,7 @@ async function start() {
   });
   mapView.on('road', onRoadTap);
   mapView.on('station', k => { if (!usePick(null)) go('station', store.fuel[k]); });
+  mapView.on('breakSpot', k => { if (store.breaks && store.breaks[k] && !usePick(store.breaks[k].at)) openBreakSpot(store.breaks[k]); });
   mapView.on('spot', (id, at) => { if (!usePick(at)) go('spot', id); });
   mapView.on('pin', () => { if (place && !usePick(place.at)) go('place', place); });
   mapView.on('stop', () => { if (!picking) go('trip'); });
@@ -212,6 +213,7 @@ function loadView() {
 function applySettings() {
   mapView.setFilters(filters());
   mapView.showStations(settings.showFuel);
+  showBreakSpots();
   mapView.setBasemap(settings.basemap);
   mapView.showHillshade(settings.hillshade);
   renderChips();
@@ -578,7 +580,11 @@ function planThrough(p) {
   const at = [+p.at[0].toFixed(5), +p.at[1].toFixed(5)];
   if (!trip.items.some(it => it.type === 'point' && it.pts[0][0] === at[0] && it.pts[0][1] === at[1])) {
     newRideFromSaved();
-    addPlace(at, p.label);
+    addPlace(at, p.brk ? `Break: ${p.brk.name}` : p.label, p.label);
+    // Kept: never taken for the start (first in an empty ride). A break spot from the map goes in as a kept break: its
+    // links, and loops named for it.
+    const it = trip.items.find(x => x.type === 'point' && x.pts[0][0] === at[0] && x.pts[0][1] === at[1]);
+    if (it) { Object.assign(it, { keep: true }, p.brk ? { brk: p.brk } : {}); tripChanged(); }
   }
   stopGenerating(T.startOf(trip) ? '' : 'Now set a start: your location or a spot on the map.');
   go('plan');
@@ -1850,6 +1856,7 @@ function placeView() {
       h('button.btn', { onclick: () => { setEndAt(p.at, `End: ${p.label}`); go('plan'); } }, iconEl(icon.flag), 'End here'),
       h('a.btn', { href: `${gm}@?api=1&map_action=pano&viewpoint=${lat},${lon}`, target: '_blank', rel: 'noopener' }, iconEl(icon.person), 'Street View'),
       h('a.btn', { href: `${gm}dir/?api=1&destination=${lat},${lon}`, target: '_blank', rel: 'noopener' }, iconEl(icon.go), 'Directions')),
+    p.brk ? h('p.small.break-line', {}, breakLinks(p.brk, p.at)) : '',
     savePlaceBox(p),
     h('p.muted.small', {}, 'Start here or End here opens Plan a ride: with an end, it finds fun ways there.'),
   ];
@@ -2019,6 +2026,30 @@ function breakLinks(brk, at) {
   return h('span.break-links', {}, link(maps, 'Google Maps'), ' · ', link(`${gm}@?api=1&map_action=pano&viewpoint=${ll}`, 'Street View'), ' · ', skip);
 }
 
+// Break spots on the map (Food & sights), but the skipped ones. The file loads the first time they're turned on; the
+// map's copy is redone only when what's skipped changed (60,000 spots: not on every setting).
+let breaksShown = null;
+function showBreakSpots() {
+  mapView.showBreaks(settings.showBreaks);
+  if (!settings.showBreaks) return;
+  void loadBreaks().then(() => {  // loadBreaks never fails: without the file there are none
+    const skipped = (settings.skipBreaks || []).join('|');
+    if (breaksShown === skipped) return;
+    breaksShown = skipped;
+    const skip = new Set(settings.skipBreaks || []);
+    mapView.setBreaks((store.breaks || []).map((b, k) => ({ ...b, k })).filter(b => !skip.has(spotKey(b.at))));
+  });
+}
+
+// A break spot tapped on the map: its card, as a searched place's, with Google Maps and Skip.
+function openBreakSpot(b) {
+  const word = BREAK_KINDS[b.kind];
+  place = { label: b.name || word, sub: [b.name && b.name !== word ? word : '', b.detail].filter(Boolean).join(' · ') || word,
+    at: b.at, brk: { kind: b.kind, name: b.name || word, detail: b.detail || '' } };
+  mapView.setPin(b.at);
+  go('place', place);
+}
+
 // Where a break spot is, to about 10 m: the same spot from tiles/breaks.js and from a saved ride (kept to 1e-5°).
 const spotKey = ([lat, lon]) => `${lat.toFixed(4)},${lon.toFixed(4)}`;
 
@@ -2026,7 +2057,8 @@ const spotKey = ([lat, lon]) => `${lat.toFixed(4)},${lon.toFixed(4)}`;
 // it's closed, an OpenStreetMap note there gets the map fixed for everyone (no account needed).
 function skipBreak(brk, at) {
   if (!check(Array.isArray(at) && at.length === 2, 'skipBreak: a spot')) return;
-  setSetting({ skipBreaks: [...new Set([...(settings.skipBreaks || []), spotKey(at)])] });
+  setSetting({ skipBreaks: [...new Set([...(settings.skipBreaks || []), spotKey(at)])] });  // and off the map
+  if (view === 'place') go('home');
   const note = `https://www.openstreetmap.org/note/new#map=19/${at[0].toFixed(5)}/${at[1].toFixed(5)}`;
   toast(`${brk.name} won't be picked again. Generate again for another place.`,
     { label: 'Closed? Tell OpenStreetMap', run: () => window.open(note, '_blank', 'noopener') });
@@ -2639,7 +2671,9 @@ function renderChips() {
     chip(SURFACE_CHOICES[surfaceOf(s)].chip, { on: s.hideUnpaved, menuItems: [{ heading: 'Road surface' },
       ...SURFACE_CHOICES.map((v, i) => ({ label: v.label, on: surfaceOf(s) === i, run: () => setSetting(v.set) }))] }),
     chip('⚠ Blind crests', { on: s.showBlind, title: 'Tight turns at the top of a rise', onclick: () => setSetting({ showBlind: !s.showBlind }) }),
-    chip('Gas', { on: s.showFuel, title: 'Gas stations (green = 90+ octane)', onclick: () => setSetting({ showFuel: !s.showFuel }) }));
+    chip('Gas', { on: s.showFuel, title: 'Gas stations (green = 90+ octane)', onclick: () => setSetting({ showFuel: !s.showFuel }) }),
+    chip('Food & sights', { on: s.showBreaks, title: 'Places to stop: local food (orange), bars (gray), parks (green), lookouts (purple), waterfalls (blue), historic spots (tan)',
+      onclick: () => setSetting({ showBreaks: !s.showBreaks }) }));
   $('#chips').replaceChildren(...chips);
 }
 
