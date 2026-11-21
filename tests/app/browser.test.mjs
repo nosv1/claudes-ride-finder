@@ -1164,6 +1164,23 @@ test('Food & sights shows the break spots on the map; tap one for its card, plan
   assert.equal(await page.eval('RF.settings.showBreaks'), false);
 });
 
+test('Reverse on the ride page: the same loop the other way round', async () => {
+  const saved = await page.eval('JSON.stringify(RF.trip.items)');
+  await page.eval(`(() => {
+    RF.trip.loop = true;
+    RF.trip.items.splice(0, RF.trip.items.length,
+      { type: 'point', start: true, label: 'Start: Home', pts: [[38.852, -94.343]] },
+      { type: 'point', label: 'Lone Jack', pts: [[38.87, -94.17]] },
+      { type: 'point', label: 'Pleasant Hill', pts: [[38.79, -94.27]] });
+    RF.go('trip');
+  })()`);
+  await page.waitFor("[...document.querySelectorAll('#sheetBody .section-head button')].some(b => /Reverse/.test(b.textContent))", 5000);
+  await page.eval("[...document.querySelectorAll('#sheetBody .section-head button')].find(b => /Reverse/.test(b.textContent)).click()");
+  assert.deepEqual(await page.eval('RF.trip.items.map(it => it.label)'), ['Start: Home', 'Pleasant Hill', 'Lone Jack']);
+  await page.waitFor("[...document.querySelectorAll('#sheetBody .stops li')].map(li => li.innerText).join('|').indexOf('Pleasant Hill') < [...document.querySelectorAll('#sheetBody .stops li')].map(li => li.innerText).join('|').indexOf('Lone Jack')", 5000);
+  await page.eval(`RF.trip.items.splice(0, RF.trip.items.length, ...${saved}); RF.go('home')`);
+});
+
 test('a kept break: every loop goes there, with no second break', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {
   await page.eval(`(async () => {
     const T = await import('./js/trip.js');
@@ -1179,6 +1196,14 @@ test('a kept break: every loop goes there, with no second break', { skip: !NETWO
   assert.ok(loops.length >= 2, JSON.stringify(loops));
   loops.forEach(l => assert.deepEqual(l, ['Rookies Bar & Grill']));
   assert.match(await sheetText(), /To Rookies Bar & Grill/);
+  // Reverse on a card: routed the other way round, still through the break, and the ride picked is reversed too.
+  const wasLabels = await page.eval('JSON.stringify(RF.gen.options[0].items.map(i => i.label))');
+  await page.eval("RF.gen.index = 0; document.querySelector('#sheetBody .option .reverse').click()");
+  await page.waitFor('RF.gen.options[0].reversed && !RF.gen.options[0].reversing', 60000);
+  const nowLabels = await page.eval('RF.gen.options[0].items.map(i => i.label)');
+  assert.deepEqual([nowLabels[0], ...nowLabels.slice(1).reverse()], JSON.parse(wasLabels));
+  assert.ok(await page.eval('RF.gen.options[0].route.meters > 0 && RF.gen.options[0].curvy >= 0'));
+  assert.deepEqual(await page.eval('RF.trip.items.map(i => i.label)'), nowLabels, 'the picked loop is the reversed one');
   await page.eval("RF.settings.genBreak = 'none'");
 });
 

@@ -197,13 +197,13 @@ export class MapView {
             'text-allow-overlap': false }, paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#111', 'text-halo-width': 1.6 } },
           { id: 'blind', type: 'symbol', source: 'blind', minzoom: 11, layout: {
             'icon-image': 'blind', 'icon-size': 0.85, 'icon-allow-overlap': true, 'icon-pitch-alignment': 'viewport' } },
-          // Break spots (Food & sights): a dot in the kind's color from zoom 9, named from zoom 12.
+          // Break spots (Food & sights): a dot in the kind's color from zoom 9, named (quietly) from zoom 13.
           { id: 'breaks', type: 'circle', source: 'breaks', minzoom: 9, layout: { visibility: 'none' }, paint: {
             'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3, 14, 6.5], 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.2,
             'circle-color': ['match', ['get', 'kind'], ...Object.entries(BREAK_COLORS).flat(), '#adb5bd'] } },
-          { id: 'breaks-label', type: 'symbol', source: 'breaks', minzoom: 12, layout: { visibility: 'none',
-            'text-field': ['get', 'name'], 'text-font': ['Noto Sans Bold'], 'text-size': 11, 'text-offset': [0, -1.2], 'text-optional': true },
-            paint: { 'text-color': ['match', ['get', 'kind'], ...Object.entries(BREAK_COLORS).flat(), '#adb5bd'], 'text-halo-color': '#111', 'text-halo-width': 1.6 } },
+          { id: 'breaks-label', type: 'symbol', source: 'breaks', minzoom: 13, layout: { visibility: 'none',
+            'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 10.5, 'text-offset': [0, -1.1], 'text-optional': true },
+            paint: { 'text-color': '#dee2e6', 'text-halo-color': '#111', 'text-halo-width': 1.4 } },
           { id: 'fuel', type: 'circle', source: 'fuel', minzoom: 9, layout: { visibility: 'none' }, paint: {
             'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3.5, 14, 7], 'circle-stroke-color': '#111', 'circle-stroke-width': 1.5,
             'circle-color': ['match', ['get', 'status'], 2, FUEL_STATUS[2].color, 1, FUEL_STATUS[1].color, -1, FUEL_STATUS['-1'].color, FUEL_STATUS[0].color] } },

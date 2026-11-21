@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { boundsOf, distance, decodePolyline, spotOnLine, headingOnPath, nearestIndex } from '../../js/geo.js';
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, rollersInView, hillLevel, roadNear, roadAlong, setMyMph, limitOf } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
-import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
+import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, reverseLoop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
 import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn, sellsOctane, onePerRide, pickBreaks, tripName } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { bikeFor, rangeOf, leftIn, upgradeBikes, octaneOf } from '../../js/bikes.js';
@@ -378,6 +378,23 @@ test('a bar is a break only where there is no other food that way, and a saved r
   assert.equal(startOf(decodeTrip(encodeTrip(through))), null);
   setStart(through, [38.85, -94.34], 'Start: Home');
   assert.deepEqual(through.items.map(it => it.label), ['Start: Home', 'Wagon Works BBQ']);
+});
+
+test('a loop reversed: the start stays first, the stops go the other way round, each road from its other end', () => {
+  const start = { type: 'point', start: true, label: 'Start: Home', pts: [[38.85, -94.34]] };
+  const a = { type: 'road', label: 'MO 150', ids: [1], pts: [[38.83, -94.36], [38.85, -94.3]] };
+  const stop = { type: 'point', label: 'Break: Wagon Works BBQ', pts: [[38.87, -94.17]], brk: { kind: 'food', name: 'Wagon Works BBQ', detail: '' } };
+  const oneway = { type: 'road', label: 'Ramp', ids: [2], oneway: true, pts: [[38.9, -94.2], [38.91, -94.21]] };
+  const back = reverseLoop([start, a, stop, oneway]);
+  assert.deepEqual(back.map(it => it.label), ['Start: Home', 'Ramp', 'Break: Wagon Works BBQ', 'MO 150']);
+  assert.deepEqual(back[3].pts, [[38.85, -94.3], [38.83, -94.36]], 'MO 150 from its other end');
+  assert.deepEqual(back[1].pts, oneway.pts, 'a one-way road only goes one way');
+  assert.deepEqual(a.pts, [[38.83, -94.36], [38.85, -94.3]], 'the list it was given is left as it was');
+  assert.deepEqual(reverseLoop(back).map(it => it.label), ['Start: Home', 'MO 150', 'Break: Wagon Works BBQ', 'Ramp'], 'twice: as it was');
+  // Not a loop (it has an end), or no start: left as it is.
+  const withEnd = [start, a, { type: 'point', end: true, label: 'End', pts: [[39, -94]] }];
+  assert.equal(reverseLoop(withEnd), withEnd);
+  assert.deepEqual(reverseLoop([]), []);
 });
 
 test('the generator shows each ride once: not the same roads twice, nor the same route with a road it rides anyway', () => {

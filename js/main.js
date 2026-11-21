@@ -965,8 +965,39 @@ async function routeOption(opt, plan) {
   await dropTrouble(w);
   await addOnTheWay(w);
   const { best } = w;
-  Object.assign(opt, { items: finishOf(w, w.items), route: best && best.route }, best ? { curvy: best.curvy, highway: best.highway, blind: best.blind, back: best.back, turns: best.turns.length,
-    lights: best.lights.length, lefts: best.lefts.length, worth: best.worth } : {});
+  Object.assign(opt, { items: finishOf(w, w.items), route: best && best.route }, best ? ratedFields(best) : {});
+}
+
+// What a card shows of a routed loop (rate's result, as counts).
+const ratedFields = best => ({ route: best.route, curvy: best.curvy, highway: best.highway, blind: best.blind, back: best.back,
+  turns: best.turns.length, lights: best.lights.length, lefts: best.lefts.length, worth: best.worth });
+
+// A generated loop the other way round (its card's Reverse): routed again, its numbers redone. Picked, the ride is too.
+async function reverseOption(i) {
+  const o = gen.options[i];
+  if (!o || !o.route || o.oneWay || o.reversing) return;
+  o.reversing = true;
+  renderSoon();
+  const items = T.reverseLoop(copyStops(o.items));
+  const r = await fetchRoute(T.routablePoints({ ...trip, items, loop: true }), +trip.pref);
+  o.reversing = false;
+  if (gen.options[i] !== o) return;  // generated again meanwhile
+  if (!r) { toast(routerTrouble()); return renderSoon(); }
+  Object.assign(o, { items, reversed: !o.reversed, focus: undefined }, ratedFields(rate(r)));
+  if (gen.index === i) selectOption(i);
+  renderSoon();
+}
+
+// A loop card's Reverse (not on a one-way card). Tapping it doesn't pick the card.
+const reverseButton = (o, i) => o.oneWay ? '' : h('button.btn.small.reverse', { title: 'The same loop the other way round', disabled: !!o.reversing,
+  onclick: e => { e.stopPropagation(); void reverseOption(i); } }, iconEl(icon.swap), o.reversing ? 'Reversing…' : 'Reverse');
+
+// The ride on its page the other way round (a loop: its start stays first), routed again. An edit on the ride's own
+// page, so it goes into the selected saved ride.
+function reverseRide() {
+  trip.items = T.reverseLoop(trip.items);
+  tripChanged();
+  toast('Reversed: the same loop, the other way round.');
 }
 
 // One loop being routed (routeOption): the option, its start (origin, at its point `at`) and end (`e` its point; null
@@ -1992,6 +2023,7 @@ function optionCard(o, i) {
     onmouseleave: () => mapView.setPreview(null),
   },
   h('div.option-head', {}, h('span.num', {}, i + 1), h('b', {}, optionName(o)),
+    reverseButton(o, i),
     o.vsFastest != null ? h('span.extra', {}, vsFastest(o.vsFastest)) : '',
     h(`span.muted${o.vsFastest != null ? '' : '.push'}`, {}, fmtDuration(o.route.seconds))),
   h('div.option-stats', {}, `${miles(o.route.meters)} mi · `, h('b', {}, `${miles(o.curvy)} mi curvy`), ` (${pct}%)`,
@@ -2081,6 +2113,8 @@ function tripView() {
     // Share at the top: the ride page has grown, and it's what you do once a ride looks right.
     backBar('Your ride', P.tripName(trip).replace(/^Ride: /, ''), h('button.btn.head-btn', { onclick: shareTrip }, iconEl(icon.share), 'Share')),
     h('div.section-head', {}, h('h3', {}, `Stops (${trip.items.length})`),
+      trip.loop && T.startOf(trip) && trip.items.length > 2
+        ? h('button.btn.small.reverse', { title: 'The same loop the other way round', onclick: reverseRide }, iconEl(icon.swap), 'Reverse') : '',
       h('button.btn.small', { onclick: clearRide }, iconEl(icon.plus), 'New ride')),
     stopList(),
     h('div.btn-row', {},

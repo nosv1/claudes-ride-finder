@@ -67,6 +67,8 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
   Tap a Must include row: the map goes to it. Search a place, Plan a loop through here: it's in Must include.
 - Plan a ride with a few saved places: each but the start is a button under Must include; tap one and it's in.
 - A place's card: Save place has a gap above it, like the buttons above.
+- Reverse on a loop card: "Reversing…", then the card's numbers change and the map shows it the other way round
+  (arrows). On the ride page, Reverse turns the stop list around; the start stays first.
 - Food & sights on: dots around the Ozarks from zoom 9, names up close, colors by kind. Tap a diner: its card has
   Google Maps, Street View, Skip. Plan a loop through here: Start stays "Not set yet", the diner is in Must include,
   Generate: loops "To <the diner>". Skip one: its dot goes.

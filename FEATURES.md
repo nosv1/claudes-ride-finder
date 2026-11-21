@@ -500,13 +500,17 @@ colored road), Add a stop here, Street View here.
   The ride's break (from a picked loop) isn't one, so the next Generate picks its own, but it's offered under Must
   include with **Include** (2026-11-20: the rider wanted loops back to a break he'd been sent to): kept, every loop goes
   there, no second break is added, and the cards are named for it. Kept stays kept when saved or shared.
+- **Reverse** (2026-11-20): on each loop card, the same loop the other way round, routed again with its numbers redone
+  (curvy miles, lights, crests, doubling back; picked, the ride is reversed too); on the ride page, next to New ride,
+  for a loop with a start (an edit there, so it saves into the selected saved ride). The start stays first, the stops
+  go the other way round, each road ridden from its other end; a one-way road stays as it is.
 - **Your places** are buttons under Must include (all of them but the start, the end and ones already in): one tap
   and every loop goes through it.
 - **Plan a loop through here**, on a searched place's card: the place as a stop, then Plan a ride (as Plan a loop with
   this road does for a road). It's never taken for the ride's start, even in an empty ride (a ride's first point is
   its start otherwise): set one, or Generate starts from your location.
 - **Food & sights** (chip, next to Gas; the rider: "if we know all these destinations, then I should be able to see
-  them on the map without having to generate a ride"): every break spot as a dot from zoom 9, named from zoom 12,
+  them on the map without having to generate a ride"): every break spot as a dot from zoom 9, named from zoom 13,
   colored by kind (food orange, bars gray, parks green, lookouts purple, waterfalls blue, historic spots tan). The
   3 MB file loads the first time it's turned on; skipped places aren't shown. Tap one: its card, with Google Maps,
   Street View and Skip this place, Plan a loop through here (in as a kept break, so loops are named for it), Add to

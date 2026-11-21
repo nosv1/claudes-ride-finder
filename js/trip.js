@@ -165,6 +165,14 @@ export function moveStop(trip, from, to) {
   return trip;
 }
 
+// A loop the other way round: the start stays first, the stops after it in reverse, each road ridden from its other end
+// (a one-way road can't be, so it stays as it is). A new list; a ride with an end isn't a loop, so it's left as it is.
+export function reverseLoop(items) {
+  const [first, ...rest] = items;
+  if (!first || first.type !== 'point' || first.keep || rest.some(it => it.end)) return items;
+  return [first, ...rest.reverse().map(it => it.type === 'road' && !it.oneway ? { ...it, pts: [...it.pts].reverse() } : it)];
+}
+
 export const flipStop = (trip, i) => { if (!trip.items[i].oneway) trip.items[i].pts.reverse(); return trip; };
 export const removeStop = (trip, i) => { trip.items.splice(i, 1); return trip; };
 
