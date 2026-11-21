@@ -51,7 +51,7 @@ async function showMo150() {
 
 test('loads roads, draws them, and lists the best ones', async () => {
   assert.ok(await page.eval('RF.store.roads.length') > 1000);
-  assert.equal(await page.eval("document.querySelectorAll('#chips .chip').length"), 8);  // with Gas and Food & sights
+  assert.equal(await page.eval("document.querySelectorAll('#chips .chip').length"), 9);  // with Gas, Food and Sights
   // The curve classes, plus Highways & ramps with All roads, and Roller coasters.
   assert.equal(await page.eval("document.querySelectorAll('.legend-chip:not(.key-btn)').length"), 7);
   assert.match(await page.eval("[...document.querySelectorAll('.legend-chip')].map(c => c.textContent).join('|')"), /Roller coasters/);
@@ -1142,13 +1142,29 @@ test('your places are one tap into Must include, and Save place sits clear of th
   await page.eval(`(() => { const s = ${saved}; RF.settings.places = s.places; RF.trip.items.splice(0, RF.trip.items.length, ...s.items); RF.go('home'); })()`);
 });
 
-test('Food & sights shows the break spots on the map; tap one for its card, plan a loop through it, or skip it', async () => {
+test('Food and Sights show the break spots on the map; tap one for its card, plan a loop through it, or skip it', async () => {
   const saved = await page.eval('JSON.stringify(RF.trip.items)');
   await page.eval('RF.trip.items.length = 0');  // an empty ride: the place mustn't become its start
   await page.eval("void RF.mapView.map.jumpTo({ center: [-94.199, 39.137], zoom: 14 })");
-  await page.eval("[...document.querySelectorAll('#chips .chip')].find(c => /Food & sights/.test(c.textContent)).click()");
+  // Each chip is a dropdown, like Paved: Food (local food, or with bars too) and Sights (all of them, or one kind).
+  const pick = (chip, item) => page.eval(`(() => {
+    [...document.querySelectorAll('#chips .chip')].find(c => /^${chip}/.test(c.textContent)).click();
+    [...document.querySelectorAll('#menu .menu-item')].find(b => b.textContent === '${item}').click();
+  })()`);
+  const kinds = "[...new Set(RF.mapView.map.queryRenderedFeatures({ layers: ['breaks'] }).map(f => f.properties.kind))].sort().join()";
   const near = "RF.mapView.map.queryRenderedFeatures({ layers: ['breaks'] }).map(f => f.properties.name)";
+  await pick('Food', 'Local food');
+  await page.waitFor(`${kinds} === 'food'`, 20000);
+  assert.ok(await page.eval("[...document.querySelectorAll('#chips .chip.on')].some(c => c.textContent === 'Food')"));
+  await pick('Food', 'Local food and bars');
   await page.waitFor(`${near}.includes('Rookies Bar & Grill')`, 20000);
+  assert.ok(await page.eval("[...document.querySelectorAll('#chips .chip')].some(c => c.textContent === 'Food & bars')"));
+  await pick('Sights', 'Parks');
+  await page.waitFor("RF.mapView.map.getFilter('breaks')[2][1].join() === 'food,bar,park'", 10000);  // ['in', kind, ['literal', kinds]]
+  assert.ok(['bar,food', 'bar,food,park'].includes(await page.eval(kinds)), 'just food, bars and parks drawn');  // no park in view here
+  assert.ok(await page.eval("[...document.querySelectorAll('#chips .chip.on')].some(c => c.textContent === 'Parks')"));
+  await pick('Parks', 'No sights');
+  await page.waitFor(`${kinds} === 'bar,food'`, 10000);
   const k = await page.eval("RF.store.breaks.findIndex(b => b.name === 'Rookies Bar & Grill' && Math.abs(b.at[0] - 39.1377) < 0.001)");
   assert.ok(k >= 0);
   await page.eval(`RF.mapView.emit('breakSpot', ${k})`);
@@ -1164,8 +1180,26 @@ test('Food & sights shows the break spots on the map; tap one for its card, plan
   await page.eval("document.querySelector('#sheetBody .skip-break').click()");
   await page.waitFor(`!${near}.includes('Rookies Bar & Grill')`, 5000);
   await page.eval(`RF.settings.skipBreaks = []; RF.trip.items.splice(0, RF.trip.items.length, ...${saved}); RF.go('home')`);
-  await page.eval("[...document.querySelectorAll('#chips .chip')].find(c => /Food & sights/.test(c.textContent)).click()");
-  assert.equal(await page.eval('RF.settings.showBreaks'), false);
+  await pick('Food', 'No food');
+  assert.equal(await page.eval("RF.mapView.map.getLayoutProperty('breaks', 'visibility')"), 'none');
+  assert.deepEqual(await page.eval('[RF.settings.mapFood, RF.settings.mapSights]'), ['none', 'none']);
+});
+
+test('Plan a ride sits at the bottom of the panel while the list scrolls', async () => {
+  await page.eval("RF.go('home')");
+  await page.waitFor("document.querySelector('#sheetBody .cta.sticky')", 5000);
+  // A long list (a spacer above the button), scrolled partway: the button stays within 10px of the panel's bottom.
+  const gap = await page.eval(`(() => {
+    const body = document.getElementById('sheetBody'), btn = body.querySelector('.cta.sticky');
+    const pad = document.createElement('div');
+    pad.style.height = '2000px';
+    body.insertBefore(pad, btn);
+    body.scrollTop = 300;
+    const g = body.getBoundingClientRect().bottom - btn.getBoundingClientRect().bottom;
+    pad.remove();
+    return g;
+  })()`);
+  assert.ok(gap >= 0 && gap <= 10, `gap under Plan a ride: ${gap}px`);
 });
 
 test('Reverse on the ride page: the same loop the other way round', async () => {

@@ -188,7 +188,9 @@ h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; margin: 0 0 
 }
 .cta:disabled { opacity: .6; cursor: default; }
 /* The main action stays in reach at the bottom of the sheet while the list scrolls under it. */
-.cta.sticky, .btn.sticky { position: sticky; bottom: 10px; z-index: 1; box-shadow: 0 -10px 24px 6px var(--panel-solid); }
+/* Sticky at the bottom of the panel, 6px up (sticky counts the panel's 24px bottom padding): the strip under it is filled
+   too, so the list doesn't show through below it. */
+.cta.sticky, .btn.sticky { position: sticky; bottom: -18px; z-index: 1; box-shadow: 0 -10px 24px 6px var(--panel-solid), 0 8px 0 4px var(--panel-solid); }
 
 .ride-bar {
   display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 14px; border-radius: 12px;
@@ -314,6 +316,7 @@ select { min-height: 38px; padding: 0 8px; border-radius: 10px; border: 1px soli
 .menu-item:hover { background: rgba(255,255,255,.07); }
 .menu-item.on { color: #74c0fc; font-weight: 600; }
 .menu-item.on::after { content: "✓"; margin-left: auto; }
+.menu-item .kind-dot { display: inline-block; width: 10px; height: 10px; margin-right: 3px; border-radius: 50%; border: 1px solid #fff; }
 .toast {
   position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); top: calc(var(--app-h, 100dvh) - 200px);
   /* Centred from the middle, it would only get half the screen to fit in: size it to its text, up to the screen. */

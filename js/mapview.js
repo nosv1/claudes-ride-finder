@@ -308,8 +308,13 @@ export class MapView {
     if (!check(Array.isArray(list), 'setBreaks: a list')) return;
     this.map.getSource('breaks').setData(fc(list.map(b => point(b.at, { k: b.k, kind: b.kind, name: b.name }))));
   }
-  showBreaks(on) {
-    for (const id of ['breaks', 'breaks-label']) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+  // Just these kinds of them on the map (the Food and Sights chips); none: the layer's off.
+  showBreaks(kinds) {
+    if (!check(Array.isArray(kinds), 'showBreaks: a list of kinds')) return;
+    for (const id of ['breaks', 'breaks-label']) {
+      this.map.setLayoutProperty(id, 'visibility', kinds.length ? 'visible' : 'none');
+      this.map.setFilter(id, kinds.length ? ['in', ['get', 'kind'], ['literal', kinds]] : null);
+    }
   }
   setRouteStations(list) {
     this.map.getSource('routeFuel').setData(fc(list.map(({ k, status, pick }) => {

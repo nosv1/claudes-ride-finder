@@ -1,5 +1,5 @@
 // Ride Finder: app state, views and wiring. See FEATURES.md for what each feature must do.
-import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, BREAK_KINDS, MAP_ZOOM, tiersFor, APP_VERSION } from './config.js';
+import { CURVE_CLASSES, CORNER_ABOUT, SPEED_BINS, HILLS, FUEL_STATUS, SURFACE, GEN, RAMP_TIERS, RAMP_ABOUT, WEATHER, ROAD_TYPES, HIGHWAYS, ROLLER, BREAK_KINDS, BREAK_COLORS, WALK_KINDS, MAP_ZOOM, tiersFor, APP_VERSION } from './config.js';
 import { miles, fmtDuration, spotOnLine, headingOnPath, pad, boundsOf, intersects, km, cumulative, nearestIndex } from './geo.js';
 import { visible, hillLevel, stretchOf, bestInView, rollersInView, clusterRoads, summarize, roadNear, roadAlong, setMyMph, limitOf } from './roads.js';
 import * as T from './trip.js';
@@ -31,7 +31,7 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 // ---------- state ----------
 
 const settings = Object.assign({
-  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, hideUnsure: false, showBlind: true, showFuel: false, showBreaks: false, rollers: false,
+  mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, hideUnsure: false, showBlind: true, showFuel: false, mapFood: 'none', mapSights: 'none', rollers: false,
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
   basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1, genBreak: 'none', skipBreaks: [], places: [],
 }, load(SETTINGS_KEY));
@@ -41,6 +41,9 @@ if (!settings.highwayTiers) {
   settings.rampTiers = [...new Set([...settings.rampTiers, ...RAMP_TIERS.flatMap((t, i) => t.highway ? [i] : [])])];
   settings.highwayTiers = true;
 }
+// Food & sights (one chip, on or off) became the Food and Sights chips.
+if (settings.showBreaks) Object.assign(settings, { mapFood: 'all', mapSights: 'all' });
+delete settings.showBreaks;
 // Interchanges mode became Best rides with the Highways road type.
 if (settings.mode === 'ramps') Object.assign(settings, { mode: 'ride', roadType: 'highway' });
 
@@ -2063,12 +2066,23 @@ function breakLinks(brk, at) {
   return h('span.break-links', {}, link(maps, 'Google Maps'), ' · ', link(`${gm}@?api=1&map_action=pano&viewpoint=${ll}`, 'Street View'), ' · ', skip);
 }
 
-// Break spots on the map (Food & sights), but the skipped ones. The file loads the first time they're turned on; the
-// map's copy is redone only when what's skipped changed (60,000 spots: not on every setting).
+// The Food and Sights chips' choices: what of the break spots they put on the map (kinds: none for the first).
+const FOOD_CHOICES = { none: { label: 'No food', kinds: [] }, food: { label: 'Local food', kinds: ['food'] },
+  all: { label: 'Local food and bars', kinds: ['food', 'bar'] } };
+const SIGHT_CHOICES = { none: { label: 'No sights', kinds: [] }, all: { label: 'All sights', kinds: WALK_KINDS },
+  park: { label: 'Parks', kinds: ['park'] }, view: { label: 'Lookouts', kinds: ['view'] },
+  falls: { label: 'Waterfalls', kinds: ['falls'] }, history: { label: 'Historic sites', kinds: ['history'] } };
+const shownKinds = s => [...(FOOD_CHOICES[s.mapFood] || FOOD_CHOICES.none).kinds, ...(SIGHT_CHOICES[s.mapSights] || SIGHT_CHOICES.none).kinds];
+// A menu item's dots: the colors its kinds are on the map.
+const kindDots = kinds => kinds.map(k => `<i class="kind-dot" style="background:${BREAK_COLORS[k]}"></i>`).join('');
+
+// Break spots on the map (the Food and Sights chips), but the skipped ones. The file loads the first time they're
+// turned on; the map's copy is redone only when what's skipped changed (60,000 spots: not on every setting).
 let breaksShown = null;
 function showBreakSpots() {
-  mapView.showBreaks(settings.showBreaks);
-  if (!settings.showBreaks) return;
+  const kinds = shownKinds(settings);
+  mapView.showBreaks(kinds);
+  if (!kinds.length) return;
   void loadBreaks().then(() => {  // loadBreaks never fails: without the file there are none
     const skipped = (settings.skipBreaks || []).join('|');
     if (breaksShown === skipped) return;
@@ -2711,8 +2725,13 @@ function renderChips() {
       ...SURFACE_CHOICES.map((v, i) => ({ label: v.label, on: surfaceOf(s) === i, run: () => setSetting(v.set) }))] }),
     chip('⚠ Blind crests', { on: s.showBlind, title: 'Tight turns at the top of a rise', onclick: () => setSetting({ showBlind: !s.showBlind }) }),
     chip('Gas', { on: s.showFuel, title: 'Gas stations (green = 90+ octane)', onclick: () => setSetting({ showFuel: !s.showFuel }) }),
-    chip('Food & sights', { on: s.showBreaks, title: 'Places to stop: local food (orange), bars (gray), parks (green), lookouts (purple), waterfalls (blue), historic spots (tan)',
-      onclick: () => setSetting({ showBreaks: !s.showBreaks }) }));
+    chip(s.mapFood === 'all' ? 'Food & bars' : 'Food', { on: s.mapFood !== 'none', title: 'Local places to eat (no chains) on the map',
+      menuItems: [{ heading: 'Food on the map' }, ...Object.entries(FOOD_CHOICES).map(([k, c]) => ({ label: c.label, icon: kindDots(c.kinds),
+        on: s.mapFood === k, run: () => setSetting({ mapFood: k }) }))] }),
+    chip(['none', 'all'].includes(s.mapSights) ? 'Sights' : SIGHT_CHOICES[s.mapSights].label, { on: s.mapSights !== 'none',
+      title: 'Places to stop and walk around on the map', menuItems: [{ heading: 'Sights on the map' },
+        ...Object.entries(SIGHT_CHOICES).map(([k, c]) => ({ label: c.label, icon: kindDots(c.kinds),
+          on: s.mapSights === k, run: () => setSetting({ mapSights: k }) }))] }));
   $('#chips').replaceChildren(...chips);
 }
 

@@ -266,7 +266,7 @@ under the tag, and the Hills chip lists ft/mi.
 - Each card shows curvy miles, a hill word and the blind-crest count.
 - Hover (desktop) outlines the stretch, tap opens its card, and ＋ adds it to the ride.
 - A "stretch" means pieces of the same ref/name within ~3 km. Missouri reuses lettered routes in every county.
-- **Plan a ride** stays pinned at the bottom of the sheet.
+- **Plan a ride** stays pinned at the bottom of the sheet, 6px from its edge, with nothing of the list showing under it.
 
 **What's this road?** Tapping any road puts a little tag right there with its name and limit: "MO 7 · 55 mph",
 "about 45 mph (not posted)" from the estimate, or "no posted limit" on highways and ramps. A colored road also
@@ -514,8 +514,11 @@ colored road), Add a stop here, Street View here.
 - **Plan a loop through here**, on a searched place's card: the place as a stop, then Plan a ride (as Plan a loop with
   this road does for a road). It's never taken for the ride's start, even in an empty ride (a ride's first point is
   its start otherwise): set one, or Generate starts from your location.
-- **Food & sights** (chip, next to Gas; the rider: "if we know all these destinations, then I should be able to see
-  them on the map without having to generate a ride"): every break spot as a dot from zoom 9, named from zoom 13,
+- **Food** and **Sights** (chips, next to Gas; the rider: "if we know all these destinations, then I should be able to
+  see them on the map without having to generate a ride"). Dropdowns like Paved (2026-11-20; one Food & sights chip
+  was "not useful"): Food is No food, Local food, or Local food and bars (the chip says "Food & bars"); Sights is No
+  sights, All sights, or one kind: Parks, Lookouts, Waterfalls or Historic sites (the chip says which). Each choice
+  has its colors' dots in the menu. Break spots of the kinds shown are dots from zoom 9, named from zoom 13,
   colored by kind (food orange, bars gray, parks green, lookouts purple, waterfalls blue, historic spots tan). The
   3 MB file loads the first time it's turned on; skipped places aren't shown. Tap one: its card, with Google Maps,
   Street View and Skip this place, Plan a loop through here (in as a kept break, so loops are named for it), Add to
