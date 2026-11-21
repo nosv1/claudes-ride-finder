@@ -33,7 +33,7 @@ const save = (key, v) => { try { localStorage.setItem(key, typeof v === 'string'
 const settings = Object.assign({
   mode: 'ride', roadType: 'all', minSpeed: 45, minHills: 0, hideUnpaved: true, hideUnsure: false, showBlind: true, showFuel: false, rollers: false,
   classes: [0, 1, 2, 3, 4], speedBins: SPEED_BINS.map((_, i) => i), rampTiers: RAMP_TIERS.map((_, i) => i),
-  basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1, genBreak: 'none', places: [],
+  basemap: 'dark', hillshade: true, genHours: 3, genShape: 'loop', genExtra: 1, genBreak: 'none', skipBreaks: [], places: [],
 }, load(SETTINGS_KEY));
 upgradeBikes(settings);   // one picked bike (before the list) becomes your first, default bike
 // Settings saved before the highway tiers existed list only the ramp tiers: show the new ones too.
@@ -891,7 +891,8 @@ function emptySides(shown, quiet) {
 async function genOptions({ groups, s, e, hours, required, reach }) {
   if (e || settings.genBreak === 'none') return P.buildOptions(groups, s, hours, required, e);
   await loadBreaks();
-  return P.pickBreaks(store.breaks || [], { start: s, reach, groups, kind: settings.genBreak }).flatMap(b => {
+  const skip = new Set(settings.skipBreaks || []), open = (store.breaks || []).filter(b => !skip.has(spotKey(b.at)));
+  return P.pickBreaks(open, { start: s, reach, groups, kind: settings.genBreak }).flatMap(b => {
     const brk = { kind: b.kind, name: b.name || BREAK_KINDS[b.kind], detail: b.detail };
     const stop = { type: 'point', label: `Break: ${brk.name}`, pts: [b.at], brk };
     const best = P.buildOptions(groups, s, hours, [...required, stop])[0];
@@ -1908,7 +1909,7 @@ const breakChoice = oneWay => oneWay ? '' : h('div.field', {}, h('label', {}, 'S
   h('div.seg.break', {}, Object.entries(BREAK_CHOICES).map(([k, l]) => h(`button${settings.genBreak === k ? '.on' : ''}`,
     { onclick: () => setSetting({ genBreak: k }) }, l))),
   settings.genBreak === 'none' ? ''
-    : h('p.muted.small', {}, 'Somewhere about halfway: local food (no chains), or a park, lookout, waterfall or historic spot.'));
+    : h('p.muted.small', {}, 'Somewhere about halfway: local food (no chains), or a park, lookout, waterfall or historic spot. A bar only where there\u2019s nothing else that way, and it says so.'));
 
 // One way: how much longer than the straight way there to spend on fun roads.
 const extraLabel = t => t < 1 ? `+${Math.round(t * 60)} min` : t === 1.5 ? '+1½ h' : `+${t} h`;
@@ -1969,18 +1970,34 @@ function optionCard(o, i) {
 function breakLine(o) {
   const at = breakAt(o);
   if (!at) return '';
-  const { name, detail, kind } = at.stop.brk, what = detail || (name === BREAK_KINDS[kind] ? '' : BREAK_KINDS[kind].toLowerCase());
+  const { name, detail, kind } = at.stop.brk, word = BREAK_KINDS[kind].toLowerCase();
+  // A bar always says so ("bar, mexican"): never ridden to blindly.
+  const what = kind === 'bar' ? [word, detail].filter(Boolean).join(', ') : detail || (name === BREAK_KINDS[kind] ? '' : word);
   return h('div.small.break-line', {}, h('b', {}, `Break: ${name}`), what ? ` (${what})` : '',
     ` · mile ${Math.round(at.m / 1609.34)}, ${fmtDuration(at.s)} in`, h('div', {}, breakLinks(at.stop.brk, at.stop.pts[0])));
 }
 
-// A break spot on Google Maps (its page: photos, hours, reviews, website) and in Street View. Opening one doesn't pick
-// the card it's on. A spot with no name (a park) is looked up by where it is.
-function breakLinks(brk, [lat, lon]) {
-  const gm = 'https://www.google.com/maps/', ll = `${+lat.toFixed(6)},${+lon.toFixed(6)}`;
+// A break spot on Google Maps (its page: photos, hours, reviews, website) and in Street View, or skipped. Opening one
+// doesn't pick the card it's on. A spot with no name (a park) is looked up by where it is.
+function breakLinks(brk, at) {
+  const [lat, lon] = at, gm = 'https://www.google.com/maps/', ll = `${+lat.toFixed(6)},${+lon.toFixed(6)}`;
   const maps = brk.name !== BREAK_KINDS[brk.kind] ? `${gm}search/${encodeURIComponent(brk.name)}/@${ll},17z` : `${gm}search/?api=1&query=${ll}`;
   const link = (href, label) => h('a', { href, target: '_blank', rel: 'noopener', onclick: e => e.stopPropagation() }, label);
-  return h('span.break-links', {}, link(maps, 'Google Maps'), ' · ', link(`${gm}@?api=1&map_action=pano&viewpoint=${ll}`, 'Street View'));
+  const skip = h('a.skip-break', { href: '#', onclick: e => { e.preventDefault(); e.stopPropagation(); skipBreak(brk, at); } }, 'Skip this place');
+  return h('span.break-links', {}, link(maps, 'Google Maps'), ' · ', link(`${gm}@?api=1&map_action=pano&viewpoint=${ll}`, 'Street View'), ' · ', skip);
+}
+
+// Where a break spot is, to about 10 m: the same spot from tiles/breaks.js and from a saved ride (kept to 1e-5°).
+const spotKey = ([lat, lon]) => `${lat.toFixed(4)},${lon.toFixed(4)}`;
+
+// Closed, or not the rider's kind of place: never picked again (kept in settings, so on every device signed in). If
+// it's closed, an OpenStreetMap note there gets the map fixed for everyone (no account needed).
+function skipBreak(brk, at) {
+  if (!check(Array.isArray(at) && at.length === 2, 'skipBreak: a spot')) return;
+  setSetting({ skipBreaks: [...new Set([...(settings.skipBreaks || []), spotKey(at)])] });
+  const note = `https://www.openstreetmap.org/note/new#map=19/${at[0].toFixed(5)}/${at[1].toFixed(5)}`;
+  toast(`${brk.name} won't be picked again. Generate again for another place.`,
+    { label: 'Closed? Tell OpenStreetMap', run: () => window.open(note, '_blank', 'noopener') });
 }
 
 function tripView() {
@@ -2334,7 +2351,7 @@ function stopList() {
     h('span.num', {}, i + 1),
     h('div.grow', { onclick: () => mapView.fit(boundsOf(it.pts), 13) },
       h('div', {}, it.label),
-      h('div.muted.small', {}, it.brk ? ['Your break · ', breakLinks(it.brk, it.pts[0])]
+      h('div.muted.small', {}, it.brk ? [`Your break${it.brk.kind === 'bar' ? ' (a bar)' : ''} · `, breakLinks(it.brk, it.pts[0])]
         : it.type !== 'road' ? `${on ? `Stop on ${on.key}` : 'Stop'} · ${PIN_HINT}`
         : `${it.oneway ? 'One way' : `${cap(T.ends(it).entry)} end → ${T.ends(it).exit} end`} · ${miles(it.curvy || 0)} mi of curves`)),
     it.type === 'road' && !it.oneway ? h('button.icon-btn', { title: 'Switch ends: ride it the other way', html: icon.swap,

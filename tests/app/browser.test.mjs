@@ -1045,6 +1045,19 @@ test('Stop for a break: the plan page offers food or somewhere to walk, for loop
   await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'No break').click()");
   await sleep(200);
   assert.equal(await page.eval('RF.settings.genBreak'), 'none');
+  // A break in the ride: says if it's a bar, links to look it up, and Skip keeps it from being picked again.
+  const saved = await page.eval('JSON.stringify(RF.trip.items)');
+  await page.eval(`(() => {
+    RF.trip.items.length = 0;
+    RF.trip.items.push({ type: 'point', label: 'Start: Home', pts: [[38.852, -94.343]], start: true },
+      { type: 'point', label: 'Break: Rookies Bar & Grill', pts: [[39.10123, -94.19876]], brk: { kind: 'bar', name: 'Rookies Bar & Grill', detail: '' } });
+    RF.go('trip');
+  })()`);
+  await page.waitFor("/Your break \\(a bar\\) · Google Maps · Street View · Skip this place/.test(document.getElementById('sheetBody').innerText)", 5000);
+  await page.eval("document.querySelector('#sheetBody .stops .skip-break').click()");
+  assert.deepEqual(await page.eval('RF.settings.skipBreaks'), ['39.1012,-94.1988']);
+  assert.match(await page.eval("document.getElementById('toast').innerText"), /Rookies Bar & Grill won.t be picked again[\s\S]*Closed\? Tell OpenStreetMap/);
+  await page.eval(`RF.settings.skipBreaks = []; RF.trip.items.splice(0, RF.trip.items.length, ...${saved}); RF.go('home')`);
 });
 
 test('a loop with a break: each goes out to a break spot and the card says where and when', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {
@@ -1082,7 +1095,7 @@ test('a loop with a break: each goes out to a break spot and the card says where
   await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'No break').click()");
   // The ride's stop list has the links too.
   await page.eval("RF.go('trip')");
-  await page.waitFor("[...document.querySelectorAll('#sheetBody .stops .break-links a')].map(a => a.textContent).join() === 'Google Maps,Street View'", 5000);
+  await page.waitFor("[...document.querySelectorAll('#sheetBody .stops .break-links a')].map(a => a.textContent).join() === 'Google Maps,Street View,Skip this place'", 5000);
 });
 
 // Last: nothing the pages did along the way failed a check (CODING.md, rule 5) or threw without being caught.

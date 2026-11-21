@@ -480,6 +480,15 @@ colored road), Add a stop here, Street View here.
   - **Look it up first**: under the break line on each card, and on the break in the ride's stop list, "Google Maps ·
     Street View". Google Maps searches the spot's name right there (its page has photos, hours, reviews and the
     website); a spot with no name is looked up by where it is. Opening a link doesn't pick that card.
+  - **Skip this place** (next to the links): closed, or not your kind of place, it's never picked again (kept in
+    settings, so on every device you're signed in on). The message offers "Closed? Tell OpenStreetMap", a note on the
+    map right there (no account needed), so the next data build drops it for everyone.
+  - **Bars** (2026-11-20: a "Rookies Bar & Grill" break had closed and become another bar and grill; the rider: "I'm
+    not gonna ride to a bar and grill blindly"): places tagged as restaurants but named like a bar (bar & grill, sports
+    bar, pub, tavern, saloon, lounge, taproom, brewery) are their own kind. With Food or Either, a bar is picked only
+    where there's no other food that way, and the card says so: "Break: Rookies Bar & Grill (bar)". About 1,500 of
+    the 45,900 food spots. Barbecue ("Bar-B-Q"), oyster and ramen bars, and restaurants that also have a bar are food.
+  - A break stays a break when the ride is saved, reloaded or shared (its kind is in the link), so it keeps its links.
   - **Break spots** (`tiles/breaks.js`, from the state files by `build_tiles.py` or `tools/add_breaks.py`; loaded the
     first time it's needed): food that isn't a chain (restaurants, cafés, fast food and ice cream with a name and no
     `brand` tag: "a chain is no fun"; regional chains OSM doesn't tag slip through), and places to walk around: named

@@ -344,6 +344,26 @@ test('a break about halfway: the kind asked for, a good way out, with curvy road
   assert.deepEqual(pickBreaks([], { start, reach, groups, kind: 'any' }), []);
 });
 
+test('a bar is a break only where there is no other food that way, and a saved ride keeps its break', () => {
+  const start = [38.5, -94], reach = 100;
+  const north = d => [38.5 + d / 111.2, -94], south = d => [38.5 - d / 111.2, -94];
+  const spot = (name, kind, at) => ({ name, kind, at, detail: '' });
+  const groups = [{ center: north(40), score: 100 }, { center: south(40), score: 100 }];
+  // North: the bar has more roads around it, but the diner wins. South: only a bar, so it's the one.
+  const spots = [spot('Rookies Bar & Grill', 'bar', north(41)), spot('Main Street Diner', 'food', north(50)), spot("Johnny's Tavern", 'bar', south(41))];
+  assert.deepEqual(pickBreaks(spots, { start, reach, groups, kind: 'food' }).map(b => b.name), ['Main Street Diner', "Johnny's Tavern"]);
+  assert.deepEqual(pickBreaks(spots, { start, reach, groups, kind: 'walk' }), []);
+  // Saved, reloaded or shared, a break is still a break (so it keeps its links and Skip); its detail isn't kept.
+  const trip = newTrip();
+  setStart(trip, [38.85, -94.34], 'Start: Home');
+  trip.items.push({ type: 'point', label: 'Break: Rookies Bar & Grill', pts: [[39.10123, -94.19876]], brk: { kind: 'bar', name: 'Rookies Bar & Grill', detail: 'american' } });
+  addPoint(trip, [38.9, -94.3], 'Stop');
+  const back = decodeTrip(encodeTrip(trip));
+  assert.deepEqual(back.items[1].brk, { kind: 'bar', name: 'Rookies Bar & Grill', detail: '' });
+  assert.equal(back.items[2].brk, undefined, 'a plain stop stays a plain stop');
+  assert.ok(back.items[0].start);
+});
+
 test('the generator shows each ride once: not the same roads twice, nor the same route with a road it rides anyway', () => {
   const start = { type: 'point', label: 'Start', pts: [[0, 0]] }, road = (label, id) => ({ type: 'road', label, ids: [id], pts: [[0, 0]], gen: true });
   const route = (meters, seconds) => ({ meters, seconds, path: [] });

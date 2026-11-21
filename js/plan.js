@@ -483,13 +483,14 @@ export function onTheWay(groups, items, path) {
 // breakRoadsKm of them (none around: left out), the best in each of breakSides directions, best first, at most `max`.
 export function pickBreaks(spots, { start, reach, groups, kind, max = GEN.maxOptions }) {
   if (!check(Array.isArray(spots) && Array.isArray(groups) && reach > 0, 'break spots, roads and a reach to pick from')) return [];
-  const kinds = kind === 'food' ? ['food'] : kind === 'walk' ? WALK_KINDS : ['food', ...WALK_KINDS];
+  const kinds = kind === 'food' ? ['food', 'bar'] : kind === 'walk' ? WALK_KINDS : ['food', 'bar', ...WALK_KINDS];
   const [lo, hi] = GEN.breakNear, width = 360 / GEN.breakSides;
   const out = (b, d) => kinds.includes(b.kind) && d >= lo * reach && d <= hi * reach;
   const around = b => groups.reduce((sum, g) => km(b.at, g.center) < GEN.breakRoadsKm ? sum + g.score : sum, 0);
   const ranked = spots.filter(b => out(b, km(start, b.at)))
     .map(b => ({ ...b, value: around(b), side: Math.floor(((bearing(start, b.at) + width / 2) % 360) / width) }))
-    .filter(b => b.value > 0).sort((a, b) => b.value - a.value);
+    .filter(b => b.value > 0).sort((a, b) => Number(a.kind === 'bar') - Number(b.kind === 'bar') || b.value - a.value);
+  // A bar (a bar & grill, pub, brewery) only where there's nothing else that way.
   const picked = [];
   for (const b of ranked) {
     if (picked.length < max && !picked.some(p => p.side === b.side)) picked.push(b);

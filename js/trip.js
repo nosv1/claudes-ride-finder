@@ -181,6 +181,15 @@ export function indexAlongRoute(trip, p, path) {
 // Layout: version 1, flags (loop 1, 90+ 2), pref × 10, range, item count, then per item: flags (road 1, gen 2,
 // oneway 4, start 8, end 16), label, curvy metres, point count and points, id count and ids.
 const ROAD = 1, GEN = 2, ONEWAY = 4, START = 8, END = 16;
+// A break stop's kind, in the flags from 32 up: (its place here + 1) × 32. New kinds go on the end. Readers from before
+// breaks ignore those bits and see a stop.
+const BREAK_CODES = ['food', 'park', 'view', 'falls', 'history', 'bar'], BREAK_BIT = 32;
+const breakFlag = it => it.brk && BREAK_CODES.includes(it.brk.kind) ? (BREAK_CODES.indexOf(it.brk.kind) + 1) * BREAK_BIT : 0;
+// The break a stop was, back from its flags and its label ("Break: Wagon Works BBQ"); the detail isn't kept.
+const breakOf = (f, label) => {
+  const kind = BREAK_CODES[Math.floor(f / BREAK_BIT) - 1];
+  return kind ? { brk: { kind, name: label.replace(/^Break: /, ''), detail: '' } } : {};
+};
 
 export function encodeTrip(trip) {
   const out = [];
@@ -194,7 +203,7 @@ export function encodeTrip(trip) {
   uint(trip.items.length);
   let lat0 = 0, lon0 = 0, id0 = 0;
   for (const it of trip.items) {
-    uint((it.type === 'road' ? ROAD : 0) | (it.gen ? GEN : 0) | (it.oneway ? ONEWAY : 0) | (it.start ? START : 0) | (it.end ? END : 0));
+    uint(((it.type === 'road' ? ROAD : 0) | (it.gen ? GEN : 0) | (it.oneway ? ONEWAY : 0) | (it.start ? START : 0) | (it.end ? END : 0)) + breakFlag(it));
     text(it.label);
     uint(Math.round(it.curvy || 0));
     uint(it.pts.length);
@@ -230,7 +239,7 @@ function decodePackedTrip(bin) {
     }
     for (let k = uint(); k > 0; k--) ids.push(id0 += int());
     items.push({ type: f & ROAD ? 'road' : 'point', label, curvy, pts, ...(ids.length ? { ids } : {}), ...(f & GEN ? { gen: true } : {}),
-      ...(f & ONEWAY ? { oneway: true } : {}), ...(f & START ? { start: true } : {}), ...(f & END ? { end: true } : {}) });
+      ...(f & ONEWAY ? { oneway: true } : {}), ...(f & START ? { start: true } : {}), ...(f & END ? { end: true } : {}), ...breakOf(f, label) });
   }
   return { loop: !!(flags & 1), pref, range, need90: !!(flags & 2), items };
 }

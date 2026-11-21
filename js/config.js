@@ -16,7 +16,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.20.18';
+export const APP_VERSION = '2026.11.20.19';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
@@ -108,7 +108,7 @@ export const ROUTING = {
 
 // Break spots (tiles/breaks.js, from build_tiles.py): what each kind is called, and which are places to walk around.
 // Food is never a chain; gas stations aren't break spots.
-export const BREAK_KINDS = { food: 'Food', park: 'Park', view: 'Lookout', falls: 'Waterfall', history: 'Historic site' };
+export const BREAK_KINDS = { food: 'Food', bar: 'Bar', park: 'Park', view: 'Lookout', falls: 'Waterfall', history: 'Historic site' };
 export const WALK_KINDS = ['park', 'view', 'falls', 'history'];
 
 export const GEN = {

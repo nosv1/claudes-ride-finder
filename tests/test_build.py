@@ -244,6 +244,15 @@ class TestFuel(unittest.TestCase):
     def test_diesel_islands_are_not_gas_stations(self):
         self.assertTrue(bt.is_gas_station({"amenity": "fuel", "name": "Casey's"}))
         self.assertFalse(bt.is_gas_station({"amenity": "fuel", "name": "BreakTime Diesel Pumps"}))
+
+    def test_bars_are_their_own_kind_of_break_spot(self):
+        kind = lambda name, cuisine="": bt.break_kind({"amenity": "restaurant", "name": name, **({"cuisine": cuisine} if cuisine else {})})[0]
+        for name in ("Rookies Bar & Grill", "Camperos Grill & Bar", "Tavern on Main", "Ole Wolfhound Pub", "Knockouts Sports Bar",
+                     "Bricktown Brewery", "Brick and Forge Taproom", "Red Lion Lounge"):
+            self.assertEqual(kind(name), "bar", name)
+        self.assertEqual(kind("The Grove", "bar_and_grill"), "bar")
+        for name in ("Reyna's Bar-B-Q", "Joe's Oyster Bar", "Mikoto Ramen Bar", "Wagon Works BBQ", "Bellino Ristorante & Bar"):
+            self.assertEqual(kind(name), "food", name)
         self.assertFalse(bt.is_gas_station({"amenity": "fuel", "fuel:octane_87": "no"}))
         self.assertFalse(bt.is_gas_station({"amenity": "parking"}))
 

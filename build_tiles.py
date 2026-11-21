@@ -842,16 +842,22 @@ BREAK_FOOD = {"restaurant", "cafe", "fast_food", "ice_cream"}
 BREAK_HISTORIC = {"monument", "ruins", "castle", "fort", "battlefield", "archaeological_site", "mill", "lighthouse"}
 BRAND_KEYS = ("brand", "brand:wikidata", "brand:wikipedia")  # chains carry these (the name-suggestion index)
 MIN_PARK_HA = 10  # thousands of named city lots are smaller; 10 ha is 25 acres
+# Bars tagged as restaurants ("Rookies Bar & Grill") are their own kind, "bar": the app picks one only where there's
+# no other food that way, and says what it is (the rider: "I'm not gonna ride to a bar and grill blindly", 2026-11-20).
+# Barbecue ("Bar-B-Q"), oyster and ramen bars, and restaurants that just have a bar are food.
+BAR_NAME = re.compile(r"\b(bar\s*(&|and|n|'n')\s*grill|grill\s*(&|and|n|'n')\s*bar|sports\s*(bar|grill|pub)|pub|tavern|saloon|"
+                      r"lounge|tap\s*room|brew\s*pub|brewery|brewing|ale\s*house|beer\s*garden|bier\s*garten)\b", re.I)
 
 
 def break_kind(tags):
-    """What kind of break spot these tags make, and the detail shown with it: ("food", cuisine), ("park", ""),
-    ("view", ""), ("falls", ""), ("history", kind), or None."""
+    """What kind of break spot these tags make, and the detail shown with it: ("food", cuisine), ("bar", cuisine),
+    ("park", ""), ("view", ""), ("falls", ""), ("history", kind), or None."""
     name = tags.get("name")
     if tags.get("amenity") in BREAK_FOOD:
+        cuisine = (tags.get("cuisine") or "").split(";")[0].replace("_", " ")
         if not name or any(k in tags for k in BRAND_KEYS):
             return None
-        return "food", (tags.get("cuisine") or "").split(";")[0].replace("_", " ")
+        return ("bar" if BAR_NAME.search(name) or BAR_NAME.search(cuisine) else "food"), cuisine
     if tags.get("tourism") == "viewpoint":
         return "view", ""
     if tags.get("waterway") == "waterfall" or tags.get("natural") == "waterfall":
