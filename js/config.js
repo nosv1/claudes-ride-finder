@@ -16,7 +16,7 @@ export const API_URL = (() => { try { return localStorage.getItem('rf2-api'); } 
 export const GOOGLE_CLIENT_ID = '103650653312-3hk8lc1uut14bd6n69tghgcgs740a3ip.apps.googleusercontent.com';
 
 // The version this copy of the app is; version.json on the site is the latest. tools/bump_version.mjs sets both.
-export const APP_VERSION = '2026.11.20.24';
+export const APP_VERSION = '2026.11.20.25';
 
 // Curve classes, indexed by a road's `cls`: 0 sweeper, 1–4 tight-curve bins.
 // `about` is the plain-words rule shown in the map key.
@@ -133,6 +133,7 @@ export const GEN = {
   // A break about halfway (Stop for a break): spots this share of the reach out, as the crow flies, ranked by the
   // curvy roads within breakRoadsKm of them, one in each of breakSides directions.
   breakNear: [0.3, 0.6], breakRoadsKm: 20, breakSides: 8,
+  bothKm: 1,         // Both: somewhere to walk around with local food this close (as the crow flies), so one stop does for both
   fitMargin: 0.1,    // a change to a loop is routed only if its estimate (scaled by how far off it ran) is within this of the time window
   hideBack: 0.2,     // loops riding more than this share twice are left out (if 3 others remain)
 };

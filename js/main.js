@@ -909,11 +909,14 @@ async function genOptions({ groups, s, e, hours, required, reach }) {
   if (e || settings.genBreak === 'none' || required.some(it => it.brk)) return P.buildOptions(groups, s, hours, required, e);  // a kept break is the break
   await loadBreaks();
   const skip = new Set(settings.skipBreaks || []), open = (store.breaks || []).filter(b => !skip.has(spotKey(b.at)));
-  return P.pickBreaks(open, { start: s, reach, groups, kind: settings.genBreak }).flatMap(b => {
+  const stopAt = b => {
     const brk = { kind: b.kind, name: b.name || BREAK_KINDS[b.kind], detail: b.detail };
-    const stop = { type: 'point', label: `Break: ${brk.name}`, pts: [b.at], brk };
-    const best = P.buildOptions(groups, s, hours, [...required, stop])[0];
-    return best ? [{ ...best, brk }] : [];
+    return { type: 'point', label: `Break: ${brk.name}`, pts: [b.at], brk };
+  };
+  return P.pickBreaks(open, { start: s, reach, groups, kind: settings.genBreak }).flatMap(b => {
+    const stops = [b, ...(b.food ? [b.food] : [])].map(stopAt);  // Both: the walk, and the food beside it
+    const best = P.buildOptions(groups, s, hours, [...required, ...stops])[0];
+    return best ? [{ ...best, brk: stops[0].brk }] : [];
   });
 }
 
@@ -927,13 +930,15 @@ function noOptions(oneWay) {
     : 'No break spots about halfway out with good roads around them. Try another ride time or kind of break, or loosen the filters.');
 }
 
-// Where a routed loop's break comes: its stop, and the miles (m) and riding time (s) from the start to the route's
-// nearest point to it. Null without a break.
-function breakAt(o) {
-  const stop = o.items.find(it => it.brk);
-  if (!stop || !o.route) return null;
-  const i = nearestIndex(o.route.path, stop.pts[0]);
-  return { stop, m: cumulative(o.route.path)[i], s: W.timesAlong(o.route)[i] };
+// Where a routed loop's breaks come (one, or two with Both), in the order ridden: each stop, and the miles (m) and
+// riding time (s) from the start to the route's nearest point to it.
+function breaksAt(o) {
+  if (!o.route) return [];
+  const cum = cumulative(o.route.path), times = W.timesAlong(o.route);
+  return o.items.filter(it => it.brk).map(stop => {
+    const i = nearestIndex(o.route.path, stop.pts[0]);
+    return { stop, m: cum[i], s: times[i] };
+  }).sort((a, b) => a.m - b.m);
 }
 
 // How good a routed loop is: miles on curvy roads plus highway sweeps and fast ramps, scaled by the
@@ -1954,12 +1959,14 @@ const rideTime = (label = 'Ride time') => h('div.field', {}, h('label', {}, labe
     { onclick: () => setSetting({ genHours: t }) }, t === 1.5 ? '1½ h' : `${t} h`))));
 
 // Loops: a stop about halfway, somewhere to eat or walk around (BACKLOG.md, Adventures).
-const BREAK_CHOICES = { none: 'No break', food: 'Food', walk: 'Walk around', any: 'Either' };
+const BREAK_CHOICES = { none: 'No break', food: 'Food', walk: 'Walk around', both: 'Both', any: 'Either' };
 const breakChoice = oneWay => oneWay ? '' : h('div.field', {}, h('label', {}, 'Stop for a break'),
   h('div.seg.break', {}, Object.entries(BREAK_CHOICES).map(([k, l]) => h(`button${settings.genBreak === k ? '.on' : ''}`,
     { onclick: () => setSetting({ genBreak: k }) }, l))),
   settings.genBreak === 'none' ? ''
-    : h('p.muted.small', {}, 'Somewhere about halfway: local food (no chains), or a park, lookout, waterfall or historic spot. A bar only where there\u2019s nothing else that way, and it says so.'));
+    : h('p.muted.small', {}, settings.genBreak === 'both'
+      ? 'Somewhere about halfway: a park, lookout, waterfall or historic spot with local food (no chains) within a kilometer of it. A bar only where there\u2019s no other food that close, and it says so.'
+      : 'Somewhere about halfway: local food (no chains), or a park, lookout, waterfall or historic spot. A bar only where there\u2019s nothing else that way, and it says so.'));
 
 // One way: how much longer than the straight way there to spend on fun roads.
 const extraLabel = t => t < 1 ? `+${Math.round(t * 60)} min` : t === 1.5 ? '+1½ h' : `+${t} h`;
@@ -2005,8 +2012,8 @@ function mustInclude() {
 // "Northeast", or one way: "North side", "Near the straight way", "Best roads, any side", "Fastest way".
 function optionName(o) {
   if (o.way === 'fastest') return 'Fastest way';
-  const brk = o.brk || (o.items.find(it => it.brk) || {}).brk;  // picked for this loop, or the one the rider kept
-  if (brk) return `To ${brk.name}`;
+  const title = P.breakTitle(o.items) || (o.brk ? `To ${o.brk.name}` : '');  // picked for this loop, or kept by the rider
+  if (title) return title;
   const compass = P.heading(o.dir)[0].toUpperCase() + P.heading(o.dir).slice(1);
   return o.way === 'near' ? 'Near the straight way' : o.way === 'any' ? 'Best roads, any side' : o.way ? `${compass} side` : compass;
 }
@@ -2033,14 +2040,12 @@ function optionCard(o, i) {
     o.lights ? ` · 🚦 ${o.lights}${o.lefts ? ` (${o.lefts} left)` : ''}` : ''),
   (o.focus ??= P.rideFocus(P.rideMix(o.route.path, store.roads))).length
     ? h('div.focus', {}, o.focus.map(f => h('span.tag.sm', { style: `--c:${f.color}` }, f.label))) : '',
-  breakLine(o),
+  breaksAt(o).map(breakLine),
   h('div.muted.small', {}, o.items.slice(1).filter(it => !it.end && !it.brk).flatMap((it, k) => [k ? ', ' : '', it.gen ? it.label : h('b.own', {}, it.label)])));
 }
 
-// "Break: Wagon Works BBQ (barbecue) · mile 48, 1 h 05 min in", on a card with a break.
-function breakLine(o) {
-  const at = breakAt(o);
-  if (!at) return '';
+// "Break: Wagon Works BBQ (barbecue) · mile 48, 1 h 05 min in", on a card with a break: at, one of breaksAt.
+function breakLine(at) {
   const { name, detail, kind } = at.stop.brk, word = BREAK_KINDS[kind].toLowerCase();
   // A bar always says so ("bar, mexican"): never ridden to blindly.
   const what = kind === 'bar' ? [word, detail].filter(Boolean).join(', ') : detail || (name === BREAK_KINDS[kind] ? '' : word);

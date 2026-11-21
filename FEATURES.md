@@ -477,6 +477,11 @@ colored road), Add a stop here, Street View here.
   it and the rider's own stops. The card is named for it ("To Wagon Works BBQ") with "Break: Wagon Works BBQ
   (barbecue) · mile 48, 1 h 05 min in". The break is a stop of its own: never trimmed off like a generated road, and
   not kept as the rider's stop when generating again. None near: it says so.
+  - **Both** (2026-11-20, "we have food, walk, or either, what about both?"): somewhere to walk around (a park,
+    lookout, waterfall or historic spot) with local food within 1 km of it, so one stop does for both. The loop goes
+    through the two, the card is "To Old Mill & Wagon Works BBQ" with a break line (and links) for each, and a saved
+    ride is named the same. The food beside it is a bar only where there's no other food that close. Walk spots with
+    no food that close aren't picked.
   - **Look it up first**: under the break line on each card, and on the break in the ride's stop list, "Google Maps ·
     Street View". Google Maps searches the spot's name right there (its page has photos, hours, reviews and the
     website); a spot with no name is looked up by where it is. Opening a link doesn't pick that card.

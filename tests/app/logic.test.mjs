@@ -7,7 +7,7 @@ import { boundsOf, distance, decodePolyline, spotOnLine, headingOnPath, nearestI
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, rollersInView, hillLevel, roadNear, roadAlong, setMyMph, limitOf } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, reverseLoop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn, sellsOctane, onePerRide, pickBreaks, tripName } from '../../js/plan.js';
+import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn, sellsOctane, onePerRide, pickBreaks, tripName, breakTitle } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { bikeFor, rangeOf, leftIn, upgradeBikes, octaneOf } from '../../js/bikes.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky, lightAt } from '../../js/weather.js';
@@ -342,6 +342,35 @@ test('a break about halfway: the kind asked for, a good way out, with curvy road
   assert.deepEqual(names('walk'), ['Old Mill']);
   assert.deepEqual(names('any'), ['Second BBQ', 'Old Mill']);
   assert.deepEqual(pickBreaks([], { start, reach, groups, kind: 'any' }), []);
+});
+
+test('Both: somewhere to walk around with food beside it, a bar only with no other food that close', () => {
+  const start = [38.5, -94], reach = 100;  // km: spots 30-60 km out count; food within 1 km of one
+  const lonKm = 111.2 * Math.cos(38.5 * Math.PI / 180);
+  const north = d => [38.5 + d / 111.2, -94], south = d => [38.5 - d / 111.2, -94];
+  const eastOf = d => [38.5, -94 + d / lonKm], westOf = d => [38.5, -94 - d / lonKm];
+  const spot = (name, kind, at) => ({ name, kind, at, detail: '' });
+  const spots = [
+    spot('Grand Bluffs', 'park', north(45)), spot('Bluff Tavern', 'bar', north(45.2)), spot('Bluff Cafe', 'food', north(45.8)),
+    spot('Old Mill', 'history', eastOf(40)), spot('Mill Pub', 'bar', eastOf(40.6)),  // only a bar beside it: that's its food
+    spot('Lonely Falls', 'falls', south(40)), spot('Far Diner', 'food', south(43)),  // food 3 km off: not a Both
+    spot('Lone Diner', 'food', westOf(40)),  // food with nowhere to walk: not a Both
+  ];
+  const groups = [{ center: north(40), score: 100 }, { center: westOf(40), score: 90 }, { center: south(40), score: 80 }, { center: eastOf(40), score: 50 }];
+  const both = pickBreaks(spots, { start, reach, groups, kind: 'both' });
+  assert.deepEqual(both.map(b => [b.name, b.food.name]), [['Grand Bluffs', 'Bluff Cafe'], ['Old Mill', 'Mill Pub']]);
+  // Walk around alone still takes the falls, with no food.
+  const walk = pickBreaks(spots, { start, reach, groups, kind: 'walk' });
+  assert.deepEqual(walk.map(b => b.name), ['Grand Bluffs', 'Lonely Falls', 'Old Mill']);
+  assert.ok(walk.every(b => !b.food));
+  // The loop goes to both, and is named for both; saved and reloaded too.
+  const trip = newTrip();
+  setStart(trip, [38.5, -94], 'Start: Home');
+  trip.items.push({ type: 'point', label: 'Break: Grand Bluffs', pts: [north(45)], brk: { kind: 'park', name: 'Grand Bluffs', detail: '' } },
+    { type: 'point', label: 'Break: Bluff Cafe', pts: [north(45.8)], brk: { kind: 'food', name: 'Bluff Cafe', detail: '' } });
+  assert.equal(breakTitle(trip.items), 'To Grand Bluffs & Bluff Cafe');
+  assert.equal(tripName(decodeTrip(encodeTrip(trip))), 'To Grand Bluffs & Bluff Cafe');
+  assert.equal(breakTitle([]), '');
 });
 
 test('a bar is a break only where there is no other food that way, and a saved ride keeps its break', () => {

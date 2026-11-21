@@ -478,13 +478,26 @@ export function onTheWay(groups, items, path) {
     .sort((a, b) => b.score - a.score);
 }
 
-// Break spots for loops with a stop about halfway: of the kind asked for ('food', 'walk' or 'any'), breakNear of the
-// reach (km) out from the start as the crow flies, ranked by the scores of the candidate roads (groups) within
-// breakRoadsKm of them (none around: left out), the best in each of breakSides directions, best first, at most `max`.
+const EATS = ['food', 'bar'];
+const BREAK_KINDS_FOR = { food: EATS, walk: WALK_KINDS, any: [...EATS, ...WALK_KINDS], both: WALK_KINDS };
+
+// The food nearest a spot within GEN.bothKm, of eats (food and bars): a bar only with no other food that close. Or null.
+function foodBeside(b, eats) {
+  const near = eats.map(f => ({ f, d: km(b.at, f.at) })).filter(x => x.d <= GEN.bothKm)
+    .sort((x, y) => Number(x.f.kind === 'bar') - Number(y.f.kind === 'bar') || x.d - y.d);
+  return near.length ? near[0].f : null;
+}
+
+// Break spots for loops with a stop about halfway: of the kind asked for ('food', 'walk', 'any', or 'both': somewhere
+// to walk around with food beside it, as its `food`), breakNear of the reach (km) out from the start as the crow
+// flies, ranked by the scores of the candidate roads (groups) within breakRoadsKm of them (none around: left out),
+// the best in each of breakSides directions, best first, at most `max`.
 export function pickBreaks(spots, { start, reach, groups, kind, max = GEN.maxOptions }) {
   if (!check(Array.isArray(spots) && Array.isArray(groups) && reach > 0, 'break spots, roads and a reach to pick from')) return [];
-  const kinds = kind === 'food' ? ['food', 'bar'] : kind === 'walk' ? WALK_KINDS : ['food', 'bar', ...WALK_KINDS];
+  const kinds = BREAK_KINDS_FOR[kind] || BREAK_KINDS_FOR.any;
   const [lo, hi] = GEN.breakNear, width = 360 / GEN.breakSides;
+  const eats = kind !== 'both' ? [] : spots.filter(f => EATS.includes(f.kind)
+    && Math.abs(km(start, f.at) - (lo + hi) * reach / 2) <= (hi - lo) * reach / 2 + GEN.bothKm);
   const out = (b, d) => kinds.includes(b.kind) && d >= lo * reach && d <= hi * reach;
   const around = b => groups.reduce((sum, g) => km(b.at, g.center) < GEN.breakRoadsKm ? sum + g.score : sum, 0);
   const ranked = spots.filter(b => out(b, km(start, b.at)))
@@ -493,7 +506,9 @@ export function pickBreaks(spots, { start, reach, groups, kind, max = GEN.maxOpt
   // A bar (a bar & grill, pub, brewery) only where there's nothing else that way.
   const picked = [];
   for (const b of ranked) {
-    if (picked.length < max && !picked.some(p => p.side === b.side)) picked.push(b);
+    if (picked.length >= max || picked.some(p => p.side === b.side)) continue;
+    const food = kind === 'both' ? foodBeside(b, eats) : null;
+    if (kind !== 'both' || food) picked.push(food ? { ...b, food } : b);
   }
   return picked;
 }
@@ -577,10 +592,16 @@ export function googleLinks(points) {
 
 const xml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 
-// A ride's name: where it goes for a break ("To Wagon Works BBQ", as its card said), or else its first roads.
+// Where a ride goes for its break: "To Wagon Works BBQ", or with Both, "To Old Mill & Wagon Works BBQ". Or ''.
+export const breakTitle = items => {
+  const names = items.filter(it => it.brk).map(it => it.brk.name);
+  return names.length ? `To ${names.join(' & ')}` : '';
+};
+
+// A ride's name: where it goes for a break (as its card said), or else its first roads.
 export function tripName(trip) {
-  const brk = trip.items.find(it => it.brk);
-  if (brk) return `To ${brk.brk.name}`;
+  const title = breakTitle(trip.items);
+  if (title) return title;
   const roads = trip.items.filter(it => it.type === 'road').map(it => it.label);
   return roads.length ? `Ride: ${roads.slice(0, 3).join(', ')}${roads.length > 3 ? '…' : ''}` : 'Ride Finder trip';
 }

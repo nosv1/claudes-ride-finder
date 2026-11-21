@@ -1035,13 +1035,17 @@ test('Stop for a break: the plan page offers food or somewhere to walk, for loop
   await page.eval("RF.settings.genShape = 'loop'; RF.go('plan')");
   await sleep(200);
   const choices = () => page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].map(b => b.textContent)");
-  assert.deepEqual(await choices(), ['No break', 'Food', 'Walk around', 'Either']);
+  assert.deepEqual(await choices(), ['No break', 'Food', 'Walk around', 'Both', 'Either']);
   // Every choice's label fits inside its button, here and in the plan page's other choices ("Walk around" didn't).
   assert.deepEqual(await page.eval("[...document.querySelectorAll('#sheetBody .seg button')].filter(b => b.scrollWidth > b.clientWidth).map(b => b.textContent)"), []);
   await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'Food').click()");
   await sleep(200);
   assert.equal(await page.eval('RF.settings.genBreak'), 'food');
   assert.match(await sheetText(), /Somewhere about halfway: local food \(no chains\)/);
+  await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'Both').click()");
+  await sleep(200);
+  assert.equal(await page.eval('RF.settings.genBreak'), 'both');
+  assert.match(await sheetText(), /a park, lookout, waterfall or historic spot with local food \(no chains\) within a kilometer of it/);
   await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'No break').click()");
   await sleep(200);
   assert.equal(await page.eval('RF.settings.genBreak'), 'none');
@@ -1179,6 +1183,33 @@ test('Reverse on the ride page: the same loop the other way round', async () => 
   assert.deepEqual(await page.eval('RF.trip.items.map(it => it.label)'), ['Start: Home', 'Pleasant Hill', 'Lone Jack']);
   await page.waitFor("[...document.querySelectorAll('#sheetBody .stops li')].map(li => li.innerText).join('|').indexOf('Pleasant Hill') < [...document.querySelectorAll('#sheetBody .stops li')].map(li => li.innerText).join('|').indexOf('Lone Jack')", 5000);
   await page.eval(`RF.trip.items.splice(0, RF.trip.items.length, ...${saved}); RF.go('home')`);
+});
+
+test('a loop with Both: each goes to somewhere to walk around and food beside it', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {
+  await page.eval(`(async () => {
+    const T = await import('./js/trip.js');
+    RF.trip.items.length = 0;
+    T.setStart(RF.trip, [38.852, -94.343], 'Start');
+  })()`);
+  await page.eval("RF.settings.genShape = 'loop'; RF.settings.genHours = 3; RF.settings.genBreak = 'both'; RF.go('plan')");
+  await sleep(200);
+  await page.eval("[...document.querySelectorAll('#sheetBody .cta')].find(b => /Generate/.test(b.textContent)).click()");
+  await page.waitFor('RF.gen.options.length > 0 && !RF.gen.running', 180000);
+  const loops = await page.eval(`(async () => {
+    const { distance } = await import('./js/geo.js');
+    return RF.gen.options.filter(o => o.route).map(o => {
+      const b = o.items.filter(i => i.brk);
+      return { kinds: b.map(i => i.brk.kind), km: b.length === 2 ? distance(b[0].pts[0], b[1].pts[0]) / 1000 : null, names: b.map(i => i.brk.name) };
+    });
+  })()`);
+  assert.ok(loops.length >= 2, `loops with Both: ${JSON.stringify(loops)}`);
+  const walk = ['park', 'view', 'falls', 'history'];
+  loops.forEach(l => assert.ok(l.kinds.length === 2 && l.kinds.some(k => walk.includes(k)) && l.kinds.some(k => ['food', 'bar'].includes(k)) && l.km <= 1, JSON.stringify(l)));  // in the order ridden
+  // Each card is named for both and says where each comes, with links for each.
+  const text = await sheetText();
+  assert.ok(text.includes(`To ${loops[0].names[0]} & ${loops[0].names[1]}`), text);
+  assert.ok(await page.eval("[...document.querySelectorAll('#sheetBody .option')].some(c => c.querySelectorAll('.break-line').length === 2 && c.querySelectorAll('.break-links').length === 2)"));
+  await page.eval("RF.settings.genBreak = 'none'");
 });
 
 test('a kept break: every loop goes there, with no second break', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {

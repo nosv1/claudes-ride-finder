@@ -57,6 +57,9 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Stop for a break, Food, 3 h: every card is "To <a place>" with "Break: … · mile N, … in" near the middle of the
   ride; the places are local (no chain names), and the pin on the map is at the place. Walk around: parks, lookouts,
   waterfalls, historic spots, never a gas station. Generate again: the old break isn't kept as a Must include.
+- Both, 3 h: every card is "To <somewhere to walk> & <food>", with two break lines; on the map the two pins are a
+  short walk apart (within about 1 km). Google Maps on each shows a park, lookout, waterfall or historic spot, and a
+  local place to eat.
 - On the phone, a card's "Google Maps" opens that place (in the Google Maps app if it's installed) without picking the
   card; "Street View" opens the street in front of it. The same links are on the break in the ride's stop list.
 - Skip this place: the message says it won't be picked again, and Generate again picks somewhere else. "Closed? Tell
