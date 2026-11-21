@@ -477,6 +477,9 @@ colored road), Add a stop here, Street View here.
   it and the rider's own stops. The card is named for it ("To Wagon Works BBQ") with "Break: Wagon Works BBQ
   (barbecue) · mile 48, 1 h 05 min in". The break is a stop of its own: never trimmed off like a generated road, and
   not kept as the rider's stop when generating again. None near: it says so.
+  - **Look it up first**: under the break line on each card, and on the break in the ride's stop list, "Google Maps ·
+    Street View". Google Maps searches the spot's name right there (its page has photos, hours, reviews and the
+    website); a spot with no name is looked up by where it is. Opening a link doesn't pick that card.
   - **Break spots** (`tiles/breaks.js`, from the state files by `build_tiles.py` or `tools/add_breaks.py`; loaded the
     first time it's needed): food that isn't a chain (restaurants, cafés, fast food and ice cream with a name and no
     `brand` tag: "a chain is no fun"; regional chains OSM doesn't tag slip through), and places to walk around: named

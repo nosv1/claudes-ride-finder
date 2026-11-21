@@ -1971,7 +1971,16 @@ function breakLine(o) {
   if (!at) return '';
   const { name, detail, kind } = at.stop.brk, what = detail || (name === BREAK_KINDS[kind] ? '' : BREAK_KINDS[kind].toLowerCase());
   return h('div.small.break-line', {}, h('b', {}, `Break: ${name}`), what ? ` (${what})` : '',
-    ` · mile ${Math.round(at.m / 1609.34)}, ${fmtDuration(at.s)} in`);
+    ` · mile ${Math.round(at.m / 1609.34)}, ${fmtDuration(at.s)} in`, h('div', {}, breakLinks(at.stop.brk, at.stop.pts[0])));
+}
+
+// A break spot on Google Maps (its page: photos, hours, reviews, website) and in Street View. Opening one doesn't pick
+// the card it's on. A spot with no name (a park) is looked up by where it is.
+function breakLinks(brk, [lat, lon]) {
+  const gm = 'https://www.google.com/maps/', ll = `${+lat.toFixed(6)},${+lon.toFixed(6)}`;
+  const maps = brk.name !== BREAK_KINDS[brk.kind] ? `${gm}search/${encodeURIComponent(brk.name)}/@${ll},17z` : `${gm}search/?api=1&query=${ll}`;
+  const link = (href, label) => h('a', { href, target: '_blank', rel: 'noopener', onclick: e => e.stopPropagation() }, label);
+  return h('span.break-links', {}, link(maps, 'Google Maps'), ' · ', link(`${gm}@?api=1&map_action=pano&viewpoint=${ll}`, 'Street View'));
 }
 
 function tripView() {
@@ -2325,7 +2334,8 @@ function stopList() {
     h('span.num', {}, i + 1),
     h('div.grow', { onclick: () => mapView.fit(boundsOf(it.pts), 13) },
       h('div', {}, it.label),
-      h('div.muted.small', {}, it.type !== 'road' ? `${on ? `Stop on ${on.key}` : 'Stop'} · ${PIN_HINT}`
+      h('div.muted.small', {}, it.brk ? ['Your break · ', breakLinks(it.brk, it.pts[0])]
+        : it.type !== 'road' ? `${on ? `Stop on ${on.key}` : 'Stop'} · ${PIN_HINT}`
         : `${it.oneway ? 'One way' : `${cap(T.ends(it).entry)} end → ${T.ends(it).exit} end`} · ${miles(it.curvy || 0)} mi of curves`)),
     it.type === 'road' && !it.oneway ? h('button.icon-btn', { title: 'Switch ends: ride it the other way', html: icon.swap,
       onclick: () => flipRoad(it) }) : '',

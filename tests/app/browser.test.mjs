@@ -1061,11 +1061,28 @@ test('a loop with a break: each goes out to a break spot and the card says where
   const loops = await page.eval('RF.gen.options.filter(o => o.route).map(o => ({ name: o.brk && o.brk.name, breaks: o.items.filter(i => i.brk).length }))');
   assert.ok(loops.length >= 2, `loops with a break: ${JSON.stringify(loops)}`);
   loops.forEach(l => assert.ok(l.name && l.breaks === 1, JSON.stringify(l)));
-  assert.match(await sheetText(), /Break: .+ · mile \d+, .+ in/);
+  assert.match(await sheetText(), /Break: .+ · mile \d+, .+ in\s+Google Maps · Street View/);
+  // Each break links to Google Maps (by name, at the spot) and Street View; opening one doesn't pick that loop.
+  const links = await page.eval("[...document.querySelectorAll('#sheetBody .option')].filter(c => c.querySelector('.break-links')).map(c => [...c.querySelectorAll('.break-links a')].map(a => a.href))");
+  assert.ok(links.length >= 2, JSON.stringify(links));
+  const first = await page.eval('RF.gen.options.find(o => o.route)');
+  const spot = first.items.find(it => it.brk).pts[0];
+  assert.ok(links[0][0].startsWith('https://www.google.com/maps/search/') && links[0][0].includes(`/@${+spot[0].toFixed(6)},${+spot[1].toFixed(6)},17z`), links[0][0]);
+  assert.match(links[0][1], /map_action=pano&viewpoint=/);
+  const picked = await page.eval('RF.gen.index');
+  await page.eval(`(() => {
+    const a = [...document.querySelectorAll('#sheetBody .option')].filter(c => c.querySelector('.break-links'))[1].querySelector('.break-links a');
+    a.addEventListener('click', e => e.preventDefault());
+    a.click();
+  })()`);
+  assert.equal(await page.eval('RF.gen.index'), picked, 'opening a link leaves the loop picked as it was');
   // The break isn't kept as the rider's own stop for the next Generate.
   await page.waitFor('RF.trip.items.some(i => i.brk)', 10000);
   assert.doesNotMatch(await page.eval("document.getElementById('sheetBody').innerText"), /Must include[\s\S]*Break:[\s\S]*Generate loops/);
   await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'No break').click()");
+  // The ride's stop list has the links too.
+  await page.eval("RF.go('trip')");
+  await page.waitFor("[...document.querySelectorAll('#sheetBody .stops .break-links a')].map(a => a.textContent).join() === 'Google Maps,Street View'", 5000);
 });
 
 // Last: nothing the pages did along the way failed a check (CODING.md, rule 5) or threw without being caught.
