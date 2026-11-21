@@ -573,6 +573,17 @@ function planAround(g) {
   go('plan');
 }
 
+// A place as the ride's stop, then Plan a ride, to generate loops through it (as Plan a loop with this road does).
+function planThrough(p) {
+  const at = [+p.at[0].toFixed(5), +p.at[1].toFixed(5)];
+  if (!trip.items.some(it => it.type === 'point' && it.pts[0][0] === at[0] && it.pts[0][1] === at[1])) {
+    newRideFromSaved();
+    addPlace(at, p.label);
+  }
+  stopGenerating(T.startOf(trip) ? '' : 'Now set a start: your location or a spot on the map.');
+  go('plan');
+}
+
 // A point as a stop where the route passes it (else last), never after the end of a one-way ride.
 function addPlace(p, label, name = label) {
   const stop = { type: 'point', label, pts: [[+p[0].toFixed(5), +p[1].toFixed(5)]] }, last = trip.items.length - (T.endOf(trip) ? 1 : 0);
@@ -889,7 +900,7 @@ function emptySides(shown, quiet) {
 // The options to route: loops (or ways there) through the rider's stops, or, for a loop with a break, one through each
 // break spot pickBreaks finds about halfway (the best the generator builds through it and the rider's stops).
 async function genOptions({ groups, s, e, hours, required, reach }) {
-  if (e || settings.genBreak === 'none') return P.buildOptions(groups, s, hours, required, e);
+  if (e || settings.genBreak === 'none' || required.some(it => it.brk)) return P.buildOptions(groups, s, hours, required, e);  // a kept break is the break
   await loadBreaks();
   const skip = new Set(settings.skipBreaks || []), open = (store.breaks || []).filter(b => !skip.has(spotKey(b.at)));
   return P.pickBreaks(open, { start: s, reach, groups, kind: settings.genBreak }).flatMap(b => {
@@ -1834,6 +1845,7 @@ function placeView() {
     backBar(p.label, p.sub || null),
     h('div.actions', {},
       h('button.btn.primary.wide', { onclick: () => addPlace(p.at, p.label) }, iconEl(icon.plus), 'Add to ride as a stop'),
+      h('button.btn.wide', { onclick: () => planThrough(p) }, iconEl(icon.route), 'Plan a loop through here'),
       h('button.btn', { onclick: () => { setStartAt(p.at, `Start: ${p.label}`); go('plan'); } }, iconEl(icon.pin), 'Start here'),
       h('button.btn', { onclick: () => { setEndAt(p.at, `End: ${p.label}`); go('plan'); } }, iconEl(icon.flag), 'End here'),
       h('a.btn', { href: `${gm}@?api=1&map_action=pano&viewpoint=${lat},${lon}`, target: '_blank', rel: 'noopener' }, iconEl(icon.person), 'Street View'),
@@ -1918,25 +1930,36 @@ const extraTime = (label = 'Extra time for fun roads') => h('div.field', {}, h('
     { onclick: () => setSetting({ genExtra: t }) }, extraLabel(t)))),
   h('p.muted.small', {}, 'On top of the fastest way there, which is listed too, to compare.'));
 
-// The rider's own stops: every generated loop goes through them.
-const ownStops = () => trip.items.filter((it, i) => !(i === 0 && T.startOf(trip)) && !it.gen && !it.brk && !it.end);
+// The rider's own stops: every generated loop goes through them. A break from a picked loop isn't one (the next
+// Generate picks its own) unless the rider kept it.
+const ownStops = () => trip.items.filter((it, i) => !(i === 0 && T.startOf(trip)) && !it.gen && !(it.brk && !it.keep) && !it.end);
+
+// A Must include row: tap it to see it on the map; ✕ takes it out of the ride.
+const mustRow = it => h('div.start-row.must', {},
+  iconEl(it.type === 'road' ? icon.route : icon.pin),
+  h('span.grow.must-name', { onclick: () => mapView.fit(boundsOf(it.pts), 14) }, it.label,
+    it.type === 'road' && it.curvy ? h('span.muted.small', {}, ` · ${miles(it.curvy)} mi of curves`) : ''),
+  h('button.icon-btn', { title: 'Remove', html: icon.x, onclick: () => { newRideFromSaved(); T.removeStop(trip, trip.items.indexOf(it)); tripChanged(); } }));
+
+// The ride's break, from the loop picked: Include keeps it, so the next loops go there too.
+const breakToKeep = it => h('div.start-row.must.offer', {}, iconEl(icon.pin),
+  h('span.grow.must-name', { onclick: () => mapView.fit(boundsOf(it.pts), 14) }, it.label, h('span.muted.small', {}, ' · this ride\u2019s break')),
+  h('button.btn.small', { onclick: () => { newRideFromSaved(); it.keep = true; tripChanged(); renderSoon(); } }, iconEl(icon.plus), 'Include'));
 
 function mustInclude() {
-  const own = ownStops();
+  const own = ownStops(), offer = trip.items.filter(it => it.brk && !it.keep);
   return h('div.field', {}, h('label', {}, 'Must include'),
-    own.length
-      ? h('div', {}, own.map(it => h('div.start-row.must', {},
-          iconEl(it.type === 'road' ? icon.route : icon.pin),
-          h('span.grow', {}, it.label, it.type === 'road' && it.curvy ? h('span.muted.small', {}, ` · ${miles(it.curvy)} mi of curves`) : ''),
-          h('button.icon-btn', { title: 'Remove', html: icon.x, onclick: () => { newRideFromSaved(); T.removeStop(trip, trip.items.indexOf(it)); tripChanged(); } }))),
-        h('p.muted.small', {}, 'Loops will go through these and fill the rest of your time with the best roads nearby.'))
-      : h('p.muted.small', {}, 'Nothing yet. To build a ride around a road, tap it on the map and choose “Plan a loop with this road”.'));
+    own.length ? h('div', {}, own.map(mustRow)) : '',
+    offer.map(breakToKeep),
+    h('p.muted.small', {}, own.length ? 'Loops will go through these and fill the rest of your time with the best roads nearby. Tap one to see it.'
+      : 'Nothing yet. Tap a road on the map and choose \u201cPlan a loop with this road\u201d, or search a place and choose \u201cPlan a loop through here\u201d.'));
 }
 
 // "Northeast", or one way: "North side", "Near the straight way", "Best roads, any side", "Fastest way".
 function optionName(o) {
   if (o.way === 'fastest') return 'Fastest way';
-  if (o.brk) return `To ${o.brk.name}`;
+  const brk = o.brk || (o.items.find(it => it.brk) || {}).brk;  // picked for this loop, or the one the rider kept
+  if (brk) return `To ${brk.name}`;
   const compass = P.heading(o.dir)[0].toUpperCase() + P.heading(o.dir).slice(1);
   return o.way === 'near' ? 'Near the straight way' : o.way === 'any' ? 'Best roads, any side' : o.way ? `${compass} side` : compass;
 }

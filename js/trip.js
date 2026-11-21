@@ -183,12 +183,13 @@ export function indexAlongRoute(trip, p, path) {
 const ROAD = 1, GEN = 2, ONEWAY = 4, START = 8, END = 16;
 // A break stop's kind, in the flags from 32 up: (its place here + 1) × 32. New kinds go on the end. Readers from before
 // breaks ignore those bits and see a stop.
-const BREAK_CODES = ['food', 'park', 'view', 'falls', 'history', 'bar'], BREAK_BIT = 32;
-const breakFlag = it => it.brk && BREAK_CODES.includes(it.brk.kind) ? (BREAK_CODES.indexOf(it.brk.kind) + 1) * BREAK_BIT : 0;
+// KEEP (256, above the kinds): a break the rider chose to keep, so the next Generate goes there too.
+const BREAK_CODES = ['food', 'park', 'view', 'falls', 'history', 'bar'], BREAK_BIT = 32, KEEP = 256;
+const breakFlag = it => it.brk && BREAK_CODES.includes(it.brk.kind) ? (BREAK_CODES.indexOf(it.brk.kind) + 1) * BREAK_BIT + (it.keep ? KEEP : 0) : 0;
 // The break a stop was, back from its flags and its label ("Break: Wagon Works BBQ"); the detail isn't kept.
 const breakOf = (f, label) => {
-  const kind = BREAK_CODES[Math.floor(f / BREAK_BIT) - 1];
-  return kind ? { brk: { kind, name: label.replace(/^Break: /, ''), detail: '' } } : {};
+  const kind = BREAK_CODES[Math.floor((f % KEEP) / BREAK_BIT) - 1];
+  return kind ? { brk: { kind, name: label.replace(/^Break: /, ''), detail: '' }, ...(f >= KEEP ? { keep: true } : {}) } : {};
 };
 
 export function encodeTrip(trip) {

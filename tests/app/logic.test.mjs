@@ -367,6 +367,11 @@ test('a bar is a break only where there is no other food that way, and a saved r
   assert.equal(tripName(trip), 'To Rookies Bar & Grill');
   assert.equal(tripName(back), 'To Rookies Bar & Grill');
   assert.equal(tripName({ items: trip.items.filter(it => !it.brk) }), 'Ride: MO 150');
+  // A break the rider kept (Include, under Must include) stays kept.
+  trip.items[1].keep = true;
+  const kept = decodeTrip(encodeTrip(trip)).items[1];
+  assert.deepEqual([kept.keep, kept.brk.kind, kept.brk.name], [true, 'bar', 'Rookies Bar & Grill']);
+  assert.equal(back.items[1].keep, undefined, 'not kept until the rider says so');
 });
 
 test('the generator shows each ride once: not the same roads twice, nor the same route with a road it rides anyway', () => {

@@ -1057,7 +1057,23 @@ test('Stop for a break: the plan page offers food or somewhere to walk, for loop
   await page.eval("document.querySelector('#sheetBody .stops .skip-break').click()");
   assert.deepEqual(await page.eval('RF.settings.skipBreaks'), ['39.1012,-94.1988']);
   assert.match(await page.eval("document.getElementById('toast').innerText"), /Rookies Bar & Grill won.t be picked again[\s\S]*Closed\? Tell OpenStreetMap/);
-  await page.eval(`RF.settings.skipBreaks = []; RF.trip.items.splice(0, RF.trip.items.length, ...${saved}); RF.go('home')`);
+  await page.eval('RF.settings.skipBreaks = []');
+  // Plan a ride: the ride's break isn't a Must include until Include keeps it; then it's a row, and tapping it shows it.
+  await page.eval("RF.go('plan')");
+  await page.waitFor("/Rookies Bar & Grill · this ride.s break/.test(document.getElementById('sheetBody').innerText)", 5000);
+  assert.ok(await page.eval("!document.querySelector('#sheetBody .start-row.must:not(.offer)')"), 'not included yet');
+  await page.eval("[...document.querySelectorAll('#sheetBody .must.offer button')].find(b => /Include/.test(b.textContent)).click()");
+  await page.waitFor("document.querySelector('#sheetBody .start-row.must:not(.offer)') && /Break: Rookies Bar & Grill/.test(document.querySelector('#sheetBody .start-row.must:not(.offer)').innerText)", 5000);
+  assert.equal(await page.eval('RF.trip.items[1].keep'), true);
+  await page.eval("void RF.mapView.map.jumpTo({ center: [-97, 33], zoom: 9 })");
+  await page.eval("document.querySelector('#sheetBody .start-row.must .must-name').click()");
+  await page.waitFor("Math.abs(RF.mapView.map.getCenter().lat - 39.1) < 0.2 && Math.abs(RF.mapView.map.getCenter().lng + 94.2) < 0.3", 5000);
+  // A searched place: Plan a loop through here puts it in Must include.
+  await page.eval("RF.go('place', { label: 'Wagon Works BBQ', sub: 'Lone Jack', at: [38.87, -94.17] })");
+  await page.waitFor("[...document.querySelectorAll('#sheetBody button')].some(b => /Plan a loop through here/.test(b.textContent))", 5000);
+  await page.eval("[...document.querySelectorAll('#sheetBody button')].find(b => /Plan a loop through here/.test(b.textContent)).click()");
+  await page.waitFor("[...document.querySelectorAll('#sheetBody .start-row.must:not(.offer)')].some(r => /Wagon Works BBQ/.test(r.innerText))", 5000);
+  await page.eval(`RF.trip.items.splice(0, RF.trip.items.length, ...${saved}); RF.go('home')`);
 });
 
 test('a loop with a break: each goes out to a break spot and the card says where and when', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {
@@ -1091,11 +1107,30 @@ test('a loop with a break: each goes out to a break spot and the card says where
   assert.equal(await page.eval('RF.gen.index'), picked, 'opening a link leaves the loop picked as it was');
   // The break isn't kept as the rider's own stop for the next Generate.
   await page.waitFor('RF.trip.items.some(i => i.brk)', 10000);
-  assert.doesNotMatch(await page.eval("document.getElementById('sheetBody').innerText"), /Must include[\s\S]*Break:[\s\S]*Generate loops/);
+  // (It's offered, with Include, but not included.)
+  assert.deepEqual(await page.eval("[...document.querySelectorAll('#sheetBody .start-row.must:not(.offer)')].map(r => r.innerText).filter(t => /Break:/.test(t))"), []);
   await page.eval("[...document.querySelectorAll('#sheetBody .seg.break button')].find(b => b.textContent === 'No break').click()");
   // The ride's stop list has the links too.
   await page.eval("RF.go('trip')");
   await page.waitFor("[...document.querySelectorAll('#sheetBody .stops .break-links a')].map(a => a.textContent).join() === 'Google Maps,Street View,Skip this place'", 5000);
+});
+
+test('a kept break: every loop goes there, with no second break', { skip: !NETWORK && 'set RF_NETWORK=1' }, async () => {
+  await page.eval(`(async () => {
+    const T = await import('./js/trip.js');
+    RF.trip.items.length = 0;
+    T.setStart(RF.trip, [38.852, -94.343], 'Start');
+    RF.trip.items.push({ type: 'point', label: 'Break: Rookies Bar & Grill', pts: [[39.13774, -94.19935]], keep: true, brk: { kind: 'bar', name: 'Rookies Bar & Grill', detail: '' } });
+  })()`);
+  await page.eval("RF.settings.genShape = 'loop'; RF.settings.genHours = 3; RF.settings.genBreak = 'food'; RF.go('plan')");
+  await sleep(200);
+  await page.eval("[...document.querySelectorAll('#sheetBody .cta')].find(b => /Generate/.test(b.textContent)).click()");
+  await page.waitFor('RF.gen.options.length > 0 && !RF.gen.running', 180000);
+  const loops = await page.eval('RF.gen.options.filter(o => o.route).map(o => o.items.filter(i => i.brk).map(i => i.brk.name))');
+  assert.ok(loops.length >= 2, JSON.stringify(loops));
+  loops.forEach(l => assert.deepEqual(l, ['Rookies Bar & Grill']));
+  assert.match(await sheetText(), /To Rookies Bar & Grill/);
+  await page.eval("RF.settings.genBreak = 'none'");
 });
 
 // Last: nothing the pages did along the way failed a check (CODING.md, rule 5) or threw without being caught.

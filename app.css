@@ -237,6 +237,8 @@ p .lights:hover, p .lit { color: var(--text); text-decoration: underline; text-u
 .field > label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 .start-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--raise); }
 .start-row.must { padding: 4px 4px 4px 12px; margin-bottom: 6px; }
+.start-row.must .must-name { cursor: pointer; }
+.start-row.must.offer { background: none; border: 1px dashed var(--border); }
 .saved-place { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 10px; background: var(--raise); margin: 10px 0; }
 .save-place .start-row { padding: 4px 4px 4px 4px; margin-top: 8px; }
 .save-place .start-row input { flex: 1; min-width: 0; }

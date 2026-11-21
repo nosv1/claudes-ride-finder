@@ -496,7 +496,12 @@ colored road), Add a stop here, Street View here.
     `brand` tag: "a chain is no fun"; regional chains OSM doesn't tag slip through), and places to walk around: named
     parks and reserves of 10 ha (25 acres) or more, lookouts, waterfalls, and named historic spots (monuments, ruins,
     forts, battlefields, mills…). **Not gas stations.** Missouri alone has about 5,200 (3,700 food).
-- **Must include:** the rider's own stops (roads, gas stops, pinned points).
+- **Must include:** the rider's own stops (roads, gas stops, pinned points, places). Tap one to see it on the map.
+  The ride's break (from a picked loop) isn't one, so the next Generate picks its own, but it's offered under Must
+  include with **Include** (2026-11-20: the rider wanted loops back to a break he'd been sent to): kept, every loop goes
+  there, no second break is added, and the cards are named for it. Kept stays kept when saved or shared.
+- **Plan a loop through here**, on a searched place's card: the place as a stop, then Plan a ride (as Plan a loop with
+  this road does for a road).
   - Every loop goes through them.
   - Loops head their way: straight at them, or swinging 35° or 70° to either side.
   - Without any, all 12 directions are tried.
