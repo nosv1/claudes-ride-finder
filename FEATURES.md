@@ -489,6 +489,8 @@ colored road), Add a stop here, Street View here.
     where there's no other food that way, and the card says so: "Break: Rookies Bar & Grill (bar)". About 1,500 of
     the 45,900 food spots. Barbecue ("Bar-B-Q"), oyster and ramen bars, and restaurants that also have a bar are food.
   - A break stays a break when the ride is saved, reloaded or shared (its kind is in the link), so it keeps its links.
+  - A ride with a break is named for it, as its card was: "To Wagon Works BBQ" when saved to your rides, on the ride
+    page, in a GPX file and a share. Other rides are named for their first roads.
   - **Break spots** (`tiles/breaks.js`, from the state files by `build_tiles.py` or `tools/add_breaks.py`; loaded the
     first time it's needed): food that isn't a chain (restaurants, cafés, fast food and ice cream with a name and no
     `brand` tag: "a chain is no fun"; regional chains OSM doesn't tag slip through), and places to walk around: named

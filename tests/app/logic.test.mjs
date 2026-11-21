@@ -7,7 +7,7 @@ import { boundsOf, distance, decodePolyline, spotOnLine, headingOnPath, nearestI
 import { decodeRow, visible, clusterRoads, stretchOf, bestInView, rollersInView, hillLevel, roadNear, roadAlong, setMyMph, limitOf } from '../../js/roads.js';
 import { RAMP_TIERS } from '../../js/config.js';
 import { newTrip, addRoad, insertRoad, setEnd, endOf, startOf, replaceWithRoad, ends, flipStop, addPoint, setStart, tripPoints, encodeTrip, decodeTrip, indexAlongRoute, moveStop } from '../../js/trip.js';
-import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn, sellsOctane, onePerRide, pickBreaks } from '../../js/plan.js';
+import { rideMix, rideFocus, planFuel, googlePoints, googleLinks, buildOptions, alongLine, candidateGroups, estimate, gpx, orientStops, retrace, detours, stopIndexAt, wayHomeRoads, onTheWay, curvyMetersOn, highwayMetersOn, turnarounds, stoplightsOn, spotsOn, sellsOctane, onePerRide, pickBreaks, tripName } from '../../js/plan.js';
 import { normWords, matchesAll, localResults } from '../../js/search.js';
 import { bikeFor, rangeOf, leftIn, upgradeBikes, octaneOf } from '../../js/bikes.js';
 import { timesAlong, weatherPoints, atPassing, rideWeather, sky, lightAt } from '../../js/weather.js';
@@ -362,6 +362,11 @@ test('a bar is a break only where there is no other food that way, and a saved r
   assert.deepEqual(back.items[1].brk, { kind: 'bar', name: 'Rookies Bar & Grill', detail: '' });
   assert.equal(back.items[2].brk, undefined, 'a plain stop stays a plain stop');
   assert.ok(back.items[0].start);
+  // Its name (saved to your rides, the ride page, GPX, share) is where it goes, as its card said; reloaded too.
+  trip.items.push({ type: 'road', label: 'MO 150', curvy: 1100, ids: [18518688], pts: [[38.83, -94.36], [38.85, -94.3]] });
+  assert.equal(tripName(trip), 'To Rookies Bar & Grill');
+  assert.equal(tripName(back), 'To Rookies Bar & Grill');
+  assert.equal(tripName({ items: trip.items.filter(it => !it.brk) }), 'Ride: MO 150');
 });
 
 test('the generator shows each ride once: not the same roads twice, nor the same route with a road it rides anyway', () => {

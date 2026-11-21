@@ -577,7 +577,10 @@ export function googleLinks(points) {
 
 const xml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 
+// A ride's name: where it goes for a break ("To Wagon Works BBQ", as its card said), or else its first roads.
 export function tripName(trip) {
+  const brk = trip.items.find(it => it.brk);
+  if (brk) return `To ${brk.brk.name}`;
   const roads = trip.items.filter(it => it.type === 'road').map(it => it.label);
   return roads.length ? `Ride: ${roads.slice(0, 3).join(', ')}${roads.length > 3 ? '…' : ''}` : 'Ride Finder trip';
 }

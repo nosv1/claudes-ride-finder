@@ -62,6 +62,7 @@ For each of 1 h, 1½ h, 3 h and 6 h, from Lee's Summit and from somewhere rural:
 - Skip this place: the message says it won't be picked again, and Generate again picks somewhere else. "Closed? Tell
   OpenStreetMap" opens a new note at the place. Reload the page: the break in the stop list still has its links.
 - Food: bar & grills, pubs and breweries show up only now and then, always marked "(bar)".
+- Pick a loop with a break and Save to your rides: it's saved as "To <the place>", and the ride page says so too.
 - No two cards are the same ride (the same miles and roads on the map), though they may list different roads.
 - There's a loop to each side of the start where there are good roads, and a note says which sides have none.
 - The status line keeps moving while it works; a 6 h run finishes in under about 3 minutes.
