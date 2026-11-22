@@ -18,6 +18,12 @@ Ideas that came up, roughly in order of how much they'd help.
   has it open: the other's list updates when it comes back to the app, but the stops on its screen only change when
   the ride is opened again. Not yet confirmed by the rider (2026-11-06): a real Google sign-in on the live site, and
   adding the phone with the device link (the tests use made-up sign-ins against a local copy of the API).
+- **Settings sync loses places** (found 2026-11-20, not fixed; the rider said some saved places were missing from Plan
+  a ride, not yet confirmed which or from which device). Settings sync as one blob and the newer copy wins
+  (`syncFrom`/`pushData` in `js/account.js`; places merge by name only on the first sync). A device open since before
+  a place was saved elsewhere, changing any setting, replaces the account's copy without that place; road tags and
+  skipped break spots too. Fix: merge places, tags and skips across devices, with removals remembered (tombstones) so
+  a deleted place doesn't come back.
 - **A proper app, still on PC**: one codebase for all three. Android: wrap the web app for the Play Store
   (Trusted Web Activity via Bubblewrap; $25 once). iPhone: Capacitor wrapper ($99/yr developer account,
   built on a Mac or a cloud build). PC keeps using the website or the installed web app. Worth it mainly for
