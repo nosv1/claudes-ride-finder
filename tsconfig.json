@@ -11,8 +11,16 @@
       "dom",
       "dom.iterable"
     ],
-    "strict": false,
-    "skipLibCheck": true
+    "strict": true,
+    "skipLibCheck": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false
   },
   "include": [
     "js/**/*.js",

@@ -2,8 +2,8 @@
 
 Run everything from the repo root.
 
-Before every commit, also `npm run check`: lint with zero warnings and the type check (CODING.md). It needs
-`npm install` once.
+Before every commit, also `npm run check`: lint with zero warnings, strict types and the baselines (CODING.md). It
+needs `npm install` and `pip install -r requirements-dev.txt` once.
 
 | Command | What it checks | Needs |
 |---|---|---|

@@ -1,0 +1,343 @@
+{
+ "mypy": {
+  "build_tiles.py": {
+   "assignment": 1,
+   "call-arg": 1,
+   "misc": 7,
+   "no-untyped-call": 102,
+   "no-untyped-def": 64,
+   "var-annotated": 12
+  },
+  "tests/test_build.py": {
+   "no-untyped-call": 210,
+   "no-untyped-def": 59,
+   "var-annotated": 2
+  },
+  "tools/add_breaks.py": {
+   "no-untyped-call": 3,
+   "no-untyped-def": 1,
+   "var-annotated": 1
+  },
+  "tools/add_highway_sweeps.py": {
+   "no-untyped-call": 4,
+   "no-untyped-def": 2,
+   "union-attr": 2
+  },
+  "tools/add_hills.py": {
+   "no-untyped-call": 11,
+   "no-untyped-def": 2,
+   "union-attr": 2
+  },
+  "tools/add_signals.py": {
+   "no-untyped-call": 3,
+   "no-untyped-def": 1,
+   "var-annotated": 1
+  },
+  "tools/make_icons.py": {
+   "attr-defined": 1,
+   "no-untyped-call": 8,
+   "no-untyped-def": 4
+  },
+  "tools/make_states.py": {
+   "no-untyped-call": 6,
+   "no-untyped-def": 6
+  },
+  "tools/make_voice.py": {
+   "attr-defined": 1,
+   "import-not-found": 1,
+   "index": 11,
+   "no-untyped-call": 9,
+   "no-untyped-def": 11,
+   "possibly-undefined": 1
+  }
+ },
+ "ruff": {
+  "build_tiles.py": {
+   "ANN001": 106,
+   "ANN201": 48,
+   "ANN202": 10,
+   "ANN204": 6,
+   "B905": 5,
+   "BLE001": 1,
+   "C901": 3,
+   "DTZ011": 1,
+   "E731": 2,
+   "I001": 1,
+   "PLR0912": 2,
+   "PLR0913": 2,
+   "PLR0915": 2,
+   "PLR0917": 2,
+   "PLW2901": 1,
+   "RUF003": 1,
+   "RUF005": 1,
+   "RUF007": 3,
+   "RUF021": 1,
+   "RUF059": 1,
+   "S310": 2,
+   "TRY300": 1
+  },
+  "tests/test_build.py": {
+   "ANN001": 38,
+   "ANN002": 1,
+   "ANN201": 52,
+   "ANN204": 1,
+   "ANN205": 6,
+   "ARG005": 9,
+   "B905": 1,
+   "E731": 2,
+   "ERA001": 1,
+   "PLC0415": 4,
+   "PLR0917": 4,
+   "RUF007": 1,
+   "RUF059": 1,
+   "SIM115": 4
+  },
+  "tools/add_breaks.py": {
+   "ANN001": 1,
+   "ANN201": 1
+  },
+  "tools/add_highway_sweeps.py": {
+   "ANN001": 1,
+   "ANN201": 2,
+   "SIM115": 4
+  },
+  "tools/add_hills.py": {
+   "ANN001": 1,
+   "ANN201": 2,
+   "SIM115": 4
+  },
+  "tools/add_signals.py": {
+   "ANN001": 1,
+   "ANN201": 1
+  },
+  "tools/make_icons.py": {
+   "ANN001": 11,
+   "ANN201": 4,
+   "B905": 5,
+   "PLR0913": 1,
+   "PLR0917": 1,
+   "RUF007": 2
+  },
+  "tools/make_states.py": {
+   "ANN001": 8,
+   "ANN201": 6,
+   "B905": 3,
+   "RUF005": 1,
+   "RUF007": 1,
+   "S101": 3,
+   "SIM115": 2
+  },
+  "tools/make_voice.py": {
+   "ANN001": 20,
+   "ANN201": 11,
+   "PLC0415": 3,
+   "PT018": 1,
+   "S101": 1,
+   "S310": 3,
+   "S603": 1,
+   "S607": 1,
+   "SIM115": 1
+  }
+ },
+ "tsc": {
+  "js/account.js": {
+   "TS18046": 7,
+   "TS2322": 4,
+   "TS2339": 8,
+   "TS2345": 2,
+   "TS2379": 1,
+   "TS2538": 1,
+   "TS2810": 1,
+   "TS7005": 20,
+   "TS7006": 86,
+   "TS7034": 7
+  },
+  "js/bikes.js": {
+   "TS2531": 1,
+   "TS7006": 9,
+   "TS7053": 1
+  },
+  "js/check.js": {
+   "TS7006": 2
+  },
+  "js/config.js": {
+   "TS2532": 1,
+   "TS7006": 2
+  },
+  "js/elevation.js": {
+   "TS18047": 2,
+   "TS18048": 2,
+   "TS2532": 7,
+   "TS7005": 1,
+   "TS7006": 15,
+   "TS7031": 2,
+   "TS7034": 1
+  },
+  "js/fly.js": {
+   "TS18048": 1,
+   "TS2322": 3,
+   "TS2345": 2,
+   "TS2532": 19,
+   "TS2722": 2,
+   "TS7006": 62,
+   "TS7031": 6
+  },
+  "js/geo.js": {
+   "TS2532": 1,
+   "TS7005": 2,
+   "TS7006": 41,
+   "TS7034": 2
+  },
+  "js/main.js": {
+   "TS18046": 10,
+   "TS18047": 5,
+   "TS18048": 11,
+   "TS2322": 5,
+   "TS2339": 65,
+   "TS2345": 11,
+   "TS2532": 21,
+   "TS2698": 1,
+   "TS2774": 1,
+   "TS7005": 97,
+   "TS7006": 386,
+   "TS7019": 2,
+   "TS7030": 1,
+   "TS7031": 17,
+   "TS7034": 21,
+   "TS7053": 20
+  },
+  "js/mapview.js": {
+   "TS2322": 1,
+   "TS2531": 1,
+   "TS2810": 1,
+   "TS7005": 25,
+   "TS7006": 85,
+   "TS7008": 1,
+   "TS7019": 1,
+   "TS7031": 8,
+   "TS7034": 5,
+   "TS7053": 3
+  },
+  "js/nav.js": {
+   "TS18048": 1,
+   "TS2339": 2,
+   "TS2531": 3,
+   "TS2532": 6,
+   "TS7005": 2,
+   "TS7006": 37,
+   "TS7008": 1,
+   "TS7031": 2,
+   "TS7034": 1,
+   "TS7053": 1
+  },
+  "js/plan.js": {
+   "TS18048": 8,
+   "TS2322": 3,
+   "TS2345": 2,
+   "TS2532": 37,
+   "TS2769": 1,
+   "TS7005": 6,
+   "TS7006": 193,
+   "TS7031": 15,
+   "TS7034": 5,
+   "TS7053": 1
+  },
+  "js/ride.js": {
+   "TS18047": 1,
+   "TS18048": 2,
+   "TS2531": 2,
+   "TS2532": 4,
+   "TS7006": 38,
+   "TS7008": 1,
+   "TS7022": 8,
+   "TS7031": 9,
+   "TS7053": 1
+  },
+  "js/roads.js": {
+   "TS18047": 1,
+   "TS18048": 4,
+   "TS2339": 13,
+   "TS2532": 5,
+   "TS2551": 1,
+   "TS7005": 1,
+   "TS7006": 62,
+   "TS7022": 2,
+   "TS7034": 1
+  },
+  "js/routing.js": {
+   "TS18046": 2,
+   "TS2345": 2,
+   "TS7005": 2,
+   "TS7006": 21,
+   "TS7031": 6,
+   "TS7034": 1
+  },
+  "js/seal.js": {
+   "TS7006": 12
+  },
+  "js/search.js": {
+   "TS7006": 23,
+   "TS7031": 12,
+   "TS7053": 3
+  },
+  "js/store.js": {
+   "TS18047": 5,
+   "TS18048": 4,
+   "TS2322": 3,
+   "TS2345": 1,
+   "TS2810": 1,
+   "TS7005": 3,
+   "TS7006": 4,
+   "TS7031": 12,
+   "TS7034": 3
+  },
+  "js/tags.js": {
+   "TS2345": 1,
+   "TS2532": 2,
+   "TS7005": 17,
+   "TS7006": 32,
+   "TS7034": 2
+  },
+  "js/trip.js": {
+   "TS18047": 3,
+   "TS7005": 3,
+   "TS7006": 75,
+   "TS7031": 8,
+   "TS7034": 3
+  },
+  "js/ui.js": {
+   "TS18047": 13,
+   "TS2531": 2,
+   "TS2769": 1,
+   "TS7005": 9,
+   "TS7006": 33,
+   "TS7019": 1,
+   "TS7034": 4
+  },
+  "js/usage-page.js": {
+   "TS2339": 3,
+   "TS2532": 3,
+   "TS7006": 14,
+   "TS7022": 1,
+   "TS7024": 1,
+   "TS7053": 6
+  },
+  "js/usage.js": {
+   "TS7006": 1,
+   "TS7053": 1
+  },
+  "js/voice.js": {
+   "TS18047": 2,
+   "TS2339": 12,
+   "TS2345": 1,
+   "TS7005": 9,
+   "TS7006": 9,
+   "TS7034": 2
+  },
+  "js/weather.js": {
+   "TS18048": 7,
+   "TS2532": 3,
+   "TS7006": 29
+  }
+ }
+}

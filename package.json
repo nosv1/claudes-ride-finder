@@ -2,10 +2,13 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "check": "npm run lint && npm run types",
+    "check": "npm run lint && npm run types && npm run py",
     "lint": "eslint . --max-warnings 0",
     "lint:prune": "eslint . --prune-suppressions",
-    "types": "tsc -p tsconfig.json"
+    "types": "python tools/check_baseline.py tsc -- npx tsc -p tsconfig.json --pretty false",
+    "types:update": "python tools/check_baseline.py tsc --update -- npx tsc -p tsconfig.json --pretty false",
+    "py": "python tools/check_baseline.py ruff -- python -m ruff check --output-format json . && python tools/check_baseline.py mypy -- python -m mypy build_tiles.py tests tools",
+    "py:update": "python tools/check_baseline.py ruff --update -- python -m ruff check --output-format json . && python tools/check_baseline.py mypy --update -- python -m mypy build_tiles.py tests tools"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

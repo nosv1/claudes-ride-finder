@@ -1,4 +1,42 @@
 {
+  "js/account.js": {
+    "complexity": {
+      "count": 5
+    },
+    "no-implicit-coercion": {
+      "count": 4
+    },
+    "no-param-reassign": {
+      "count": 1
+    },
+    "no-unmodified-loop-condition": {
+      "count": 2
+    },
+    "no-unused-expressions": {
+      "count": 1
+    },
+    "no-unused-vars": {
+      "count": 4
+    }
+  },
+  "js/bikes.js": {
+    "complexity": {
+      "count": 1
+    },
+    "no-implicit-coercion": {
+      "count": 4
+    }
+  },
+  "js/check.js": {
+    "no-implicit-coercion": {
+      "count": 1
+    }
+  },
+  "js/config.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
   "js/elevation.js": {
     "no-shadow": {
       "count": 1
@@ -6,18 +44,39 @@
   },
   "js/fly.js": {
     "complexity": {
+      "count": 3
+    },
+    "no-unused-expressions": {
       "count": 1
     }
   },
   "js/main.js": {
     "complexity": {
-      "count": 4
+      "count": 14
     },
     "max-lines-per-function": {
       "count": 2
     },
+    "no-implicit-coercion": {
+      "count": 29
+    },
+    "no-param-reassign": {
+      "count": 1
+    },
+    "no-promise-executor-return": {
+      "count": 1
+    },
     "no-shadow": {
-      "count": 6
+      "count": 13
+    },
+    "no-unused-expressions": {
+      "count": 1
+    },
+    "no-unused-vars": {
+      "count": 4
+    },
+    "prefer-promise-reject-errors": {
+      "count": 2
     }
   },
   "js/mapview.js": {
@@ -26,22 +85,37 @@
     },
     "max-params": {
       "count": 1
+    },
+    "no-unused-expressions": {
+      "count": 2
     }
   },
   "js/nav.js": {
     "complexity": {
-      "count": 2
+      "count": 3
+    },
+    "max-params": {
+      "count": 1
     }
   },
   "js/plan.js": {
     "complexity": {
-      "count": 2
+      "count": 6
     },
     "max-params": {
+      "count": 4
+    },
+    "no-implicit-coercion": {
+      "count": 2
+    },
+    "no-param-reassign": {
       "count": 1
     },
     "no-shadow": {
-      "count": 2
+      "count": 5
+    },
+    "no-unused-expressions": {
+      "count": 1
     }
   },
   "js/ride.js": {
@@ -50,58 +124,183 @@
     },
     "max-lines-per-function": {
       "count": 1
+    },
+    "no-implicit-coercion": {
+      "count": 2
+    },
+    "no-unused-vars": {
+      "count": 1
     }
   },
   "js/roads.js": {
     "complexity": {
+      "count": 2
+    },
+    "no-param-reassign": {
+      "count": 1
+    },
+    "no-shadow": {
       "count": 1
     }
   },
+  "js/routing.js": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "js/seal.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "js/search.js": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "js/tags.js": {
+    "no-implicit-coercion": {
+      "count": 4
+    },
+    "no-param-reassign": {
+      "count": 1
+    },
+    "no-unused-vars": {
+      "count": 2
+    }
+  },
   "js/trip.js": {
+    "complexity": {
+      "count": 4
+    },
+    "no-implicit-coercion": {
+      "count": 8
+    },
+    "no-param-reassign": {
+      "count": 1
+    },
     "no-shadow": {
+      "count": 4
+    },
+    "no-unused-expressions": {
       "count": 1
     }
   },
   "js/ui.js": {
     "complexity": {
-      "count": 1
+      "count": 2
     },
     "max-lines-per-function": {
+      "count": 1
+    },
+    "no-unused-expressions": {
       "count": 1
     }
   },
   "js/voice.js": {
     "complexity": {
       "count": 1
+    },
+    "no-implicit-coercion": {
+      "count": 2
+    },
+    "no-shadow": {
+      "count": 1
+    },
+    "no-unused-vars": {
+      "count": 4
+    }
+  },
+  "js/weather.js": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "sw.js": {
+    "no-unused-vars": {
+      "count": 1
     }
   },
   "tests/app/account.test.mjs": {
+    "no-promise-executor-return": {
+      "count": 1
+    },
     "no-shadow": {
+      "count": 1
+    },
+    "no-unused-expressions": {
+      "count": 4
+    },
+    "no-unused-vars": {
       "count": 1
     }
   },
   "tests/app/browser.test.mjs": {
+    "no-implicit-coercion": {
+      "count": 3
+    },
+    "no-promise-executor-return": {
+      "count": 1
+    },
     "no-shadow": {
       "count": 4
+    },
+    "no-unused-expressions": {
+      "count": 2
+    },
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "tests/app/cdp.mjs": {
+    "no-promise-executor-return": {
+      "count": 1
+    },
+    "no-unused-vars": {
+      "count": 3
     }
   },
   "tests/app/logic.test.mjs": {
-    "complexity": {
-      "count": 1
-    },
     "max-params": {
+      "count": 3
+    },
+    "no-implicit-coercion": {
+      "count": 4
+    },
+    "no-shadow": {
+      "count": 2
+    }
+  },
+  "tests/worker-dev.mjs": {
+    "no-promise-executor-return": {
       "count": 1
     },
+    "no-unused-vars": {
+      "count": 3
+    }
+  },
+  "tools/bump_version.mjs": {
+    "no-implicit-coercion": {
+      "count": 1
+    }
+  },
+  "tools/make_preview.mjs": {
     "no-shadow": {
       "count": 1
     }
   },
   "worker/src/index.js": {
     "complexity": {
-      "count": 2
+      "count": 5
     },
     "max-lines-per-function": {
       "count": 1
+    },
+    "no-shadow": {
+      "count": 3
+    },
+    "no-unused-vars": {
+      "count": 2
     }
   }
 }

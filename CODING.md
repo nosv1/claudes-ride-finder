@@ -1,45 +1,51 @@
 # Coding standard
 
-Ride Finder follows JPL's **Power of Ten** rules for safety-critical code (Holzmann, 2006; the basis of the JPL
-Institutional Coding Standard for C), adapted to a browser app in JavaScript. A rider uses this on the road, often
-with a weak signal, so the bar is code whose behavior can be checked: simple flow, small pieces, every failure
-handled where it happens.
+The standard is the hub's [CODING.md](https://github.com/nosv1/nosv1/blob/main/CODING.md): JPL's **Power of Ten**
+carried into JavaScript and Python at the strictest settings the tools have. It replaced this file's own version on
+2026-11-23. A rider uses this on the road, often with a weak signal, so the bar is code whose behavior can be checked:
+simple flow, small pieces, every failure handled where it happens. This page keeps only what's particular to Ride
+Finder.
 
-`npm run check` checks what a tool can check: lint with zero warnings, and the type check. Run it, and the tests
-(tests/README.md), before every commit. Review covers the rest.
+`npm run check` checks what a tool can check: lint with zero warnings, strict types for the JavaScript and the
+Python, and the baselines. Run it, and the tests that cover the change (tests/README.md), before every commit. CI runs
+it on every push. Review covers the rest.
 
-## The rules
+## How the rules land here
 
-| # | Power of Ten | Here | Checked by |
-| --- | --- | --- | --- |
-| 1 | Simple control flow: no goto, setjmp or recursion | No recursion (a retry is a loop with a bound), no labels, no `with`. | lint, review |
-| 2 | Every loop has a fixed upper bound | Retries, polling and waits have a stated limit (tries, a timeout). No `while (true)`. | lint, review |
-| 3 | No memory allocation after startup | Not applicable: JavaScript allocates and frees memory itself. Instead, nothing grows without bound: caches and maps kept for the session have a limit or are cleared. | review |
-| 4 | A function fits on a page | 60 lines at most (blank lines and comments don't count), complexity 15 at most, nesting 4 deep at most, 5 parameters at most (pass an options object beyond that). | lint |
-| 5 | Assertions: at least two per function | Where they say something, not a count per function: use `check(ok, what)` (js/check.js) for what must be true where data crosses a boundary (the account service, links, storage, another module, a function exported for other modules) and for invariants a change relies on. A function that only passes on what's already been checked needs none. A failed check is logged ("Check failed: …", which fails the browser tests) and returns false: the caller recovers by doing nothing or keeping what's there, never by throwing at the rider. | review, tests |
-| 6 | Data in the smallest scope | `const` by default, no `var`, no shadowing. Module-level state only when several functions share it, with a comment saying what it holds. | lint, review |
-| 7 | Check every return value and parameter | Every promise is awaited, returned, given a `.catch`, or marked `void` when the function it calls handles its own failures (say so in a comment). Errors are caught where something sensible can be done (a toast, a fallback), not passed up to nowhere. Async work that touches the ride on screen checks it's still the same ride (`onScreen()` in main.js). | lint (no-floating-promises), review |
-| 8 | Limit the preprocessor | Not applicable. Nearest thing: no `eval` and no code built from strings. | lint |
-| 9 | Restrict pointers: one level of dereference, no function pointers | Mostly not applicable (callbacks are how JavaScript works). Keep chains short (`a.b.c` at most), and don't pass functions through more than one layer to be called later without a name that says what they're for. | review |
-| 10 | All warnings on, zero warnings, static analysis daily | `npm run check` clean on every commit: ESLint (eslint.config.js) and TypeScript's checker over the JavaScript (tsconfig.json; JSDoc where a type isn't clear). | lint, types |
+- **Rule 5, checks.** Use `check(ok, what)` (js/check.js) for what must be true where data crosses a boundary (the
+  account service, links, storage, another module, a function exported for other modules) and for invariants a change
+  relies on. A function that only passes on what's already been checked needs none. A failed check is logged ("Check
+  failed: …", which fails the browser tests) and returns false: the caller recovers by doing nothing or keeping what's
+  there, never by throwing at the rider.
+- **Rule 6, module state.** Module-level state only when several functions share it, with a comment saying what it
+  holds.
+- **Rule 7, async work.** A promise marked `void` says in a comment that the function it calls handles its own
+  failures. Async work that touches the ride on screen checks it's still the same ride (`onScreen()` in main.js).
+  Errors are caught where something sensible can be done (a toast, a fallback).
 
 ## Code from before the standard
 
-The standard came in on 2026-11-16. What broke rules 4 and 6 then (51 findings: long or complex functions, a few
-shadowed names, functions with many parameters) is listed in `eslint-suppressions.json`, so lint stays clean while
-new code meets the standard in full.
+The standard came in on 2026-11-16 and tightened on 2026-11-23 (complexity 10, 4 parameters, strict types, Python
+checked too). What the code broke then is in two baselines, so the checks stay clean while new code meets the
+standard in full:
 
-- Don't add to that file. New and changed code meets the rules.
-- When you change a function that's listed, bring it under the rules if that's reasonable in the same change
-  (split it, rename the shadowed name), then run `npm run lint:prune` to drop the entry.
+- `eslint-suppressions.json`: 226 lint findings, mostly long or complex functions.
+- `checks-baseline.json`: 2,045 type findings in the JavaScript (it was checked with `strict` off until then), 435
+  Ruff and 550 mypy findings in the Python build tools.
+
+- Don't add to either. New and changed code meets the rules.
+- When you change a function that's listed, bring it under the rules if that's reasonable in the same change (split
+  it, type the parameter), then run `npm run lint:prune`, `npm run types:update` or `npm run py:update` to drop the
+  entry.
 - No big rewrite just for the standard: splitting `main.js` all at once would be riskier than the code it replaces.
 
 ## Tools
 
-Development only, pinned in package.json, not part of the site (it has no build step):
+Development only, pinned in package.json and requirements-dev.txt, not part of the site (it has no build step):
 
-- `npm install`: once, to get them.
-- `npm run check`: lint and types, as above.
-- `npm run lint:prune`: after fixing code listed in eslint-suppressions.json.
+- `npm install` and `pip install -r requirements-dev.txt`: once, to get them.
+- `npm run check`: lint, types and the baselines, as above.
+- `npm run lint:prune`, `npm run types:update`, `npm run py:update`: after fixing code listed in a baseline.
+- `eslint-standard.mjs` and `tools/check_baseline.py`: copies of the hub's (change those first).
 - `types/globals.d.ts`: what the page has besides the app's modules (MapLibre, Google sign-in, the tile data
   scripts), for the type check.

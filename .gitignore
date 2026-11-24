@@ -8,3 +8,5 @@ worker/.wrangler/
 
 # Development tools (npm install): lint and type checks, not part of the site
 node_modules/
+.mypy_cache/
+.ruff_cache/

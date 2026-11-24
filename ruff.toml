@@ -1,0 +1,26 @@
+# The coding standard's Ruff settings (nosv1/nosv1 CODING.md). Copy into the repo's ruff.toml or
+# pyproject.toml ([tool.ruff]) and set target-version there. Zero findings outside the baseline.
+line-length = 120
+target-version = "py312"
+extend-exclude = ["node_modules", "raw", "tiles", "worker/.wrangler"]
+
+[lint]
+# Each family is here for a rule in CODING.md; style-only families (docstrings, quotes, commas) are taste.
+select = ["E", "W", "F", "I", "N", "UP", "B", "A", "BLE", "C4", "C90", "S", "ANN", "ARG", "RET", "SIM", "TRY", "PERF", "PL", "PT", "RUF", "ERA", "PGH", "ISC", "PIE", "SLF", "EM", "DTZ", "TID", "TC"]
+# PLR2004 magic numbers, TRY003/EM long messages: taste. PT009/PT027: unittest asserts are allowed.
+ignore = ["PLR2004", "TRY003", "EM101", "EM102", "E501", "PT009", "PT027"]
+
+[lint.per-file-ignores]
+"**/test_*.py" = ["S101", "PLR0913", "SLF001"]
+"tests/**" = ["S101", "PLR0913", "SLF001"]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.pylint]
+max-args = 4
+max-positional-args = 4
+max-statements = 50
+max-branches = 12
+max-returns = 6
+max-nested-blocks = 4
